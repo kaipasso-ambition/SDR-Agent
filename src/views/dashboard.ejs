@@ -1,0 +1,45 @@
+<h1 class="text-2xl font-semibold mb-6">Dashboard</h1>
+
+<div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+  <div class="bg-white border border-slate-200 rounded-lg p-5">
+    <div class="text-xs uppercase tracking-wide text-slate-500">Drafts pending</div>
+    <div class="text-3xl font-semibold mt-2"><%= counts.pendingDrafts %></div>
+    <a href="/drafts" class="text-xs text-slate-500 hover:text-slate-900 mt-2 inline-block">Review →</a>
+  </div>
+  <div class="bg-white border border-slate-200 rounded-lg p-5">
+    <div class="text-xs uppercase tracking-wide text-slate-500">Replies pending</div>
+    <div class="text-3xl font-semibold mt-2"><%= counts.pendingReplies %></div>
+    <a href="/replies" class="text-xs text-slate-500 hover:text-slate-900 mt-2 inline-block">Review →</a>
+  </div>
+  <div class="bg-white border border-slate-200 rounded-lg p-5">
+    <div class="text-xs uppercase tracking-wide text-slate-500">Researched today</div>
+    <div class="text-3xl font-semibold mt-2"><%= counts.researchedToday %></div>
+  </div>
+  <div class="bg-white border border-slate-200 rounded-lg p-5">
+    <div class="text-xs uppercase tracking-wide text-slate-500">Sent this week</div>
+    <div class="text-3xl font-semibold mt-2"><%= counts.sentThisWeek %></div>
+  </div>
+</div>
+
+<h2 class="text-sm font-semibold text-slate-700 uppercase tracking-wide mb-3">Connections</h2>
+<div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-8">
+  <% connections.forEach(function(c) { %>
+    <div class="bg-white border border-slate-200 rounded-lg p-4 flex items-center justify-between">
+      <div>
+        <div class="text-sm font-medium"><%= c.label %></div>
+        <div class="text-xs text-slate-500 mt-0.5"><%= c.detail %></div>
+      </div>
+      <span class="w-2.5 h-2.5 rounded-full <%= c.ok ? 'bg-emerald-500' : 'bg-slate-300' %>"></span>
+    </div>
+  <% }); %>
+</div>
+
+<div class="bg-white border border-slate-200 rounded-lg p-5">
+  <h2 class="text-sm font-semibold text-slate-700 uppercase tracking-wide mb-3">How this works</h2>
+  <ol class="text-sm text-slate-600 space-y-2 list-decimal ml-5">
+    <li>Researcher cron pulls accounts from Salesforce + intent signals from CommonRoom, scores each, writes them to <code class="bg-slate-100 px-1 rounded">prospects</code>.</li>
+    <li>Writer cron generates a 3-touch sequence for any prospect with a fit score ≥ 50, queues it on the <a href="/drafts" class="underline">Drafts</a> page.</li>
+    <li>You approve, edit, or reject. Approved drafts get sent through Gmail / LinkedIn within the daily limit and send window.</li>
+    <li>Reply monitor classifies inbound responses every 30 minutes and queues drafts on the <a href="/replies" class="underline">Replies</a> page.</li>
+  </ol>
+</div>

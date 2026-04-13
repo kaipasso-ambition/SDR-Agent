@@ -1,0 +1,125 @@
+<div class="flex items-center justify-between mb-6">
+  <h1 class="text-2xl font-semibold">Drafts <span class="text-slate-400 text-base font-normal">(<%= drafts.length %> pending)</span></h1>
+</div>
+
+<% if (drafts.length === 0) { %>
+  <div class="bg-white border border-slate-200 rounded-lg p-10 text-center text-slate-500">
+    No drafts in the queue. The writer cron runs at 8:30am, 12:30pm, and 4:30pm.
+  </div>
+<% } %>
+
+<% drafts.forEach(function(d) { %>
+  <details class="bg-white border border-slate-200 rounded-lg mb-3 group" >
+    <summary class="cursor-pointer p-4 flex items-center justify-between hover:bg-slate-50">
+      <div class="flex items-center gap-4">
+        <div>
+          <div class="font-medium text-slate-900"><%= d.company %></div>
+          <div class="text-xs text-slate-500"><%= d.contact_name || '—' %> · <%= d.persona || '—' %> · <%= d.industry || '—' %></div>
+        </div>
+      </div>
+      <div class="flex items-center gap-3">
+        <span class="pill bg-slate-100 text-slate-700">Fit <%= d.draft.fit_score ?? '?' %></span>
+        <span class="text-xs text-slate-400">queued <%= new Date(d.queued_at).toLocaleString() %></span>
+      </div>
+    </summary>
+
+    <form class="p-5 border-t border-slate-100 space-y-5" data-draft-id="<%= d.id %>">
+      <% (d.draft.sequence || []).forEach(function(t, i) { %>
+        <div>
+          <div class="flex items-center gap-2 mb-2">
+            <span class="pill bg-slate-900 text-white">Touch <%= t.touch %></span>
+            <span class="pill bg-slate-100 text-slate-700"><%= t.channel %></span>
+          </div>
+          <% if (t.channel === 'email') { %>
+            <input type="text" name="subject_<%= i %>" value="<%- t.subject || '' %>"
+              class="w-full border border-slate-200 rounded px-3 py-2 text-sm font-medium mb-2"
+              placeholder="Subject" />
+          <% } %>
+          <textarea name="body_<%= i %>" rows="<%= t.channel === 'linkedin' ? 4 : 6 %>"
+            class="w-full border border-slate-200 rounded px-3 py-2 text-sm font-mono"><%- t.body || '' %></textarea>
+          <div class="text-xs text-slate-400 mt-1"><span class="word-count">0</span> words</div>
+        </div>
+      <% }); %>
+
+      <div class="flex items-center gap-3 pt-2 border-t border-slate-100">
+        <button type="button" data-action="approve"
+          class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded text-sm font-medium">Approve</button>
+        <button type="button" data-action="save"
+          class="bg-slate-200 hover:bg-slate-300 text-slate-900 px-4 py-2 rounded text-sm font-medium">Save edits</button>
+        <button type="button" data-action="reject"
+          class="bg-white hover:bg-red-50 text-red-700 border border-red-200 px-4 py-2 rounded text-sm font-medium ml-auto">Reject</button>
+      </div>
+      <div class="status text-xs text-slate-500 hidden"></div>
+    </form>
+  </details>
+<% }); %>
+
+<script>
+  // Live word count
+  function updateCounts(form) {
+    form.querySelectorAll('textarea').forEach(function(ta) {
+      const count = ta.value.trim().split(/\s+/).filter(Boolean).length;
+      const el = ta.parentElement.querySelector('.word-count');
+      if (el) el.textContent = count;
+      el.parentElement.style.color = count > 75 ? '#b91c1c' : '';
+    });
+  }
+  document.querySelectorAll('form[data-draft-id]').forEach(function(form) {
+    updateCounts(form);
+    form.addEventListener('input', function() { updateCounts(form); });
+  });
+
+  function readDraft(form) {
+    const sequence = [];
+    let i = 0;
+    while (form.querySelector('[name="body_' + i + '"]')) {
+      const subjEl = form.querySelector('[name="subject_' + i + '"]');
+      const bodyEl = form.querySelector('[name="body_' + i + '"]');
+      sequence.push({
+        touch: i + 1,
+        channel: subjEl ? 'email' : 'linkedin',
+        subject: subjEl ? subjEl.value : '',
+        body: bodyEl.value,
+      });
+      i++;
+    }
+    return { sequence: sequence };
+  }
+
+  function showStatus(form, msg, ok) {
+    const el = form.querySelector('.status');
+    el.classList.remove('hidden');
+    el.textContent = msg;
+    el.style.color = ok ? '#047857' : '#b91c1c';
+  }
+
+  document.querySelectorAll('button[data-action]').forEach(function(btn) {
+    btn.addEventListener('click', async function() {
+      const form = btn.closest('form');
+      const id = form.dataset.draftId;
+      const action = btn.dataset.action;
+      btn.disabled = true;
+      try {
+        if (action === 'save' || action === 'approve') {
+          const draft = readDraft(form);
+          const merged = Object.assign({}, window['draft_' + id] || {}, draft);
+          await fetch('/api/queue/drafts/' + id, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ draft: merged }),
+          });
+        }
+        if (action === 'approve' || action === 'reject') {
+          await fetch('/api/queue/drafts/' + id + '/' + action, { method: 'POST' });
+          form.closest('details').remove();
+        } else {
+          showStatus(form, 'Saved.', true);
+        }
+      } catch (e) {
+        showStatus(form, 'Error: ' + e.message, false);
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  });
+</script>

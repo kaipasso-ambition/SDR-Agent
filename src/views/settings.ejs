@@ -1,0 +1,69 @@
+<h1 class="text-2xl font-semibold mb-6">Settings</h1>
+
+<section class="mb-8">
+  <h2 class="text-sm font-semibold text-slate-700 uppercase tracking-wide mb-3">Connections</h2>
+  <p class="text-sm text-slate-500 mb-4">Connect external accounts so the agent can send messages and pull data. OAuth tokens are stored in the database — you don't need to edit the .env file for these.</p>
+
+  <div class="space-y-3">
+    <% providers.forEach(function(p) { %>
+      <div class="bg-white border border-slate-200 rounded-lg p-5 flex items-center justify-between">
+        <div class="flex items-center gap-4">
+          <span class="w-2.5 h-2.5 rounded-full <%= p.connected ? 'bg-emerald-500' : 'bg-slate-300' %>"></span>
+          <div>
+            <div class="font-medium"><%= p.label %></div>
+            <div class="text-xs text-slate-500"><%= p.description %></div>
+            <% if (p.connected) { %>
+              <div class="text-xs text-emerald-700 mt-0.5">Connected as <%= p.account_label %> · <%= new Date(p.connected_at).toLocaleDateString() %></div>
+            <% } %>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <% if (p.connected) { %>
+            <form method="POST" action="/settings/disconnect/<%= p.provider %>">
+              <button type="submit" class="text-sm text-red-700 hover:underline">Disconnect</button>
+            </form>
+          <% } else if (p.oauth_url) { %>
+            <a href="<%= p.oauth_url %>" class="bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium px-4 py-2 rounded">Connect</a>
+          <% } else { %>
+            <span class="text-xs text-slate-400">Coming soon</span>
+          <% } %>
+        </div>
+      </div>
+    <% }); %>
+  </div>
+</section>
+
+<section class="mb-8">
+  <h2 class="text-sm font-semibold text-slate-700 uppercase tracking-wide mb-3">Send window</h2>
+  <div class="bg-white border border-slate-200 rounded-lg p-5 text-sm text-slate-600">
+    <p>Currently sending Mon–Fri, <%= sendWindow.start %>:00–<%= sendWindow.end %>:00 (<%= sendWindow.tz %>), max <%= sendWindow.dailyLimit %> emails/day.</p>
+    <p class="text-xs text-slate-400 mt-2">Edit <code class="bg-slate-100 px-1 rounded">SEND_WINDOW_START</code>, <code class="bg-slate-100 px-1 rounded">SEND_WINDOW_END</code>, <code class="bg-slate-100 px-1 rounded">DAILY_EMAIL_LIMIT</code>, and <code class="bg-slate-100 px-1 rounded">SEND_TIMEZONE</code> in your .env file to change these. (We can move this into the database later if you want to edit from the UI.)</p>
+  </div>
+</section>
+
+<section>
+  <h2 class="text-sm font-semibold text-slate-700 uppercase tracking-wide mb-3">Team</h2>
+  <div class="bg-white border border-slate-200 rounded-lg overflow-hidden">
+    <table class="w-full text-sm">
+      <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+        <tr>
+          <th class="text-left p-3">Email</th>
+          <th class="text-left p-3">Name</th>
+          <th class="text-left p-3">Last login</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% users.forEach(function(u) { %>
+          <tr class="border-t border-slate-100">
+            <td class="p-3"><%= u.email %></td>
+            <td class="p-3"><%= u.name || '—' %></td>
+            <td class="p-3 text-slate-500"><%= u.last_login_at ? new Date(u.last_login_at).toLocaleString() : 'never' %></td>
+          </tr>
+        <% }); %>
+      </tbody>
+    </table>
+    <div class="bg-slate-50 border-t border-slate-100 p-3 text-xs text-slate-500">
+      Add or reset a user from the command line: <code class="bg-white border border-slate-200 px-1 rounded">node scripts/create_user.js email@example.com "password" "Full Name"</code>
+    </div>
+  </div>
+</section>

@@ -69,10 +69,44 @@ spec. Edit those files if you need to tune voice, ICP, or reply rules.
 All schedules run Monday–Friday. Adjust `SEND_WINDOW_START/END` and
 `SEND_TIMEZONE` in `.env` for your timezone.
 
-## Approval UI
+## Web UI
 
-The `ui/` directory is reserved for a React approval queue frontend (outbound
-drafts tab + Replies tab). Backend endpoints for it live in `src/api/routes.js`.
+Server-rendered (EJS + Tailwind via CDN, no separate build step). Lives in
+`src/views/` with routes in `src/web/routes.js`. Pages:
+
+- `/login` — email + password login
+- `/` — dashboard with queue counts and connection status
+- `/drafts` — pending outbound sequences (approve / edit / reject)
+- `/replies` — pending reply drafts (send / discard, escalations flagged red)
+- `/settings` — connect Gmail / Salesforce / CommonRoom, view team
+
+Auth uses bcrypt password hashes and Postgres-backed sessions via
+`connect-pg-simple`. Create users from the CLI:
+
+```bash
+node scripts/create_user.js you@example.com "MyStrongPassword!" "Your Name"
+```
+
+Re-running with the same email resets that user's password.
+
+## First-run setup (after `npm install`)
+
+```bash
+# 1. Make sure DATABASE_URL and SESSION_SECRET are set in .env
+node -e "console.log(require('crypto').randomBytes(48).toString('base64'))"
+# Copy that into SESSION_SECRET in .env
+
+# 2. Apply schema (adds users + session + integrations tables on top of existing data)
+psql -d ambition_sdr -f db/schema.sql
+
+# 3. Create your first login
+node scripts/create_user.js you@example.com "yourPassword" "Your Name"
+
+# 4. Run
+npm run dev
+
+# 5. Open http://localhost:3000 in your browser
+```
 
 ## ICP + voice rules
 

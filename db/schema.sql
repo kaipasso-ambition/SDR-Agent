@@ -88,3 +88,44 @@ CREATE TABLE IF NOT EXISTS sent_messages (
 );
 
 CREATE INDEX IF NOT EXISTS sent_messages_prospect_idx ON sent_messages(prospect_id);
+
+-- Users (web UI logins)
+CREATE TABLE IF NOT EXISTS users (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email TEXT UNIQUE NOT NULL,
+  name TEXT,
+  password_hash TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  last_login_at TIMESTAMPTZ
+);
+
+-- Session store for connect-pg-simple
+CREATE TABLE IF NOT EXISTS "session" (
+  "sid" varchar NOT NULL COLLATE "default",
+  "sess" json NOT NULL,
+  "expire" timestamp(6) NOT NULL
+);
+
+-- Idempotent guard: only add the PK if it isn't there yet
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'session_pkey'
+  ) THEN
+    ALTER TABLE "session" ADD CONSTRAINT "session_pkey" PRIMARY KEY ("sid") NOT DEFERRABLE INITIALLY IMMEDIATE;
+  END IF;
+END$$;
+
+CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON "session" ("expire");
+
+-- Integration credentials (stored after OAuth so users don't edit .env for these)
+CREATE TABLE IF NOT EXISTS integrations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  provider TEXT UNIQUE NOT NULL, -- 'gmail' | 'salesforce' | 'commonroom'
+  account_label TEXT,            -- e.g. 'kai@ambition.com'
+  credentials JSONB NOT NULL,    -- access_token, refresh_token, expiry, etc.
+  connected_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  connected_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
