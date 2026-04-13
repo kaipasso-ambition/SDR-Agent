@@ -19,6 +19,11 @@ const PgStore = connectPgSimple(session);
 export function createServer() {
   const app = express();
 
+  // Required so express-session sees the real client IP + HTTPS when behind
+  // Railway / Render / Fly / any reverse proxy. Without this, secure cookies
+  // won't be sent and sessions break in production.
+  app.set('trust proxy', 1);
+
   // View engine
   app.set('views', VIEWS_DIR);
   app.set('view engine', 'ejs');
