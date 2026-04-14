@@ -1,0 +1,92 @@
+<%
+  function label(key) {
+    const map = {
+      revops: 'RevOps', salesops: 'Sales Ops',
+      sales_leader: 'Sales Leader', sales_strategy: 'Sales Strategy',
+      vp_plus: 'VP+', c_suite: 'C-Suite', director: 'Director', manager: 'Manager',
+      saas: 'SaaS', logistics: 'Logistics', fintech: 'Fintech',
+      staffing: 'Staffing', insurance: 'Insurance', proptech: 'PropTech',
+      healthtech: 'Healthtech', other: 'Other',
+    };
+    return map[key] || key;
+  }
+  function fitColor(n) {
+    if (n == null) return 'bg-slate-100 text-slate-700';
+    if (n >= 80) return 'bg-emerald-100 text-emerald-800';
+    if (n >= 60) return 'bg-amber-100 text-amber-800';
+    return 'bg-red-100 text-red-800';
+  }
+  function statusBadge(p) {
+    if (p.disqualified) return { cls: 'bg-red-100 text-red-800', text: 'Disqualified' };
+    if (p.has_approved_draft) return { cls: 'bg-emerald-100 text-emerald-800', text: 'Approved' };
+    if (p.has_pending_draft) return { cls: 'bg-amber-100 text-amber-800', text: 'Pending draft' };
+    if ((p.fit_score ?? 0) < 60) return { cls: 'bg-slate-200 text-slate-700', text: 'Saved, no draft' };
+    return { cls: 'bg-blue-100 text-blue-800', text: 'Researched' };
+  }
+%>
+
+<div class="flex items-center justify-between mb-6">
+  <h1 class="text-2xl font-semibold">Prospects <span class="text-slate-400 text-base font-normal">(<%= prospects.length %>)</span></h1>
+  <div class="text-sm text-slate-500">Every company the agent has looked at — drafted, saved, or disqualified.</div>
+</div>
+
+<% if (prospects.length === 0) { %>
+  <div class="bg-white border border-slate-200 rounded-lg p-10 text-center text-slate-500">
+    No prospects yet. Hit <strong>Find 5 new prospects</strong> on the Drafts page to kick off a discovery run.
+  </div>
+<% } else { %>
+  <div class="bg-white border border-slate-200 rounded-lg overflow-hidden">
+    <table class="w-full text-sm">
+      <thead class="bg-slate-50 text-slate-600 text-xs uppercase tracking-wider">
+        <tr>
+          <th class="text-left px-4 py-2">Company</th>
+          <th class="text-left px-4 py-2">Contact</th>
+          <th class="text-left px-4 py-2">Industry / Persona</th>
+          <th class="text-left px-4 py-2">Fit</th>
+          <th class="text-left px-4 py-2">Why now</th>
+          <th class="text-left px-4 py-2">Status</th>
+          <th class="text-left px-4 py-2">When</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% prospects.forEach(function(p) {
+             const badge = statusBadge(p);
+        %>
+          <tr class="border-t border-slate-100 align-top">
+            <td class="px-4 py-3">
+              <div class="font-semibold text-slate-900"><%= p.company %></div>
+              <% if (p.domain) { %><div class="text-xs text-slate-500"><%= p.domain %></div><% } %>
+            </td>
+            <td class="px-4 py-3">
+              <div><%= p.contact_name || '—' %></div>
+              <% if (p.contact_title) { %><div class="text-xs text-slate-500"><%= p.contact_title %></div><% } %>
+            </td>
+            <td class="px-4 py-3">
+              <% if (p.industry) { %><span class="pill bg-blue-100 text-blue-800"><%= label(p.industry) %></span> <% } %>
+              <% if (p.persona)  { %><span class="pill bg-purple-100 text-purple-800"><%= label(p.persona) %></span><% } %>
+            </td>
+            <td class="px-4 py-3">
+              <span class="pill <%= fitColor(p.fit_score) %>"><%= p.fit_score ?? '?' %></span>
+            </td>
+            <td class="px-4 py-3 max-w-xs">
+              <% if (p.disqualified) { %>
+                <div class="text-red-700 text-xs"><strong>DQ:</strong> <%= p.disqualify_reason || '—' %></div>
+              <% } else if (p.timing_signal) { %>
+                <div class="text-slate-700 text-xs line-clamp-2"><%= p.timing_signal %></div>
+                <% if (p.timing_signal_source) { %>
+                  <div class="text-slate-400 text-[11px] mt-0.5"><%= p.timing_signal_source %></div>
+                <% } %>
+              <% } else { %>
+                <span class="text-slate-400 text-xs">—</span>
+              <% } %>
+            </td>
+            <td class="px-4 py-3"><span class="pill <%= badge.cls %>"><%= badge.text %></span></td>
+            <td class="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">
+              <%= p.researched_at ? new Date(p.researched_at).toLocaleString() : '—' %>
+            </td>
+          </tr>
+        <% }); %>
+      </tbody>
+    </table>
+  </div>
+<% } %>

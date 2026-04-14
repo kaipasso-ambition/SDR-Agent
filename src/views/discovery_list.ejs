@@ -1,0 +1,67 @@
+<%
+  function statusBadge(s) {
+    if (s === 'running')   return 'bg-emerald-100 text-emerald-800';
+    if (s === 'completed') return 'bg-slate-100 text-slate-700';
+    if (s === 'failed')    return 'bg-red-100 text-red-800';
+    return 'bg-slate-100 text-slate-700';
+  }
+  function fmtDuration(sec) {
+    if (sec == null) return '—';
+    if (sec < 60) return sec + 's';
+    return Math.floor(sec / 60) + 'm ' + (sec % 60) + 's';
+  }
+%>
+
+<div class="flex items-center justify-between mb-6">
+  <h1 class="text-2xl font-semibold">Discovery runs</h1>
+  <div class="text-sm text-slate-500">Every time the agent went looking for prospects, and what it found.</div>
+</div>
+
+<% if (runs.length === 0) { %>
+  <div class="bg-white border border-slate-200 rounded-lg p-10 text-center text-slate-500">
+    No discovery runs yet.
+  </div>
+<% } else { %>
+  <div class="bg-white border border-slate-200 rounded-lg overflow-hidden">
+    <table class="w-full text-sm">
+      <thead class="bg-slate-50 text-slate-600 text-xs uppercase tracking-wider">
+        <tr>
+          <th class="text-left px-4 py-2">Started</th>
+          <th class="text-left px-4 py-2">Status</th>
+          <th class="text-left px-4 py-2">Requested</th>
+          <th class="text-left px-4 py-2">Discovered</th>
+          <th class="text-left px-4 py-2">Drafted</th>
+          <th class="text-left px-4 py-2">Skipped</th>
+          <th class="text-left px-4 py-2">Duration</th>
+          <th class="text-left px-4 py-2">Error</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% runs.forEach(function(r) { %>
+          <tr class="border-t border-slate-100 align-top">
+            <td class="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">
+              <%= new Date(r.started_at).toLocaleString() %>
+            </td>
+            <td class="px-4 py-3"><span class="pill <%= statusBadge(r.status) %>"><%= r.status %></span></td>
+            <td class="px-4 py-3"><%= r.requested_count ?? '—' %></td>
+            <td class="px-4 py-3"><%= r.discovered_count ?? '—' %></td>
+            <td class="px-4 py-3"><strong><%= r.drafted_count ?? 0 %></strong></td>
+            <td class="px-4 py-3 text-slate-600"><%= r.skipped_count ?? 0 %></td>
+            <td class="px-4 py-3 text-slate-600"><%= fmtDuration(r.duration_sec) %></td>
+            <td class="px-4 py-3 text-xs text-red-700 max-w-md"><%= r.error || '' %></td>
+          </tr>
+        <% }); %>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="mt-6 text-sm text-slate-500 bg-slate-50 border border-slate-200 rounded p-4">
+    <strong>Reading this table:</strong>
+    <ul class="list-disc ml-5 mt-2 space-y-1">
+      <li><strong>Discovered</strong> = companies Claude surfaced (after deduping against existing prospects).</li>
+      <li><strong>Drafted</strong> = made the fit-score cut (≥60) and got a 3-touch sequence queued.</li>
+      <li><strong>Skipped</strong> = saved to Prospects but didn't meet the drafting bar. See /prospects for the reason.</li>
+      <li>A <em>completed</em> run with 0 discovered usually means Claude couldn't find a clean signal — try a hint.</li>
+    </ul>
+  </div>
+<% } %>

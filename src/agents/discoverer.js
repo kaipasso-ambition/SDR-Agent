@@ -49,7 +49,33 @@ export async function discoverCandidates({ count = 5, hint = '' } = {}) {
     const preview = text.slice(0, 400).replace(/\s+/g, ' ');
     throw new Error(`Discovery JSON parse failed. First 400 chars of Claude's response: ${preview}`);
   }
-  return Array.isArray(parsed.candidates) ? parsed.candidates : [];
+  const candidates = Array.isArray(parsed.candidates) ? parsed.candidates : [];
+
+  // Belt-and-suspenders: drop anything where Claude's own estimate already
+  // falls below the hard floor (250 employees / 50 sales). The researcher
+  // will disqualify these anyway, so don't waste a research cycle on them.
+  return candidates.filter((c) => {
+    const totalOk = meetsFloor(c.estimated_total_headcount, 250);
+    const salesOk = meetsFloor(c.estimated_sales_headcount, 50);
+    if (!totalOk || !salesOk) {
+      console.log(`[discovery] dropping ${c.company}: total=${c.estimated_total_headcount} sales=${c.estimated_sales_headcount}`);
+      return false;
+    }
+    return true;
+  });
+}
+
+// Parse strings like "400–600", "1000+", "~500", "50+", "unknown" and return
+// true if the lower bound clears the floor. Returns true for unknown/missing
+// — we let the researcher make the call rather than drop on ambiguity here.
+function meetsFloor(estimate, floor) {
+  if (!estimate) return true;
+  const s = String(estimate).toLowerCase();
+  if (s.includes('unknown')) return true;
+  const nums = s.match(/\d[\d,]*/g);
+  if (!nums || nums.length === 0) return true;
+  const low = parseInt(nums[0].replace(/,/g, ''), 10);
+  return !Number.isFinite(low) || low >= floor;
 }
 
 // Pull the first top-level JSON object out of a response that may have prose
