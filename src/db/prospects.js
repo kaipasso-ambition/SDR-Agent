@@ -1,5 +1,14 @@
 import { query } from './index.js';
 
+// Matches the canonical 8-4-4-4-12 UUID format. Claude sometimes echoes back
+// prospect_id as "" or a slug like "jb_hunt_transport" — those must become null
+// so the ::uuid cast in COALESCE doesn't blow up the INSERT.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function coerceUuid(v) {
+  if (typeof v !== 'string') return null;
+  return UUID_RE.test(v.trim()) ? v.trim() : null;
+}
+
 export async function upsertProspect(prospect) {
   const {
     prospect_id,
@@ -60,7 +69,7 @@ export async function upsertProspect(prospect) {
   `;
 
   const values = [
-    prospect_id, company, domain, contact_name, contact_title, contact_email,
+    coerceUuid(prospect_id), company, domain, contact_name, contact_title, contact_email,
     industry, persona, seniority, fit_score, timing_signal, timing_signal_source,
     customer_status, sales_headcount_estimate, headcount_confidence,
     additional_context, disqualified, disqualify_reason, owner_user_id,
