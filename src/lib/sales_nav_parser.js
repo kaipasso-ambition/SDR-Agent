@@ -145,6 +145,22 @@ function extractInCaseYouMissedItItems(html, subject, from) {
       }
     }
 
+    // Classify the engagement type so the dashboard can route to the right
+    // action. "In case you missed it" digests mix three kinds of entries:
+    //   - top-level shares (lead posted something themselves)
+    //   - comments (lead replied on someone else's post)
+    //   - reactions/likes (lead hit react on someone else's post)
+    // LinkedIn labels the block with a tiny header phrase like "posted" /
+    // "commented on" / "reacted to" / "shared" — we stripHtml the window and
+    // sniff for those markers. Default is 'share' since that's the dominant
+    // case and the safest action (drop on profile).
+    const windowText = stripHtml(window).toLowerCase();
+    let post_type = 'share';
+    if (/\bcommented on\b|\breplied to\b/.test(windowText)) post_type = 'comment';
+    else if (/\breacted to\b|\blikes? this\b|\bcelebrated\b/.test(windowText)) post_type = 'reaction';
+    else if (/\bnew (role|position|job)\b|\bstarted (a new|at)\b|\bchanged (jobs|roles)\b/.test(windowText)) post_type = 'job_change';
+    else if (/\bmentioned\b|\bin the news\b|\bfeatured in\b/.test(windowText)) post_type = 'news_mention';
+
     // Dedup within this email by lead URN — the profile image anchor appears
     // once per lead, but if LinkedIn ever changes that we still want to avoid
     // double-inserts.
@@ -167,7 +183,7 @@ function extractInCaseYouMissedItItems(html, subject, from) {
       author_linkedin_url: null, // digest doesn't include the public /in/ URL
       post_url,
       post_snippet: snippet || null,
-      post_type: 'share',
+      post_type,
       raw_meta: {
         subject,
         from,
