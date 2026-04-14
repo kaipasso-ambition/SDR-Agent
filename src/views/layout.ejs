@@ -32,6 +32,39 @@
     </nav>
   <% } %>
 
+  <% if (typeof activeJob !== 'undefined' && activeJob) { %>
+    <% if (activeJob.status === 'running') { %>
+      <div class="bg-emerald-50 border-b border-emerald-200 text-emerald-900">
+        <div class="max-w-6xl mx-auto px-4 py-3 text-sm flex items-center gap-3">
+          <span class="inline-block w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+          <div class="flex-1">
+            <strong>Discovering <%= activeJob.requested_count %> new prospects.</strong>
+            Claude is searching the web and drafting sequences — this runs in the background, so you can keep browsing. Drafts appear as each one finishes.
+          </div>
+          <a href="/drafts" class="underline text-emerald-800 hover:text-emerald-900">View drafts →</a>
+        </div>
+      </div>
+      <script>setTimeout(function() { location.reload(); }, 15000);</script>
+    <% } else if (activeJob.status === 'completed') { %>
+      <div class="bg-slate-50 border-b border-slate-200 text-slate-800">
+        <div class="max-w-6xl mx-auto px-4 py-3 text-sm flex items-center gap-3">
+          <span class="text-emerald-600">✓</span>
+          <div class="flex-1">
+            <strong>Discovery finished.</strong>
+            <%= activeJob.drafted_count %> new drafts queued<% if (activeJob.skipped_count) { %>, <%= activeJob.skipped_count %> saved without a draft (weak signal)<% } %>.
+          </div>
+          <a href="/drafts" class="underline text-slate-600 hover:text-slate-900">View drafts →</a>
+        </div>
+      </div>
+    <% } else if (activeJob.status === 'failed') { %>
+      <div class="bg-red-50 border-b border-red-200 text-red-900">
+        <div class="max-w-6xl mx-auto px-4 py-3 text-sm">
+          <strong>Discovery failed:</strong> <%= activeJob.error || 'unknown error' %>. Check Railway logs.
+        </div>
+      </div>
+    <% } %>
+  <% } %>
+
   <main class="max-w-6xl mx-auto px-4 py-8">
     <%- body %>
   </main>

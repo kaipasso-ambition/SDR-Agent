@@ -40,16 +40,6 @@
   </div>
 </div>
 
-<% if (typeof discovering !== 'undefined' && discovering) { %>
-  <div class="mb-5 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded p-4 flex items-start gap-3">
-    <div class="text-emerald-600 mt-0.5">●</div>
-    <div class="text-sm">
-      <strong>Discovering <%= discovering %> new prospects.</strong>
-      Claude is searching the web for ICP-fit companies with fresh timing signals, researching each, and drafting sequences for the qualified ones. New drafts will appear here as each one completes (usually 2–4 minutes total).
-      <a href="/drafts" class="underline">Refresh</a>
-    </div>
-  </div>
-<% } %>
 
 <% if (drafts.length === 0) { %>
   <div class="bg-white border border-slate-200 rounded-lg p-10 text-center text-slate-500">

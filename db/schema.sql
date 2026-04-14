@@ -122,6 +122,22 @@ END$$;
 
 CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON "session" ("expire");
 
+-- Discovery job tracker — persists across page navigations so the UI can
+-- show progress from any page, not just the one that kicked it off.
+CREATE TABLE IF NOT EXISTS discovery_jobs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  status TEXT NOT NULL DEFAULT 'running',
+  requested_count INTEGER,
+  discovered_count INTEGER,
+  drafted_count INTEGER,
+  skipped_count INTEGER,
+  error TEXT,
+  started_at TIMESTAMPTZ DEFAULT NOW(),
+  finished_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS discovery_jobs_user_idx ON discovery_jobs(user_id, started_at DESC);
+
 -- Integration credentials (stored after OAuth so users don't edit .env for these)
 CREATE TABLE IF NOT EXISTS integrations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

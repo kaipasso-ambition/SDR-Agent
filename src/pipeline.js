@@ -60,7 +60,7 @@ export async function researchAndDraft({ company, domain, contact_name, owner_us
  * prospects go to that user. If null (cron), owners round-robin across
  * active users.
  */
-export async function runDiscoveryCycle({ count = 5, hint = '', owner_user_id = null } = {}) {
+export async function runDiscoveryCycle({ count = 5, hint = '', owner_user_id = null, job_id = null } = {}) {
   console.log(`[discovery] Starting — requesting ${count} candidates`);
 
   let candidates;
@@ -68,6 +68,12 @@ export async function runDiscoveryCycle({ count = 5, hint = '', owner_user_id = 
     candidates = await discoverCandidates({ count, hint });
   } catch (err) {
     console.error('[discovery] discoverer failed:', err.message);
+    if (job_id) {
+      await query(
+        `UPDATE discovery_jobs SET status = 'failed', error = $2, finished_at = NOW() WHERE id = $1`,
+        [job_id, err.message]
+      );
+    }
     return { discovered: 0, drafted: 0, error: err.message };
   }
   console.log(`[discovery] Claude returned ${candidates.length} candidates`);
@@ -115,5 +121,17 @@ export async function runDiscoveryCycle({ count = 5, hint = '', owner_user_id = 
     }
   }
   console.log(`[discovery] Done — drafted ${drafted}, skipped ${skipped}`);
+  if (job_id) {
+    await query(
+      `UPDATE discovery_jobs
+         SET status = 'completed',
+             discovered_count = $2,
+             drafted_count = $3,
+             skipped_count = $4,
+             finished_at = NOW()
+       WHERE id = $1`,
+      [job_id, fresh.length, drafted, skipped]
+    );
+  }
   return { discovered: fresh.length, drafted, skipped, error: null };
 }

@@ -62,8 +62,7 @@ webRouter.get('/', requireAuth, async (_req, res, next) => {
 webRouter.get('/drafts', requireAuth, async (req, res, next) => {
   try {
     const drafts = await getPendingDrafts(req.session.userId);
-    const discovering = req.query.discovering ? Number(req.query.discovering) : null;
-    res.render('drafts', { title: 'Drafts', drafts, discovering });
+    res.render('drafts', { title: 'Drafts', drafts });
   } catch (err) {
     next(err);
   }
@@ -128,20 +127,47 @@ webRouter.post('/prospects/new', requireAuth, async (req, res) => {
   }
 });
 
-// Trigger an autonomous discovery cycle. Fires the work in the background
-// so the HTTP request returns immediately — drafts appear on /drafts as
-// Claude finishes each one.
-webRouter.post('/discover', requireAuth, (req, res) => {
-  const count = Math.min(Number(req.body?.count) || 5, 10);
-  const hint = (req.body?.hint || '').trim();
-  const ownerId = req.session.userId;
+// Trigger an autonomous discovery cycle. Creates a discovery_jobs row so
+// progress is visible from any page (dashboard/drafts/replies), not just
+// the one that triggered it. Work runs in the background; the HTTP
+// request returns immediately.
+webRouter.post('/discover', requireAuth, async (req, res, next) => {
+  try {
+    const count = Math.min(Number(req.body?.count) || 5, 10);
+    const hint = (req.body?.hint || '').trim();
+    const ownerId = req.session.userId;
 
-  // Fire and forget — don't await. Node keeps the promise alive.
-  runDiscoveryCycle({ count, hint, owner_user_id: ownerId })
-    .then((r) => console.log('[discover] cycle finished:', r))
-    .catch((err) => console.error('[discover] cycle crashed:', err));
+    // Don't allow a user to kick off a second cycle while one is already running.
+    const existing = await query(
+      `SELECT id FROM discovery_jobs WHERE user_id = $1 AND status = 'running' LIMIT 1`,
+      [ownerId]
+    );
+    if (existing.rows[0]) {
+      return res.redirect('/drafts');
+    }
 
-  res.redirect('/drafts?discovering=' + count);
+    const { rows } = await query(
+      `INSERT INTO discovery_jobs (user_id, status, requested_count)
+       VALUES ($1, 'running', $2) RETURNING id`,
+      [ownerId, count]
+    );
+    const jobId = rows[0].id;
+
+    // Fire and forget — don't await. Node keeps the promise alive.
+    runDiscoveryCycle({ count, hint, owner_user_id: ownerId, job_id: jobId })
+      .then((r) => console.log('[discover] cycle finished:', r))
+      .catch((err) => {
+        console.error('[discover] cycle crashed:', err);
+        query(
+          `UPDATE discovery_jobs SET status = 'failed', error = $2, finished_at = NOW() WHERE id = $1`,
+          [jobId, err.message || 'unknown']
+        ).catch(() => {});
+      });
+
+    res.redirect('/drafts');
+  } catch (err) {
+    next(err);
+  }
 });
 
 webRouter.get('/settings', requireAuth, async (_req, res, next) => {

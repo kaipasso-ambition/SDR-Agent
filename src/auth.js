@@ -3,6 +3,7 @@
 
 import bcrypt from 'bcryptjs';
 import { query } from './db/index.js';
+// attachUser references `query` for the active-job lookup.
 
 const SALT_ROUNDS = 12;
 
@@ -55,12 +56,28 @@ export function requireAuthApi(req, res, next) {
   return res.status(401).json({ error: 'unauthorized' });
 }
 
-// Attach the current user to res.locals so EJS templates can use it.
+// Attach the current user + any active discovery job to res.locals so every
+// EJS template can render the "discovery in progress" banner regardless of
+// which page the operator navigated to.
 export async function attachUser(req, res, next) {
   if (req.session?.userId) {
     res.locals.user = await getUserById(req.session.userId);
+    // Most-recent running job, OR completed/failed job from the last 60s
+    // (so the user sees the result banner briefly after finish).
+    const { rows } = await query(
+      `SELECT id, status, requested_count, discovered_count, drafted_count, skipped_count, error,
+              started_at, finished_at
+         FROM discovery_jobs
+        WHERE user_id = $1
+          AND (status = 'running' OR finished_at > NOW() - INTERVAL '60 seconds')
+        ORDER BY started_at DESC
+        LIMIT 1`,
+      [req.session.userId]
+    );
+    res.locals.activeJob = rows[0] || null;
   } else {
     res.locals.user = null;
+    res.locals.activeJob = null;
   }
   next();
 }
