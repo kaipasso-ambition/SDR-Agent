@@ -142,14 +142,20 @@
             }
 
             // Google site:linkedin.com fallback — helps when Sales Nav
-            // Activity doesn't surface the post.
+            // Activity doesn't surface the post. Longer exact-phrase match
+            // (15 words) is much more specific than a short one — an 8-word
+            // quote can collide with unrelated posts that happen to share
+            // common phrasing. Including company helps disambiguate when the
+            // snippet is generic.
             let googleUrl = null;
             if (p.post_snippet) {
               const cleaned = p.post_snippet.replace(/[…]+$/g, '').replace(/\.{3,}$/g, '').trim();
-              const words = cleaned.split(/\s+/).slice(0, 8).join(' ');
+              const words = cleaned.split(/\s+/).slice(0, 15).join(' ');
               if (words) {
-                const q = 'site:linkedin.com "' + words + '" ' + (p.author_name || '');
-                googleUrl = 'https://www.google.com/search?q=' + encodeURIComponent(q.trim());
+                const parts = ['site:linkedin.com', '"' + words + '"'];
+                if (p.author_name) parts.push(p.author_name);
+                if (p.author_company) parts.push(p.author_company);
+                googleUrl = 'https://www.google.com/search?q=' + encodeURIComponent(parts.join(' '));
               }
             }
 
@@ -176,14 +182,14 @@
             </button>
           <% } %>
           <% if (googleUrl) { %>
-            <a
-              href="<%= googleUrl %>"
-              target="_blank"
-              rel="noopener"
-              class="text-xs text-slate-500 hover:text-slate-800 underline"
-              title="Google site:linkedin.com search for this snippet — finds the post/comment when Sales Nav Activity doesn't surface it.">
+            <button
+              type="button"
+              class="open-post text-xs text-slate-500 hover:text-slate-800 underline"
+              data-post-id="<%= p.id %>"
+              data-post-url="<%= googleUrl %>"
+              title="Google site:linkedin.com search for this snippet — finds the post/comment when Sales Nav Activity doesn't surface it. Copies the draft too so you can paste as soon as you click through.">
               Find on Google ↗
-            </a>
+            </button>
           <% } %>
           <form method="POST" action="/presence/<%= p.id %>/posted" class="inline">
             <button type="submit" class="text-xs text-emerald-700 hover:text-emerald-900 underline">Mark posted</button>
