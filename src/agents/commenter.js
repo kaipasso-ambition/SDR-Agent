@@ -12,16 +12,20 @@ import { COMMENTER_PROMPT } from '../prompts/commenter.js';
 const client = new Anthropic();
 
 export async function draftComment(post) {
+  const snippet = post.post_snippet || '';
+  const isTruncated = snippet.endsWith('…') || snippet.endsWith('...') || (snippet.length > 0 && snippet.length < 120);
+
   const userContent = `POST CONTEXT
 
 Author: ${post.author_name}${post.author_title ? ' — ' + post.author_title : ''}${post.author_company ? ' @ ' + post.author_company : ''}
 Post type: ${post.post_type || 'share'}
-LinkedIn URL: ${post.post_url}
 
-Post snippet:
+Post snippet (from Sales Nav digest — ${isTruncated ? 'TRUNCATED, full post is longer' : 'full preview'}):
 """
-${post.post_snippet || '(snippet unavailable — digest truncated this one)'}
+${snippet || '(no snippet — digest did not include preview text)'}
 """
+
+${isTruncated ? 'The operator will read the full post on LinkedIn before pasting your draft. Draft based on the topic/theme visible in the snippet, even if you can\'t see the ending. Only skip if the visible content is clearly noise (meme, hiring list, bare link, self-promo, personal life).' : ''}
 
 Draft the comment now, following the voice + structure rules in the system prompt. Return JSON only.`;
 
