@@ -13,7 +13,7 @@ If you find yourself writing "Let me search for…" in your output but not actua
 
 AMBITION'S ICP (HARD SIZE FLOOR — enforce aggressively):
 - 250+ total employees (HARD minimum — do NOT return anything smaller)
-- 50+ salespeople on the sales team (HARD minimum)
+- 30+ salespeople on the sales team (HARD minimum)
 - SWEET SPOT: ~500 total employees with ~100-person sales team. Bias toward this range.
 - B2B direct-sales motion (not channel-only)
 - Industries: saas, logistics, fintech, staffing, insurance, proptech, healthtech
@@ -22,7 +22,7 @@ AMBITION'S ICP (HARD SIZE FLOOR — enforce aggressively):
 VERIFYING SIZE — you must do this for every candidate by calling web_search:
 - Check LinkedIn company page employee count, Crunchbase, or company press for total headcount.
 - Estimate sales headcount from LinkedIn "People" filter ("Sales" function), job postings open for AE/SDR/Sales Mgr roles, or press releases citing sales-team size.
-- If you cannot confirm 250+ employees AND a plausible 50+ sales team FROM A URL YOU FETCHED, DROP the candidate. Do not pad the list with unverifiable companies.
+- If you cannot confirm 250+ employees AND a plausible 30+ sales team FROM A URL YOU FETCHED, DROP the candidate. Do not pad the list with unverifiable companies.
 
 THE CORE PROBLEM AMBITION SOLVES:
 Sales teams have clean data at the rep level and clean data for execs, but the frontline-manager layer in the middle is flying blind — coaching from lagging CRM data, tracking in spreadsheets, reporting in a third place. Ambition closes that gap.
@@ -58,7 +58,7 @@ OUTPUT FORMAT — valid JSON only, no prose, no markdown fences:
       "source_url": "<url proving the signal — must be a URL you fetched in this session>",
       "signal_date": "<YYYY-MM-DD date the signal was reported, from the source — not today's date>",
       "estimated_total_headcount": "<e.g. '400–600' or '1000+' — must be ≥250>",
-      "estimated_sales_headcount": "<e.g. '80–120' or '50+' — must be ≥50>",
+      "estimated_sales_headcount": "<e.g. '40–80' or '30+' — must be ≥30>",
       "size_source_url": "<url proving the size estimate — must be a URL you fetched in this session>",
       "confidence": "high" | "medium" | "low"
     }

@@ -114,7 +114,7 @@ export async function discoverCandidates({ count = 5, hint = '' } = {}) {
     const reasons = [];
     if (!c.domain) reasons.push('no domain returned');
     if (!meetsFloor(c.estimated_total_headcount, 250)) reasons.push(`total ${c.estimated_total_headcount} <250`);
-    if (!meetsFloor(c.estimated_sales_headcount, 50)) reasons.push(`sales ${c.estimated_sales_headcount} <50`);
+    if (!meetsFloor(c.estimated_sales_headcount, 30)) reasons.push(`sales ${c.estimated_sales_headcount} <30`);
     if (reasons.length) {
       drops.push({ company: c.company, reason: reasons.join(', ') });
       return false;

@@ -10,7 +10,7 @@ ICP PERSONAS (in priority order):
 4. Sales Strategy — owns territory, segmentation, coverage models. Cares about clean field data for planning decisions.
 
 TARGET COMPANIES:
-- 50+ salespeople on the team (primary filter)
+- 30+ salespeople on the team (primary filter)
 - B2B companies with a direct sales motion
 - Includes: SaaS, Logistics/Freight, Fintech, Staffing, Insurance, Real Estate/PropTech, Healthtech
 - Excludes: channel/partner-only motions

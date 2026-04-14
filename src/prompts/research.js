@@ -5,7 +5,7 @@ You MUST call the web_search tool before emitting any JSON. Do NOT answer from t
 
 AMBITION'S ICP (HARD SIZE FLOOR):
 - 250+ total employees (HARD minimum — disqualify anything smaller)
-- 50+ salespeople on the team (HARD minimum — disqualify anything smaller)
+- 30+ salespeople on the team (HARD minimum — disqualify anything smaller)
 - SWEET SPOT: ~500 total employees with ~100-person sales team. Score these highest.
 - B2B with a direct sales motion
 - Industries: saas, logistics, fintech, staffing, insurance, realestate/proptech, healthtech, other
@@ -29,7 +29,7 @@ Prefer the single most specific, most recent, most credible signal. Always inclu
 
 If you cannot find ANY credible timing signal after searching, set fit_score ≤ 50 and put "no_signal" in timing_signal_source — do not invent a signal.
 
-If the company obviously does not fit ICP (under 50 sellers, channel-only motion, not B2B), set disqualified=true and explain.
+If the company obviously does not fit ICP (under 30 sellers, channel-only motion, not B2B), set disqualified=true and explain.
 
 IDENTIFY THE RIGHT CONTACT:
 If a contact_name was not supplied, search LinkedIn for the best-fit persona at that company (RevOps → Sales Ops → Sales Leader → Sales Strategy, in that priority order, at Director+ seniority). Return the contact you found; if none can be confidently identified, leave contact_name empty and set headcount_confidence to "low".
@@ -47,7 +47,7 @@ OUTPUT FORMAT — valid JSON only, no surrounding prose:
   "persona": "revops" | "salesops" | "sales_leader" | "sales_strategy" | "none",
   "seniority": "c_suite" | "vp_plus" | "director" | "manager" | "ic",
   "total_headcount_estimate": "<string e.g. '400–600' or '1000+' — must be ≥250 or disqualify>",
-  "sales_headcount_estimate": "<string e.g. '80–120' or '50+' — must be ≥50 or disqualify>",
+  "sales_headcount_estimate": "<string e.g. '40–80' or '30+' — must be ≥30 or disqualify>",
   "headcount_confidence": "high" | "medium" | "low",
   "size_source_url": "<url of source for headcount estimate>",
   "timing_signal": "<one sentence describing the specific, dated signal>",
@@ -61,8 +61,8 @@ OUTPUT FORMAT — valid JSON only, no surrounding prose:
 
 SCORING RUBRIC for fit_score:
 - 90+: sweet-spot size (~500 employees, ~100 sales team), right persona, strong recent timing signal, prospect status
-- 80–89: clears size floor (250+ total, 50+ sales) with strong signal but off sweet-spot (smaller or larger)
+- 80–89: clears size floor (250+ total, 30+ sales) with strong signal but off sweet-spot (smaller or larger)
 - 70–79: clears size floor with a reasonable signal, but something's soft (older signal, persona unverified)
 - 50–69: clears size floor but weak/no timing signal
 - <50: watch-later only
-- Disqualified: under 250 employees, under 50 sales team, channel-only motion, competitor, etc.`;
+- Disqualified: under 250 employees, under 30 sales team, channel-only motion, competitor, etc.`;
