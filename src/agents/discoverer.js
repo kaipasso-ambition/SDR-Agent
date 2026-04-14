@@ -35,6 +35,9 @@ export async function discoverCandidates({ count = 5, hint = '' } = {}) {
     system,
     messages: [{ role: 'user', content: userContent }],
     tools: [{ type: 'web_search_20250305', name: 'web_search' }],
+  }, {
+    // Hard cap so a misbehaving web_search chain can't hang a run for 10+ min.
+    timeout: 4 * 60 * 1000,
   });
 
   const text = response.content
@@ -94,12 +97,14 @@ export async function discoverCandidates({ count = 5, hint = '' } = {}) {
   console.log(`[discovery] parsed ${rawCandidates.length} raw candidates:`,
     rawCandidates.map((c) => `${c.company} [total=${c.estimated_total_headcount} sales=${c.estimated_sales_headcount}]`).join('; '));
 
-  // Circuit breaker: if Claude returned candidates but made zero web_search
-  // calls, it pulled them from training-data memory. The signals are
-  // hallucinated — drop the whole run rather than pass bad data downstream.
-  if (rawCandidates.length > 0 && searchCount === 0) {
-    diagnostics.error = 'Claude returned candidates without calling web_search — signals are from training data, not fresh web results. Run rejected.';
-    console.error('[discovery] REJECTED run: 0 web_searches made, signals are not grounded in real-time data');
+  // Circuit breaker: require Claude to actually search. Prompt asks for
+  // 4-8 searches; we accept down to 3 as a floor. Fewer searches than
+  // that means candidates are mostly training-data recall with thin
+  // verification — drop the run rather than pass bad data downstream.
+  const MIN_SEARCHES = Math.min(count, 3);
+  if (rawCandidates.length > 0 && searchCount < MIN_SEARCHES) {
+    diagnostics.error = `Claude made only ${searchCount} web_search call(s), below the minimum of ${MIN_SEARCHES}. Candidates would be largely memorized, not verified. Run rejected.`;
+    console.error(`[discovery] REJECTED run: ${searchCount} searches < ${MIN_SEARCHES} minimum — signals likely not grounded`);
     return { candidates: [], diagnostics };
   }
 

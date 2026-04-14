@@ -56,6 +56,10 @@ ${signal ? JSON.stringify(signal, null, 2) : 'No signals found — rely on web_s
         name: 'web_search',
       },
     ],
+  }, {
+    // Hard cap to avoid the whole pipeline hanging if a web_search chain
+    // goes sideways. 4 min is generous for 3-6 searches + a JSON response.
+    timeout: 4 * 60 * 1000,
   });
 
   const text = response.content
