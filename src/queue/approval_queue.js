@@ -43,7 +43,12 @@ export async function addToReplyQueue({
 
 export async function getPendingDrafts() {
   const { rows } = await query(`
-    SELECT aq.*, p.company, p.contact_name, p.contact_email, p.persona, p.industry
+    SELECT
+      aq.*,
+      p.company, p.contact_name, p.contact_title, p.contact_email,
+      p.persona, p.industry, p.seniority, p.fit_score AS prospect_fit_score,
+      p.timing_signal, p.timing_signal_source, p.customer_status,
+      p.additional_context
     FROM approval_queue aq
     JOIN prospects p ON p.id = aq.prospect_id
     WHERE aq.status = 'pending'

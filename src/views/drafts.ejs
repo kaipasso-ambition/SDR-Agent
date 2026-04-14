@@ -1,29 +1,84 @@
+<%
+  // Human-friendly labels + tag colors
+  function label(key) {
+    const map = {
+      revops: 'RevOps', salesops: 'Sales Ops',
+      sales_leader: 'Sales Leader', sales_strategy: 'Sales Strategy',
+      vp_plus: 'VP+', c_suite: 'C-Suite', director: 'Director', manager: 'Manager',
+      saas: 'SaaS', logistics: 'Logistics', fintech: 'Fintech',
+      staffing: 'Staffing', insurance: 'Insurance', proptech: 'PropTech',
+      healthtech: 'Healthtech', other: 'Other',
+      prospect: 'Prospect', customer: 'Customer', churn: 'Churned',
+    };
+    return map[key] || key;
+  }
+  function fitColor(n) {
+    if (n == null) return 'bg-slate-100 text-slate-700';
+    if (n >= 80) return 'bg-emerald-100 text-emerald-800';
+    if (n >= 60) return 'bg-amber-100 text-amber-800';
+    return 'bg-red-100 text-red-800';
+  }
+  function statusColor(s) {
+    if (s === 'customer') return 'bg-emerald-100 text-emerald-800';
+    if (s === 'churn') return 'bg-red-100 text-red-800';
+    return 'bg-amber-100 text-amber-800';
+  }
+%>
+
 <div class="flex items-center justify-between mb-6">
   <h1 class="text-2xl font-semibold">Drafts <span class="text-slate-400 text-base font-normal">(<%= drafts.length %> pending)</span></h1>
+  <a href="/prospects/new" class="bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded text-sm font-medium">+ Add prospect</a>
 </div>
 
 <% if (drafts.length === 0) { %>
   <div class="bg-white border border-slate-200 rounded-lg p-10 text-center text-slate-500">
-    No drafts in the queue. The writer cron runs at 8:30am, 12:30pm, and 4:30pm.
+    No drafts in the queue. Click <strong>+ Add prospect</strong> above to queue one now.
   </div>
 <% } %>
 
 <% drafts.forEach(function(d) { %>
-  <details class="bg-white border border-slate-200 rounded-lg mb-3 group" >
-    <summary class="cursor-pointer p-4 flex items-center justify-between hover:bg-slate-50">
-      <div class="flex items-center gap-4">
-        <div>
-          <div class="font-medium text-slate-900"><%= d.company %></div>
-          <div class="text-xs text-slate-500"><%= d.contact_name || '—' %> · <%= d.persona || '—' %> · <%= d.industry || '—' %></div>
+  <details class="bg-white border border-slate-200 rounded-lg mb-3 group overflow-hidden">
+    <summary class="cursor-pointer p-5 hover:bg-slate-50 list-none">
+      <div class="flex items-start justify-between gap-4">
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2 flex-wrap mb-1">
+            <h2 class="text-lg font-semibold text-slate-900"><%= d.company %></h2>
+            <span class="pill <%= statusColor(d.customer_status) %>"><%= label(d.customer_status) %></span>
+          </div>
+          <div class="text-sm text-slate-700 mb-3">
+            <span class="font-medium"><%= d.contact_name || '—' %></span><% if (d.contact_title) { %> <span class="text-slate-500">· <%= d.contact_title %></span><% } %>
+          </div>
+
+          <div class="flex items-center gap-2 flex-wrap mb-3">
+            <% if (d.industry) { %><span class="pill bg-blue-100 text-blue-800"><%= label(d.industry) %></span><% } %>
+            <% if (d.persona)  { %><span class="pill bg-purple-100 text-purple-800"><%= label(d.persona) %></span><% } %>
+            <% if (d.seniority){ %><span class="pill bg-slate-200 text-slate-800"><%= label(d.seniority) %></span><% } %>
+            <% const fs = (d.prospect_fit_score ?? d.draft.fit_score); %>
+            <span class="pill <%= fitColor(fs) %>">Fit <%= fs ?? '?' %></span>
+          </div>
+
+          <% if (d.timing_signal) { %>
+            <div class="bg-amber-50 border-l-4 border-amber-400 px-3 py-2 rounded-r text-sm text-amber-900">
+              <span class="font-semibold uppercase text-[10px] tracking-wider text-amber-700 mr-2">Why now</span>
+              <%= d.timing_signal %>
+              <% if (d.timing_signal_source) { %><span class="text-amber-600 text-xs"> · <%= d.timing_signal_source %></span><% } %>
+            </div>
+          <% } %>
         </div>
-      </div>
-      <div class="flex items-center gap-3">
-        <span class="pill bg-slate-100 text-slate-700">Fit <%= d.draft.fit_score ?? '?' %></span>
-        <span class="text-xs text-slate-400">queued <%= new Date(d.queued_at).toLocaleString() %></span>
+        <div class="text-xs text-slate-400 whitespace-nowrap pt-1">queued <%= new Date(d.queued_at).toLocaleString() %></div>
       </div>
     </summary>
 
     <form class="p-5 border-t border-slate-100 space-y-5" data-draft-id="<%= d.id %>">
+      <% if (d.draft.fit_rationale) { %>
+        <div class="bg-slate-50 border border-slate-200 rounded p-3 text-sm text-slate-700 space-y-1">
+          <div class="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Fit rationale</div>
+          <% if (d.draft.fit_rationale.persona_fit)     { %><div><span class="font-semibold">Persona:</span> <%= d.draft.fit_rationale.persona_fit %></div><% } %>
+          <% if (d.draft.fit_rationale.timing_signal)   { %><div><span class="font-semibold">Timing:</span> <%= d.draft.fit_rationale.timing_signal %></div><% } %>
+          <% if (d.draft.fit_rationale.message_rationale){ %><div><span class="font-semibold">Message:</span> <%= d.draft.fit_rationale.message_rationale %></div><% } %>
+        </div>
+      <% } %>
+
       <% (d.draft.sequence || []).forEach(function(t, i) { %>
         <div>
           <div class="flex items-center gap-2 mb-2">

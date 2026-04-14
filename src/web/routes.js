@@ -3,7 +3,9 @@
 import { Router } from 'express';
 import { verifyLogin, requireAuth } from '../auth.js';
 import { query } from '../db/index.js';
-import { getPendingDrafts, getPendingReplies } from '../queue/approval_queue.js';
+import { getPendingDrafts, getPendingReplies, addToApprovalQueue } from '../queue/approval_queue.js';
+import { upsertProspect } from '../db/prospects.js';
+import { generateSequence } from '../agents/writer.js';
 
 export const webRouter = Router();
 
@@ -71,6 +73,62 @@ webRouter.get('/replies', requireAuth, async (_req, res, next) => {
   try {
     const replies = await getPendingReplies();
     res.render('replies', { title: 'Replies', replies });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Add a new prospect directly from the UI. Submitting inserts the prospect
+// and immediately generates a 3-touch sequence, which lands on /drafts.
+webRouter.get('/prospects/new', requireAuth, (_req, res) => {
+  res.render('prospect_new', { title: 'Add prospect', form: {}, error: null });
+});
+
+webRouter.post('/prospects/new', requireAuth, async (req, res, next) => {
+  const body = req.body || {};
+  const form = {
+    company: (body.company || '').trim(),
+    domain: (body.domain || '').trim() || null,
+    contact_name: (body.contact_name || '').trim(),
+    contact_title: (body.contact_title || '').trim() || null,
+    contact_email: (body.contact_email || '').trim() || null,
+    industry: body.industry || null,
+    persona: body.persona || null,
+    seniority: body.seniority || null,
+    customer_status: body.customer_status || 'prospect',
+    fit_score: body.fit_score ? Number(body.fit_score) : null,
+    timing_signal: (body.timing_signal || '').trim(),
+    additional_context: (body.additional_context || '').trim() || null,
+  };
+
+  if (!form.company || !form.contact_name || !form.timing_signal) {
+    return res.render('prospect_new', {
+      title: 'Add prospect',
+      form,
+      error: 'Company, contact name, and timing signal are required.',
+    });
+  }
+
+  try {
+    const prospect = await upsertProspect({
+      ...form,
+      timing_signal_source: 'manual',
+    });
+
+    let draft;
+    try {
+      draft = await generateSequence(prospect);
+    } catch (err) {
+      console.error('[prospects/new] writer failed:', err);
+      return res.render('prospect_new', {
+        title: 'Add prospect',
+        form,
+        error: 'Prospect saved, but the writer failed: ' + (err.message || 'unknown error') + '. Check Settings → Anthropic.',
+      });
+    }
+
+    await addToApprovalQueue({ prospect, draft, status: 'pending' });
+    res.redirect('/drafts');
   } catch (err) {
     next(err);
   }

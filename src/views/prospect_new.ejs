@@ -1,0 +1,110 @@
+<div class="max-w-2xl mx-auto">
+  <div class="mb-6">
+    <h1 class="text-2xl font-semibold">Add prospect</h1>
+    <p class="text-sm text-slate-500 mt-1">Fill this in and a 3-touch sequence will be drafted and added to the approval queue.</p>
+  </div>
+
+  <% if (typeof error !== 'undefined' && error) { %>
+    <div class="mb-4 bg-red-50 border border-red-200 text-red-800 rounded p-3 text-sm"><%= error %></div>
+  <% } %>
+
+  <form method="POST" action="/prospects/new" class="bg-white border border-slate-200 rounded-lg p-6 space-y-5">
+    <div class="grid grid-cols-2 gap-4">
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">Company <span class="text-red-500">*</span></label>
+        <input name="company" required value="<%= form.company || '' %>"
+          class="w-full border border-slate-300 rounded px-3 py-2 text-sm" placeholder="Meridian Freight Solutions" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">Domain</label>
+        <input name="domain" value="<%= form.domain || '' %>"
+          class="w-full border border-slate-300 rounded px-3 py-2 text-sm" placeholder="meridianfreight.com" />
+      </div>
+    </div>
+
+    <div class="grid grid-cols-2 gap-4">
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">Contact name <span class="text-red-500">*</span></label>
+        <input name="contact_name" required value="<%= form.contact_name || '' %>"
+          class="w-full border border-slate-300 rounded px-3 py-2 text-sm" placeholder="Marcus Thompson" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">Contact title</label>
+        <input name="contact_title" value="<%= form.contact_title || '' %>"
+          class="w-full border border-slate-300 rounded px-3 py-2 text-sm" placeholder="VP of Sales Operations" />
+      </div>
+    </div>
+
+    <div>
+      <label class="block text-sm font-medium text-slate-700 mb-1">Contact email</label>
+      <input type="email" name="contact_email" value="<%= form.contact_email || '' %>"
+        class="w-full border border-slate-300 rounded px-3 py-2 text-sm" placeholder="marcus@meridianfreight.com" />
+    </div>
+
+    <div class="grid grid-cols-3 gap-4">
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">Industry</label>
+        <select name="industry" class="w-full border border-slate-300 rounded px-3 py-2 text-sm">
+          <% ['saas','logistics','fintech','staffing','insurance','proptech','healthtech','other'].forEach(function(v){ %>
+            <option value="<%= v %>" <%= form.industry === v ? 'selected' : '' %>><%= v %></option>
+          <% }); %>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">Persona</label>
+        <select name="persona" class="w-full border border-slate-300 rounded px-3 py-2 text-sm">
+          <% ['revops','salesops','sales_leader','sales_strategy'].forEach(function(v){ %>
+            <option value="<%= v %>" <%= form.persona === v ? 'selected' : '' %>><%= v %></option>
+          <% }); %>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">Seniority</label>
+        <select name="seniority" class="w-full border border-slate-300 rounded px-3 py-2 text-sm">
+          <% ['director','vp_plus','c_suite','manager'].forEach(function(v){ %>
+            <option value="<%= v %>" <%= form.seniority === v ? 'selected' : '' %>><%= v %></option>
+          <% }); %>
+        </select>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-2 gap-4">
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">Customer status</label>
+        <select name="customer_status" class="w-full border border-slate-300 rounded px-3 py-2 text-sm">
+          <% ['prospect','customer','churn'].forEach(function(v){ %>
+            <option value="<%= v %>" <%= (form.customer_status || 'prospect') === v ? 'selected' : '' %>><%= v %></option>
+          <% }); %>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">Fit score (0–100)</label>
+        <input type="number" name="fit_score" min="0" max="100" value="<%= form.fit_score || 75 %>"
+          class="w-full border border-slate-300 rounded px-3 py-2 text-sm" />
+      </div>
+    </div>
+
+    <div>
+      <label class="block text-sm font-medium text-slate-700 mb-1">Why now / timing signal <span class="text-red-500">*</span></label>
+      <textarea name="timing_signal" required rows="3"
+        class="w-full border border-slate-300 rounded px-3 py-2 text-sm"
+        placeholder="Hired 8 branch managers in the Midwest in the last 30 days"><%= form.timing_signal || '' %></textarea>
+      <p class="text-xs text-slate-500 mt-1">This drives the "why this prospect now" message. Keep it concrete.</p>
+    </div>
+
+    <div>
+      <label class="block text-sm font-medium text-slate-700 mb-1">Additional context</label>
+      <textarea name="additional_context" rows="3"
+        class="w-full border border-slate-300 rounded px-3 py-2 text-sm"
+        placeholder="Running SAP TM + Salesforce. CRO mentioned manager visibility on Q4 call."><%= form.additional_context || '' %></textarea>
+    </div>
+
+    <div class="flex items-center gap-3 pt-2 border-t border-slate-100">
+      <button type="submit" class="bg-slate-900 hover:bg-slate-800 text-white px-5 py-2 rounded text-sm font-medium">
+        Add + draft sequence
+      </button>
+      <a href="/drafts" class="text-sm text-slate-500 hover:text-slate-900 underline">Cancel</a>
+      <span class="text-xs text-slate-400 ml-auto">Drafting usually takes ~10 seconds</span>
+    </div>
+  </form>
+</div>
