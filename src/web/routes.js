@@ -175,7 +175,7 @@ webRouter.post('/discover', requireAuth, async (req, res, next) => {
 // click, kick them all through research+draft at 5-way parallelism. Exists so
 // we can validate the full pipeline end-to-end on known-good picks without
 // burning discovery credits.
-webRouter.get('/prospects/import', requireAuth, async (_req, res, next) => {
+webRouter.get('/prospects/import', requireAuth, async (req, res, next) => {
   try {
     // Flag any rows whose owner name won't resolve so the operator sees it
     // before clicking Run.
