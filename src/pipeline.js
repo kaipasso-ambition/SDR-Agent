@@ -11,9 +11,11 @@
 
 import { enrichProspect } from './agents/researcher.js';
 import { generateSequence } from './agents/writer.js';
+import { discoverCandidates } from './agents/discoverer.js';
 import { getIntentSignals } from './integrations/commonroom.js';
 import { upsertProspect } from './db/prospects.js';
 import { addToApprovalQueue } from './queue/approval_queue.js';
+import { query } from './db/index.js';
 
 const MIN_FIT_TO_DRAFT = 60; // below this we save the prospect but skip drafting
 
@@ -47,4 +49,71 @@ export async function researchAndDraft({ company, domain, contact_name, owner_us
   await addToApprovalQueue({ prospect, draft, status: 'pending' });
 
   return { prospect, draft, reason: null };
+}
+
+/**
+ * Autonomous discovery cycle: Claude surfaces net-new ICP candidates from
+ * the web, then each one runs through the research → draft pipeline.
+ * Triggered by the "Find new prospects" button, or on a schedule.
+ *
+ * Owner assignment: if owner_user_id is provided (button press), all new
+ * prospects go to that user. If null (cron), owners round-robin across
+ * active users.
+ */
+export async function runDiscoveryCycle({ count = 5, hint = '', owner_user_id = null } = {}) {
+  console.log(`[discovery] Starting — requesting ${count} candidates`);
+
+  let candidates;
+  try {
+    candidates = await discoverCandidates({ count, hint });
+  } catch (err) {
+    console.error('[discovery] discoverer failed:', err.message);
+    return { discovered: 0, drafted: 0, error: err.message };
+  }
+  console.log(`[discovery] Claude returned ${candidates.length} candidates`);
+
+  // Dedup: drop any candidate whose domain we already have.
+  const domains = candidates.map((c) => c.domain).filter(Boolean);
+  const existing = domains.length
+    ? (await query(
+        `SELECT DISTINCT lower(domain) AS domain FROM prospects WHERE lower(domain) = ANY($1::text[])`,
+        [domains.map((d) => d.toLowerCase())]
+      )).rows.map((r) => r.domain)
+    : [];
+  const fresh = candidates.filter(
+    (c) => c.domain && !existing.includes(c.domain.toLowerCase())
+  );
+  console.log(`[discovery] ${fresh.length} new after dedup`);
+
+  // Round-robin owner if not specified (cron case).
+  let ownerCycle = [];
+  if (!owner_user_id) {
+    const { rows } = await query(`SELECT id FROM users ORDER BY created_at ASC`);
+    ownerCycle = rows.map((r) => r.id);
+  }
+
+  let drafted = 0;
+  let skipped = 0;
+  for (let i = 0; i < fresh.length; i++) {
+    const c = fresh[i];
+    const owner = owner_user_id || ownerCycle[i % (ownerCycle.length || 1)] || null;
+    try {
+      const result = await researchAndDraft({
+        company: c.company,
+        domain: c.domain,
+        owner_user_id: owner,
+      });
+      if (result.draft) {
+        drafted++;
+        console.log(`[discovery] drafted ${c.company}`);
+      } else {
+        skipped++;
+        console.log(`[discovery] saved-no-draft ${c.company}: ${result.reason}`);
+      }
+    } catch (err) {
+      console.error(`[discovery] pipeline failed on ${c.company}:`, err.message);
+    }
+  }
+  console.log(`[discovery] Done — drafted ${drafted}, skipped ${skipped}`);
+  return { discovered: fresh.length, drafted, skipped, error: null };
 }

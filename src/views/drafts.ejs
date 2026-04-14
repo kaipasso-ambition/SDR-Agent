@@ -27,8 +27,29 @@
 
 <div class="flex items-center justify-between mb-6">
   <h1 class="text-2xl font-semibold">Drafts <span class="text-slate-400 text-base font-normal">(<%= drafts.length %> pending)</span></h1>
-  <a href="/prospects/new" class="bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded text-sm font-medium">+ Add prospect</a>
+  <div class="flex items-center gap-2">
+    <form method="POST" action="/discover" class="inline">
+      <input type="hidden" name="count" value="5" />
+      <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded text-sm font-medium">
+        Find 5 new prospects
+      </button>
+    </form>
+    <a href="/prospects/new" class="bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 px-4 py-2 rounded text-sm font-medium">
+      + Add one manually
+    </a>
+  </div>
 </div>
+
+<% if (typeof discovering !== 'undefined' && discovering) { %>
+  <div class="mb-5 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded p-4 flex items-start gap-3">
+    <div class="text-emerald-600 mt-0.5">●</div>
+    <div class="text-sm">
+      <strong>Discovering <%= discovering %> new prospects.</strong>
+      Claude is searching the web for ICP-fit companies with fresh timing signals, researching each, and drafting sequences for the qualified ones. New drafts will appear here as each one completes (usually 2–4 minutes total).
+      <a href="/drafts" class="underline">Refresh</a>
+    </div>
+  </div>
+<% } %>
 
 <% if (drafts.length === 0) { %>
   <div class="bg-white border border-slate-200 rounded-lg p-10 text-center text-slate-500">

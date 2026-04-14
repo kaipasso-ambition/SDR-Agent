@@ -3,10 +3,27 @@ import cron from 'node-cron';
 import { runResearchCycle } from './agents/researcher.js';
 import { runWriterCycle } from './agents/writer.js';
 import { runReplyCycle } from './agents/reply_agent.js';
+import { runDiscoveryCycle } from './pipeline.js';
 import { sendApprovedMessages } from './sender.js';
 import { startServer } from './api/server.js';
 
 const tz = process.env.SEND_TIMEZONE || 'America/Chicago';
+
+// Autonomous prospect discovery — 7am Mon-Fri. Claude searches the web for
+// fresh ICP-fit companies, then the pipeline drafts sequences for the ones
+// that qualify. Round-robin's ownership across users.
+cron.schedule(
+  '0 7 * * 1-5',
+  async () => {
+    console.log('[scheduler] Starting daily discovery cycle');
+    try {
+      await runDiscoveryCycle({ count: 5 });
+    } catch (err) {
+      console.error('[scheduler] discovery failed:', err);
+    }
+  },
+  { timezone: tz }
+);
 
 // Research + score new accounts — runs 4x daily
 cron.schedule(

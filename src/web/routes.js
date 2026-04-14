@@ -4,7 +4,7 @@ import { Router } from 'express';
 import { verifyLogin, requireAuth } from '../auth.js';
 import { query } from '../db/index.js';
 import { getPendingDrafts, getPendingReplies } from '../queue/approval_queue.js';
-import { researchAndDraft } from '../pipeline.js';
+import { researchAndDraft, runDiscoveryCycle } from '../pipeline.js';
 
 export const webRouter = Router();
 
@@ -62,7 +62,8 @@ webRouter.get('/', requireAuth, async (_req, res, next) => {
 webRouter.get('/drafts', requireAuth, async (req, res, next) => {
   try {
     const drafts = await getPendingDrafts(req.session.userId);
-    res.render('drafts', { title: 'Drafts', drafts });
+    const discovering = req.query.discovering ? Number(req.query.discovering) : null;
+    res.render('drafts', { title: 'Drafts', drafts, discovering });
   } catch (err) {
     next(err);
   }
@@ -125,6 +126,22 @@ webRouter.post('/prospects/new', requireAuth, async (req, res) => {
       notice: null,
     });
   }
+});
+
+// Trigger an autonomous discovery cycle. Fires the work in the background
+// so the HTTP request returns immediately — drafts appear on /drafts as
+// Claude finishes each one.
+webRouter.post('/discover', requireAuth, (req, res) => {
+  const count = Math.min(Number(req.body?.count) || 5, 10);
+  const hint = (req.body?.hint || '').trim();
+  const ownerId = req.session.userId;
+
+  // Fire and forget — don't await. Node keeps the promise alive.
+  runDiscoveryCycle({ count, hint, owner_user_id: ownerId })
+    .then((r) => console.log('[discover] cycle finished:', r))
+    .catch((err) => console.error('[discover] cycle crashed:', err));
+
+  res.redirect('/drafts?discovering=' + count);
 });
 
 webRouter.get('/settings', requireAuth, async (_req, res, next) => {
