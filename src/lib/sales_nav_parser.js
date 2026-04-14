@@ -20,6 +20,8 @@
 // Until we have a real captured sample to test against, treat this as v0 —
 // it will need tuning when the first real digest lands in the inbox.
 
+import crypto from 'node:crypto';
+
 const LI_POST_URL_RE = /https:\/\/www\.linkedin\.com\/(?:feed\/update\/urn:li:activity:\d+|posts\/[^\s"'<>]+)/gi;
 const LI_MEMBER_URL_RE = /https:\/\/www\.linkedin\.com\/in\/[^\s"'<>?]+/gi;
 const LI_COMM_URL_RE = /https:\/\/www\.linkedin\.com\/comm\/[^\s"'<>]+/gi;
@@ -66,11 +68,141 @@ function classifyPostType({ subject, blockText }) {
   return 'share';
 }
 
+// "In case you missed it" daily digest (X-LinkedIn-Template:
+// email_lss_in_case_you_missed_it_digest). This is the template LinkedIn
+// actually sends today — a structured list of 5–10 leads who shared posts.
+//
+// Unlike the older "Your daily Sales Nav update" template, this one does NOT
+// include direct post URLs. Every CTA is a /comm/sales/contract-chooser
+// redirect to either the lead's Sales Nav profile (/sales/lead/<URN>) or the
+// Sales Nav home. So the commenter can't jump straight to the post — it has
+// to drop the operator on the lead's profile and let them click the post.
+//
+// We extract one item per lead by anchoring on the profile-image <a>, which
+// has both the lead URN (in its redirect= param) and the author's name
+// (in the <img alt="<Name>'s profile image">). Walking forward from there,
+// we pick up the snippet (<p class="hero-body-content"> or "body-content")
+// and title/company (<p class="text-xs ...">Title · Company</p>).
+function extractLeadUrn(commHref) {
+  const m = commHref.match(/redirect=%2Fsales%2Flead%2F([^,&"]+),NAME_SEARCH/i);
+  return m ? m[1] : null;
+}
+
+function extractInCaseYouMissedItItems(html, subject, from) {
+  const items = [];
+  const seenUrn = new Set();
+
+  // Match every /comm/sales/contract-chooser anchor that points at a lead
+  // profile AND wraps an <img alt="Name's profile image">. This uniquely
+  // picks the profile-image link for each entity block and skips the parallel
+  // text-wrapper anchor (which redirects to /sales/index, not /sales/lead/).
+  //
+  // We greedy-match everything up to `profile image` and strip the possessive
+  // suffix in post, so plural-possessives ("Trina Hymes'") don't truncate to
+  // "Trina Hyme".
+  const blockRe = /<a\s+href="(https:\/\/www\.linkedin\.com\/comm\/sales\/contract-chooser\?[^"]*redirect=%2Fsales%2Flead%2F[^"]+)"[^>]*>\s*<img[^>]*alt="([^"]+?)\s+profile\s+image"/gi;
+
+  let m;
+  while ((m = blockRe.exec(html)) !== null) {
+    const clickUrl = m[1].replace(/&amp;/g, '&');
+    const author_name = m[2]
+      .trim()
+      // "Middleton's" -> "Middleton"; "Hymes'" -> "Hymes"; leave "Hymes" alone.
+      .replace(/[’'\u2019]s$/, '')
+      .replace(/[’'\u2019]$/, '');
+    const leadUrn = extractLeadUrn(clickUrl);
+    if (!leadUrn) continue;
+
+    // Walk forward from the match to collect snippet + title. 4k chars is
+    // enough to span one entity block without crossing into the next.
+    const windowStart = m.index + m[0].length;
+    const window = html.slice(windowStart, windowStart + 4000);
+
+    // Snippet: first hero-body-content (featured block) or body-content
+    // (other-notifications rows) or thumbnail-content (article/media card).
+    let snippet = null;
+    const snipRe = /<p[^>]*class="[^"]*(?:hero-body-content|body-content)[^"]*"[^>]*>([\s\S]*?)<\/p>/i;
+    const snipMatch = window.match(snipRe);
+    if (snipMatch) snippet = stripHtml(snipMatch[1]);
+
+    // Title · Company: <p class="... text-xs ...">Title · Company</p>. The
+    // middle dot is U+00B7. Fall back to "Title at Company" if LinkedIn
+    // ever switches.
+    let author_title = null;
+    let author_company = null;
+    const tcRe = /<p[^>]*class="[^"]*text-xs[^"]*"[^>]*>([\s\S]*?)<\/p>/i;
+    const tcMatch = window.match(tcRe);
+    if (tcMatch) {
+      const tcText = stripHtml(tcMatch[1]);
+      const parts = tcText.split(/\s*[·\u00b7]\s*/);
+      if (parts.length >= 2) {
+        author_title = parts[0].trim();
+        author_company = parts.slice(1).join(' · ').trim();
+      } else if (/\sat\s/i.test(tcText)) {
+        const [t, ...rest] = tcText.split(/\s+at\s+/i);
+        author_title = t.trim();
+        author_company = rest.join(' at ').trim();
+      }
+    }
+
+    // Dedup within this email by lead URN — the profile image anchor appears
+    // once per lead, but if LinkedIn ever changes that we still want to avoid
+    // double-inserts.
+    if (seenUrn.has(leadUrn)) continue;
+    seenUrn.add(leadUrn);
+
+    // Synthetic stable post_url for DB dedup. Real lead URL + a snippet hash
+    // so the same lead's distinct posts (across different digests) get
+    // distinct rows. The user-clickable /comm redirect is stashed in
+    // raw_meta.click_url — the dashboard prefers that for the "Open post"
+    // button since it takes them straight to the lead's Sales Nav profile.
+    const hashSrc = (snippet || author_name).slice(0, 120);
+    const hash = crypto.createHash('sha1').update(hashSrc).digest('hex').slice(0, 10);
+    const post_url = `https://www.linkedin.com/sales/lead/${leadUrn}#post-${hash}`;
+
+    items.push({
+      author_name,
+      author_title,
+      author_company,
+      author_linkedin_url: null, // digest doesn't include the public /in/ URL
+      post_url,
+      post_snippet: snippet || null,
+      post_type: 'share',
+      raw_meta: {
+        subject,
+        from,
+        template: 'in_case_you_missed_it_digest',
+        lead_urn: leadUrn,
+        click_url: clickUrl,
+      },
+    });
+  }
+
+  return items;
+}
+
 // Heuristic split: LinkedIn digest emails use a repeating <table> block per
 // item. We split on post-URL occurrences and walk outward ~2000 chars to grab
 // the surrounding context (name + snippet) for each one.
 export function parseSalesNavDigest({ html, subject = '', from = '' } = {}) {
   if (!html || typeof html !== 'string') return [];
+
+  // Dispatch: the "in case you missed it" daily digest has its own structure
+  // and its own extractor. Detect via the template slug LinkedIn embeds in
+  // every tracking URL.
+  if (/email_lss_in_case_you_missed_it_digest|entities-digest-container/.test(html)) {
+    const items = extractInCaseYouMissedItItems(html, subject, from);
+    if (items.length > 0) return items;
+    // Fall through to legacy extractor if structured parse came back empty
+    // (template may have shifted — keep the safety net).
+  }
+
+  // Saved-search new-leads digest (email_lss_search_alert_queues_email):
+  // contains headline+location for matched leads but no post URLs. Nothing
+  // for the commenter to act on — skip cleanly so we don't log a warning.
+  if (/email_lss_search_alert_queues_email/.test(html)) {
+    return [];
+  }
 
   const posts = [];
   const seen = new Set();

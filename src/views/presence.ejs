@@ -67,12 +67,23 @@
         </div>
 
         <div class="mt-3 flex items-center gap-2 flex-wrap">
+          <%
+            // Prefer the /comm/ tracking redirect (Sales Nav profile) when the
+            // parser stashed one in raw_meta — it drops the operator straight
+            // on the lead's profile where the post is visible. Fall back to
+            // the canonical post_url (legacy digests which included a direct
+            // /posts/ link).
+            const clickUrl = (p.raw_meta && p.raw_meta.click_url) || p.post_url;
+            const openLabel = (p.raw_meta && p.raw_meta.template === 'in_case_you_missed_it_digest')
+              ? 'Open profile (copy draft)'
+              : 'Open post (copy draft)';
+          %>
           <button
             type="button"
             class="open-post bg-slate-900 hover:bg-slate-800 text-white px-4 py-1.5 rounded text-sm"
             data-post-id="<%= p.id %>"
-            data-post-url="<%= p.post_url %>">
-            Open post (copy draft)
+            data-post-url="<%= clickUrl %>">
+            <%= openLabel %>
           </button>
           <form method="POST" action="/presence/<%= p.id %>/posted" class="inline">
             <button type="submit" class="text-xs text-emerald-700 hover:text-emerald-900 underline">Mark posted</button>
