@@ -2,8 +2,11 @@
   function badge(ok) {
     return ok ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800';
   }
-  const kai   = batch.filter(function(p) { return p.owner_name.toLowerCase() === 'kai'; });
-  const colin = batch.filter(function(p) { return p.owner_name.toLowerCase() === 'colin'; });
+  // Tag every row with its absolute index in the full batch so the checkbox
+  // value points back to the right PILOT_BATCH slot on submit.
+  const indexed = batch.map(function(p, i) { return Object.assign({}, p, { batch_index: i }); });
+  const kai   = indexed.filter(function(p) { return p.owner_name.toLowerCase() === 'kai'; });
+  const colin = indexed.filter(function(p) { return p.owner_name.toLowerCase() === 'colin'; });
 
   const unresolved = Object.entries(ownerStatus).filter(function(e) { return !e[1]; });
 
@@ -14,40 +17,40 @@
   const activeInColin = colin.filter(function(p) { return p.active; }).length;
 %>
 
+<form id="pilot-form" method="POST" action="/prospects/import">
 <div class="mb-6 flex items-start justify-between gap-4">
   <div>
     <h1 class="text-2xl font-semibold">
       Pilot batch
       <span class="text-slate-400 text-base font-normal">
-        <%= activeCount %> of <%= fullBatchSize %> in scope
+        <span id="selected-count"><%= activeCount %></span> of <%= fullBatchSize %> selected
       </span>
     </h1>
     <p class="text-sm text-slate-500 mt-1">
       Hand-picked prospects — transportation, telecom, and consumer finance.
       Batch is ordered strongest-signal first, alternating owners.
-      <strong>Highlighted rows</strong> are in scope for the next (or in-flight) run. Greyed rows are parked.
+      Check the rows you want to run. Prioritization is a suggestion — tick any combination.
     </p>
-    <div class="text-xs text-slate-500 mt-2 flex items-center gap-2">
-      <span>Set scope:</span>
-      <a href="/prospects/import?limit=2" class="underline hover:text-slate-900">2</a>
-      <a href="/prospects/import?limit=4" class="underline hover:text-slate-900">4</a>
-      <a href="/prospects/import?limit=6" class="underline hover:text-slate-900">6</a>
-      <a href="/prospects/import" class="underline hover:text-slate-900">all <%= fullBatchSize %></a>
+    <div class="text-xs text-slate-500 mt-2 flex items-center gap-2 flex-wrap">
+      <span>Quick pick:</span>
+      <button type="button" data-pick="2" class="quick-pick underline hover:text-slate-900">Top 2</button>
+      <button type="button" data-pick="4" class="quick-pick underline hover:text-slate-900">Top 4</button>
+      <button type="button" data-pick="6" class="quick-pick underline hover:text-slate-900">Top 6</button>
+      <button type="button" data-pick="all" class="quick-pick underline hover:text-slate-900">All <%= fullBatchSize %></button>
+      <button type="button" data-pick="none" class="quick-pick underline hover:text-slate-900">None</button>
       <% if (runningPilot) { %>
         <span class="text-slate-400">· locked to <%= runningPilot.requested_count %> while a run is in flight</span>
       <% } %>
     </div>
   </div>
-  <form method="POST" action="/prospects/import">
-    <% if (limit) { %><input type="hidden" name="limit" value="<%= limit %>" /><% } %>
-    <button
-      type="submit"
-      <%= (runningJob || unresolved.length > 0) ? 'disabled' : '' %>
-      class="bg-slate-900 hover:bg-slate-800 text-white px-5 py-2 rounded text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed"
-    >
-      <%= runningJob ? 'Running…' : ('Run research + draft (' + activeCount + ')') %>
-    </button>
-  </form>
+  <button
+    type="submit"
+    id="pilot-run"
+    <%= (runningJob || unresolved.length > 0) ? 'disabled' : '' %>
+    class="bg-slate-900 hover:bg-slate-800 text-white px-5 py-2 rounded text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed self-start"
+  >
+    <%= runningJob ? 'Running…' : ('Run research + draft (' + activeCount + ')') %>
+  </button>
 </div>
 
 <% if (unresolved.length > 0) { %>
@@ -75,25 +78,95 @@
       </div>
       <ul class="divide-y divide-slate-100">
         <% rows.forEach(function(p) { %>
-          <li class="px-4 py-3 text-sm <%= p.active ? 'bg-emerald-50/40 border-l-4 border-emerald-400' : 'opacity-40' %>">
-            <div class="flex items-baseline justify-between gap-2">
-              <div class="flex items-center gap-2">
-                <% if (p.active) { %>
-                  <span class="pill bg-emerald-100 text-emerald-800">in scope</span>
-                <% } else { %>
-                  <span class="pill bg-slate-100 text-slate-500">parked</span>
-                <% } %>
-                <strong><%= p.company %></strong>
+          <li class="pilot-row px-4 py-3 text-sm flex items-start gap-3" data-initial-active="<%= p.active ? '1' : '0' %>">
+            <input
+              type="checkbox"
+              name="selected"
+              value="<%= p.batch_index %>"
+              class="pilot-check mt-1 h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-500"
+              <%= p.active ? 'checked' : '' %>
+              <%= runningJob ? 'disabled' : '' %>
+            />
+            <div class="flex-1 min-w-0">
+              <div class="flex items-baseline justify-between gap-2">
+                <div class="flex items-center gap-2">
+                  <strong><%= p.company %></strong>
+                </div>
+                <span class="text-xs text-slate-400"><%= p.domain %></span>
               </div>
-              <span class="text-xs text-slate-400"><%= p.domain %></span>
+              <p class="text-xs text-slate-600 mt-1"><%= p.signal_note %></p>
             </div>
-            <p class="text-xs text-slate-600 mt-1"><%= p.signal_note %></p>
           </li>
         <% }); %>
       </ul>
     </div>
   <% }); %>
 </div>
+</form>
+
+<script>
+  // Pilot-batch selection controls. Checkbox state drives everything:
+  //   - Live "N selected" header count
+  //   - Submit button label "Run research + draft (N)" + disabled when 0
+  //   - Row highlight (emerald bar) mirrors the current checked state
+  //   - Quick-pick buttons (Top 2 / Top 4 / Top 6 / All / None) just flip
+  //     checkboxes — the change handler takes it from there.
+  (function() {
+    const form = document.getElementById('pilot-form');
+    if (!form) return;
+    const checks = Array.from(form.querySelectorAll('.pilot-check'));
+    const countEl = document.getElementById('selected-count');
+    const runBtn = document.getElementById('pilot-run');
+    const runBtnWasDisabled = runBtn && runBtn.disabled; // server-locked (running / unresolved owner)
+
+    function applyRowStyle(cb) {
+      const li = cb.closest('.pilot-row');
+      if (!li) return;
+      if (cb.checked) {
+        li.classList.add('bg-emerald-50/40', 'border-l-4', 'border-emerald-400');
+        li.classList.remove('opacity-40');
+      } else {
+        li.classList.remove('bg-emerald-50/40', 'border-l-4', 'border-emerald-400');
+        li.classList.add('opacity-40');
+      }
+    }
+
+    function refresh() {
+      const n = checks.filter((c) => c.checked).length;
+      if (countEl) countEl.textContent = n;
+      if (runBtn && !runBtnWasDisabled) {
+        runBtn.disabled = n === 0;
+        runBtn.textContent = n === 0 ? 'Nothing selected' : ('Run research + draft (' + n + ')');
+      }
+    }
+
+    checks.forEach((cb) => {
+      applyRowStyle(cb);
+      cb.addEventListener('change', () => { applyRowStyle(cb); refresh(); });
+    });
+
+    document.querySelectorAll('.quick-pick').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const pick = btn.dataset.pick;
+        if (pick === 'none') {
+          checks.forEach((c) => { c.checked = false; });
+        } else if (pick === 'all') {
+          checks.forEach((c) => { c.checked = true; });
+        } else {
+          const n = Number(pick);
+          // "Top N" means the N lowest batch_index values across both columns.
+          const sorted = [...checks].sort((a, b) => Number(a.value) - Number(b.value));
+          checks.forEach((c) => { c.checked = false; });
+          sorted.slice(0, n).forEach((c) => { c.checked = true; });
+        }
+        checks.forEach(applyRowStyle);
+        refresh();
+      });
+    });
+
+    refresh();
+  })();
+</script>
 
 <% if (recentJob && !runningJob) { %>
   <div class="mt-8 bg-white border border-slate-200 rounded-lg p-4">

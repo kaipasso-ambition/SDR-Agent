@@ -260,17 +260,34 @@ webRouter.post('/prospects/import', requireAuth, async (req, res, next) => {
   try {
     const ownerId = req.session.userId;
 
-    // Accept limit from form body (hidden input on the page) or query string.
-    const raw = Number(req.body?.limit ?? req.query?.limit);
-    const limit = Number.isFinite(raw) && raw > 0 && raw <= PILOT_BATCH.length ? raw : null;
-    const runCount = limit ?? PILOT_BATCH.length;
+    // Selection priority: explicit checkbox list (selected[]) > legacy limit
+    // (top-N slice) > full batch. Checkboxes submit as either a single string
+    // or an array depending on how many were ticked, so normalize both.
+    const rawSelected = req.body?.selected;
+    const selectedArr = Array.isArray(rawSelected)
+      ? rawSelected
+      : (rawSelected != null ? [rawSelected] : []);
+    const indices = selectedArr
+      .map((v) => Number(v))
+      .filter((n) => Number.isInteger(n) && n >= 0 && n < PILOT_BATCH.length);
+
+    // Keep legacy ?limit= path working for anyone who bookmarked it.
+    const rawLimit = Number(req.body?.limit ?? req.query?.limit);
+    const limit = Number.isFinite(rawLimit) && rawLimit > 0 && rawLimit <= PILOT_BATCH.length ? rawLimit : null;
+
+    const runCount = indices.length > 0 ? indices.length : (limit ?? PILOT_BATCH.length);
+
+    if (runCount === 0) {
+      // No selection at all — bounce back with nothing to do.
+      return res.redirect('/prospects/import');
+    }
 
     const existing = await query(
       `SELECT id FROM discovery_jobs WHERE user_id = $1 AND status = 'running' LIMIT 1`,
       [ownerId]
     );
     if (existing.rows[0]) {
-      return res.redirect(limit ? `/prospects/import?limit=${limit}` : '/prospects/import');
+      return res.redirect('/prospects/import');
     }
 
     const { rows } = await query(
@@ -281,7 +298,7 @@ webRouter.post('/prospects/import', requireAuth, async (req, res, next) => {
     const jobId = rows[0].id;
 
     // Fire and forget — HTTP returns immediately, the banner tracks progress.
-    runPilotBatch({ job_id: jobId, limit })
+    runPilotBatch({ job_id: jobId, limit, indices: indices.length > 0 ? indices : null })
       .then((r) => console.log('[pilot] batch finished:', r.drafted, 'drafted'))
       .catch((err) => {
         console.error('[pilot] batch crashed:', err);
@@ -291,7 +308,7 @@ webRouter.post('/prospects/import', requireAuth, async (req, res, next) => {
         ).catch(() => {});
       });
 
-    res.redirect(limit ? `/prospects/import?limit=${limit}` : '/prospects/import');
+    res.redirect('/prospects/import');
   } catch (err) {
     next(err);
   }

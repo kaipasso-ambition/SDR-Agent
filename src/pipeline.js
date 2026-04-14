@@ -171,12 +171,21 @@ export async function runDiscoveryCycle({ count = 5, hint = '', owner_user_id = 
  * Writes progress into the same discovery_jobs row the regular /discover cycle
  * uses, so the running/stuck/completed banner in layout.ejs works unchanged.
  */
-export async function runPilotBatch({ job_id = null, limit = null } = {}) {
-  // Take the first N from PILOT_BATCH (batch is pre-sorted strongest-signal
-  // first, alternating owners, so limit=4 gives you the top 2 per rep).
-  const activeBatch = (limit && limit > 0 && limit < PILOT_BATCH.length)
-    ? PILOT_BATCH.slice(0, limit)
-    : PILOT_BATCH;
+export async function runPilotBatch({ job_id = null, limit = null, indices = null } = {}) {
+  // Selection priority: explicit `indices` > legacy `limit` (top-N slice) >
+  // full batch. `indices` lets the operator cherry-pick specific rows via
+  // checkboxes; `limit` is kept for backward compat with any old links.
+  let activeBatch;
+  if (Array.isArray(indices) && indices.length > 0) {
+    const clean = [...new Set(indices)]
+      .map((v) => Number(v))
+      .filter((n) => Number.isInteger(n) && n >= 0 && n < PILOT_BATCH.length);
+    activeBatch = clean.map((i) => PILOT_BATCH[i]);
+  } else if (limit && limit > 0 && limit < PILOT_BATCH.length) {
+    activeBatch = PILOT_BATCH.slice(0, limit);
+  } else {
+    activeBatch = PILOT_BATCH;
+  }
 
   console.log(`[pilot] START job=${job_id} batch_size=${activeBatch.length} (of ${PILOT_BATCH.length})`);
 

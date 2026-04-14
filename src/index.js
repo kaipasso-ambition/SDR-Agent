@@ -67,13 +67,14 @@ import { query, pool } from './db/index.js';
 
 const tz = process.env.SEND_TIMEZONE || 'America/Chicago';
 
-// Autonomous prospect discovery — 7am Mon-Fri. Claude searches the web for
-// fresh ICP-fit companies, then the pipeline drafts sequences for the ones
-// that qualify. Round-robin's ownership across users.
+// Autonomous prospect discovery — 7am Mondays only. Claude searches the web
+// for fresh ICP-fit companies, then the pipeline drafts sequences for the
+// ones that qualify. Weekly cadence caps the autonomous LLM spend — the
+// operator can still trigger a run on demand from /drafts or /prospects/import.
 cron.schedule(
-  '0 7 * * 1-5',
+  '0 7 * * 1',
   async () => {
-    console.log('[scheduler] Starting daily discovery cycle');
+    console.log('[scheduler] Starting weekly discovery cycle');
     try {
       await runDiscoveryCycle({ count: 5 });
     } catch (err) {
