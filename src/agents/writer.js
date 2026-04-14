@@ -26,23 +26,48 @@ export async function runWriterCycle() {
   }
 }
 
-export async function generateSequence(prospect) {
+export async function generateSequence(prospect, campaign = null) {
+  let userContent;
+  if (campaign) {
+    const includeInvite = !!campaign.special_invite_for_this_prospect;
+    userContent = `CAMPAIGN CONTEXT — this sequence is part of a campaign, not a generic cold outreach. Your CTA must serve the campaign goal.
+
+Campaign name: ${campaign.name}
+Goal: ${campaign.goal || '(none specified)'}
+Description: ${campaign.description || '(none)'}
+${campaign.event_date ? `Event date: ${new Date(campaign.event_date).toDateString()}` : ''}
+${campaign.event_url ? `Event URL: ${campaign.event_url}` : ''}
+
+WRITING INSTRUCTIONS FOR THIS CAMPAIGN:
+- Touch 1 must lead with the campaign CTA (e.g., "will you be at X event?"), not the generic Ambition problem pitch.
+- Touch 2 follows up on Touch 1 — add a small new angle or value prop.
+- Touch 3 is the final nudge, typically LinkedIn.
+- All Ambition voice rules still apply: ≤75 words per touch, industry-native vocabulary, no banned phrases, no fake urgency.
+${includeInvite ? `
+SPECIAL INVITE — this prospect has been hand-selected for an exclusive offer:
+${campaign.special_invite_description}
+Weave this invite naturally into Touch 1 or Touch 2. Frame it as selective and genuine — NOT as a mass broadcast. Do NOT use words like "exclusive" or "limited-time" — instead, describe concretely why it's small/selective (e.g., "a small dinner with a handful of sales leaders," "a 30-person session").` : `
+NO special invite for this prospect. Do NOT mention the CEO talk, dinner, or any add-on offer. Keep the sequence to the campaign CTA only.`}
+
+PROSPECT:
+${JSON.stringify(prospect, null, 2)}`;
+  } else {
+    userContent = `Generate a 3-touch outreach sequence for this prospect:\n\n${JSON.stringify(prospect, null, 2)}`;
+  }
+
   const response = await client.messages.create({
     model: 'claude-sonnet-4-20250514',
-    max_tokens: 1000,
+    max_tokens: 1500,
     system: OUTREACH_PROMPT,
-    messages: [
-      {
-        role: 'user',
-        content: `Generate a 3-touch outreach sequence for this prospect:\n\n${JSON.stringify(prospect, null, 2)}`,
-      },
-    ],
+    messages: [{ role: 'user', content: userContent }],
   });
 
   const text = response.content
     .filter((b) => b.type === 'text')
     .map((b) => b.text)
-    .join('');
+    .join('')
+    .trim();
 
-  return JSON.parse(text);
+  const jsonText = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+  return JSON.parse(jsonText);
 }

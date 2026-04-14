@@ -170,6 +170,22 @@ webRouter.post('/discover', requireAuth, async (req, res, next) => {
   }
 });
 
+// Force-cancel a stuck discovery job so the user can retry. Doesn't actually
+// kill the background promise (Node can't from here), but clearing the row
+// lets them kick off a fresh cycle.
+webRouter.post('/discover/cancel', requireAuth, async (req, res, next) => {
+  try {
+    await query(
+      `UPDATE discovery_jobs SET status = 'failed', error = 'cancelled by user', finished_at = NOW()
+        WHERE user_id = $1 AND status = 'running'`,
+      [req.session.userId]
+    );
+    res.redirect('/drafts');
+  } catch (err) {
+    next(err);
+  }
+});
+
 webRouter.get('/settings', requireAuth, async (_req, res, next) => {
   try {
     const providers = await getProviders();

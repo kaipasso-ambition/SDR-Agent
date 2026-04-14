@@ -122,6 +122,43 @@ END$$;
 
 CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON "session" ("expire");
 
+-- Campaigns — themed outreach plays (events, product launches, ABM pushes).
+-- Roster is provided by Marketing (or the operator); research/discovery is
+-- skipped because the ICP work has already been done upstream.
+CREATE TABLE IF NOT EXISTS campaigns (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  goal TEXT,                              -- the CTA: "ask if attending Gartner"
+  description TEXT,                       -- longer context fed to the writer
+  event_date TIMESTAMPTZ,
+  event_url TEXT,
+  special_invite_description TEXT,        -- "invite to CEO's talk on ..." (null = no special invite)
+  special_invite_capacity INTEGER,        -- cap on how many prospects can get the invite
+  status TEXT NOT NULL DEFAULT 'active',  -- active | paused | completed
+  owner_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS campaigns_owner_idx ON campaigns(owner_user_id);
+
+-- Junction: which prospects belong to which campaigns, and whether each
+-- prospect is flagged for the special invite (e.g., CEO talk). signal_*
+-- fields record WHY this person was selected for this campaign so the
+-- operator can judge quality and the writer can reference it in Touch 1.
+CREATE TABLE IF NOT EXISTS campaign_prospects (
+  campaign_id UUID REFERENCES campaigns(id) ON DELETE CASCADE,
+  prospect_id UUID REFERENCES prospects(id) ON DELETE CASCADE,
+  special_invite BOOLEAN DEFAULT FALSE,
+  signal_type TEXT,          -- 'speaker' | 'attending' | 'icp_fit'
+  signal_detail TEXT,        -- one-sentence why
+  signal_source_url TEXT,    -- URL backing the signal
+  added_at TIMESTAMPTZ DEFAULT NOW(),
+  PRIMARY KEY (campaign_id, prospect_id)
+);
+
+-- Let draft rows know which campaign they belong to (NULL = generic outreach).
+ALTER TABLE approval_queue ADD COLUMN IF NOT EXISTS campaign_id UUID REFERENCES campaigns(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS approval_queue_campaign_idx ON approval_queue(campaign_id);
+
 -- Discovery job tracker — persists across page navigations so the UI can
 -- show progress from any page, not just the one that kicked it off.
 CREATE TABLE IF NOT EXISTS discovery_jobs (

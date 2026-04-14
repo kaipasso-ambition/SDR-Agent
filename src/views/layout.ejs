@@ -34,14 +34,30 @@
 
   <% if (typeof activeJob !== 'undefined' && activeJob) { %>
     <% if (activeJob.status === 'running') { %>
-      <div class="bg-emerald-50 border-b border-emerald-200 text-emerald-900">
+      <%
+        const runningMs = Date.now() - new Date(activeJob.started_at).getTime();
+        const runningSec = Math.floor(runningMs / 1000);
+        const stuck = runningSec > 300; // 5 minutes = probably dead
+      %>
+      <div class="<%= stuck ? 'bg-amber-50 border-amber-200 text-amber-900' : 'bg-emerald-50 border-emerald-200 text-emerald-900' %> border-b">
         <div class="max-w-6xl mx-auto px-4 py-3 text-sm flex items-center gap-3">
-          <span class="inline-block w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+          <span class="inline-block w-2 h-2 <%= stuck ? 'bg-amber-500' : 'bg-emerald-500' %> rounded-full animate-pulse"></span>
           <div class="flex-1">
-            <strong>Discovering <%= activeJob.requested_count %> new prospects.</strong>
-            Claude is searching the web and drafting sequences — this runs in the background, so you can keep browsing. Drafts appear as each one finishes.
+            <% if (stuck) { %>
+              <strong>Discovery has been running for <%= Math.floor(runningSec / 60) %> min — likely stuck.</strong>
+              Background task may have failed silently. Check Railway logs (Deployments → live deploy → Logs) for <code>[discovery]</code> lines, or cancel and retry.
+            <% } else { %>
+              <strong>Discovering <%= activeJob.requested_count %> new prospects</strong> (<%= runningSec %>s elapsed).
+              Claude is searching the web and drafting sequences. Drafts appear as each one finishes (typically 2–4 min total).
+            <% } %>
           </div>
-          <a href="/drafts" class="underline text-emerald-800 hover:text-emerald-900">View drafts →</a>
+          <% if (stuck) { %>
+            <form method="POST" action="/discover/cancel" class="inline">
+              <button class="underline text-amber-800 hover:text-amber-900">Cancel</button>
+            </form>
+          <% } else { %>
+            <a href="/drafts" class="underline text-emerald-800 hover:text-emerald-900">View drafts →</a>
+          <% } %>
         </div>
       </div>
       <script>setTimeout(function() { location.reload(); }, 15000);</script>
@@ -59,7 +75,9 @@
     <% } else if (activeJob.status === 'failed') { %>
       <div class="bg-red-50 border-b border-red-200 text-red-900">
         <div class="max-w-6xl mx-auto px-4 py-3 text-sm">
-          <strong>Discovery failed:</strong> <%= activeJob.error || 'unknown error' %>. Check Railway logs.
+          <strong>Discovery failed.</strong>
+          <% if (activeJob.error) { %><span class="text-red-800"><%= activeJob.error %></span><% } %>
+          <a href="/drafts" class="underline ml-2">Try again</a>
         </div>
       </div>
     <% } %>

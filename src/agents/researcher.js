@@ -62,11 +62,13 @@ ${signal ? JSON.stringify(signal, null, 2) : 'No signals found — rely on web_s
     .join('')
     .trim();
 
-  // Claude sometimes wraps JSON in ```json fences — strip them.
-  const jsonText = text
-    .replace(/^```(?:json)?\s*/i, '')
-    .replace(/\s*```$/i, '')
-    .trim();
-
-  return JSON.parse(jsonText);
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const brace = text.match(/\{[\s\S]*\}/);
+  const jsonText = fenced ? fenced[1].trim() : (brace ? brace[0] : text);
+  try {
+    return JSON.parse(jsonText);
+  } catch (err) {
+    const preview = text.slice(0, 400).replace(/\s+/g, ' ');
+    throw new Error(`Researcher JSON parse failed for ${account.company}. First 400 chars: ${preview}`);
+  }
 }

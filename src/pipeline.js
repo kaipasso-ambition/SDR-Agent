@@ -15,6 +15,7 @@ import { discoverCandidates } from './agents/discoverer.js';
 import { getIntentSignals } from './integrations/commonroom.js';
 import { upsertProspect } from './db/prospects.js';
 import { addToApprovalQueue } from './queue/approval_queue.js';
+import { getCampaignRoster } from './db/campaigns.js';
 import { query } from './db/index.js';
 
 const MIN_FIT_TO_DRAFT = 60; // below this we save the prospect but skip drafting
@@ -61,22 +62,25 @@ export async function researchAndDraft({ company, domain, contact_name, owner_us
  * active users.
  */
 export async function runDiscoveryCycle({ count = 5, hint = '', owner_user_id = null, job_id = null } = {}) {
-  console.log(`[discovery] Starting — requesting ${count} candidates`);
+  console.log(`[discovery] START job=${job_id} count=${count} owner=${owner_user_id}`);
+
+  const updateJob = async (fields) => {
+    if (!job_id) return;
+    const keys = Object.keys(fields);
+    const sets = keys.map((k, i) => `${k} = $${i + 2}`).join(', ');
+    await query(`UPDATE discovery_jobs SET ${sets} WHERE id = $1`, [job_id, ...keys.map((k) => fields[k])]);
+  };
 
   let candidates;
   try {
     candidates = await discoverCandidates({ count, hint });
   } catch (err) {
     console.error('[discovery] discoverer failed:', err.message);
-    if (job_id) {
-      await query(
-        `UPDATE discovery_jobs SET status = 'failed', error = $2, finished_at = NOW() WHERE id = $1`,
-        [job_id, err.message]
-      );
-    }
+    await updateJob({ status: 'failed', error: err.message, finished_at: new Date() });
     return { discovered: 0, drafted: 0, error: err.message };
   }
-  console.log(`[discovery] Claude returned ${candidates.length} candidates`);
+  console.log(`[discovery] Claude returned ${candidates.length} candidates:`,
+    candidates.map((c) => `${c.company} (${c.signal_type})`).join(', '));
 
   // Dedup: drop any candidate whose domain we already have.
   const domains = candidates.map((c) => c.domain).filter(Boolean);
@@ -120,18 +124,48 @@ export async function runDiscoveryCycle({ count = 5, hint = '', owner_user_id = 
       console.error(`[discovery] pipeline failed on ${c.company}:`, err.message);
     }
   }
-  console.log(`[discovery] Done — drafted ${drafted}, skipped ${skipped}`);
-  if (job_id) {
-    await query(
-      `UPDATE discovery_jobs
-         SET status = 'completed',
-             discovered_count = $2,
-             drafted_count = $3,
-             skipped_count = $4,
-             finished_at = NOW()
-       WHERE id = $1`,
-      [job_id, fresh.length, drafted, skipped]
-    );
-  }
+  console.log(`[discovery] DONE job=${job_id} discovered=${fresh.length} drafted=${drafted} skipped=${skipped}`);
+  await updateJob({
+    status: 'completed',
+    discovered_count: fresh.length,
+    drafted_count: drafted,
+    skipped_count: skipped,
+    finished_at: new Date(),
+  });
   return { discovered: fresh.length, drafted, skipped, error: null };
+}
+
+/**
+ * Generate campaign-tailored drafts for every prospect on the campaign roster.
+ * Skips research (Marketing already did the ICP work) and skips prospects
+ * that already have a pending draft for this campaign.
+ */
+export async function draftForCampaign(campaign) {
+  const roster = await getCampaignRoster(campaign.id);
+  let drafted = 0;
+  let skipped = 0;
+
+  for (const prospect of roster) {
+    if (prospect.draft_count > 0) {
+      skipped++;
+      continue; // already has a draft in this campaign
+    }
+    try {
+      const draft = await generateSequence(prospect, {
+        ...campaign,
+        special_invite_for_this_prospect: prospect.special_invite,
+      });
+      await addToApprovalQueue({
+        prospect,
+        draft,
+        status: 'pending',
+        campaign_id: campaign.id,
+      });
+      drafted++;
+      console.log(`[campaign ${campaign.name}] drafted ${prospect.company}`);
+    } catch (err) {
+      console.error(`[campaign ${campaign.name}] failed for ${prospect.company}:`, err.message);
+    }
+  }
+  return { drafted, skipped };
 }

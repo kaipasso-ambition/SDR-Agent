@@ -1,12 +1,12 @@
 import { query } from '../db/index.js';
 
-export async function addToApprovalQueue({ prospect, draft, status = 'pending' }) {
+export async function addToApprovalQueue({ prospect, draft, status = 'pending', campaign_id = null }) {
   const sql = `
-    INSERT INTO approval_queue (prospect_id, draft, status)
-    VALUES ($1, $2, $3)
+    INSERT INTO approval_queue (prospect_id, draft, status, campaign_id)
+    VALUES ($1, $2, $3, $4)
     RETURNING *;
   `;
-  const { rows } = await query(sql, [prospect.id, draft, status]);
+  const { rows } = await query(sql, [prospect.id, draft, status, campaign_id]);
   return rows[0];
 }
 
@@ -48,9 +48,13 @@ export async function getPendingDrafts(userId = null) {
       p.company, p.contact_name, p.contact_title, p.contact_email,
       p.persona, p.industry, p.seniority, p.fit_score AS prospect_fit_score,
       p.timing_signal, p.timing_signal_source, p.customer_status,
-      p.additional_context, p.owner_user_id
+      p.additional_context, p.owner_user_id,
+      c.name AS campaign_name,
+      (SELECT special_invite FROM campaign_prospects cp
+        WHERE cp.campaign_id = aq.campaign_id AND cp.prospect_id = aq.prospect_id) AS campaign_special_invite
     FROM approval_queue aq
     JOIN prospects p ON p.id = aq.prospect_id
+    LEFT JOIN campaigns c ON c.id = aq.campaign_id
     WHERE aq.status = 'pending'
       AND ($1::uuid IS NULL OR p.owner_user_id = $1 OR p.owner_user_id IS NULL)
     ORDER BY aq.queued_at ASC;

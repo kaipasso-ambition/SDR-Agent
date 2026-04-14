@@ -6,6 +6,26 @@ import { runReplyCycle } from './agents/reply_agent.js';
 import { runDiscoveryCycle } from './pipeline.js';
 import { sendApprovedMessages } from './sender.js';
 import { startServer } from './api/server.js';
+import { query } from './db/index.js';
+
+// On boot, fail any discovery job still marked 'running' — it was either
+// interrupted by a deploy/restart or it silently crashed. Leaving it
+// running would keep the "searching…" banner up forever.
+(async () => {
+  try {
+    const { rowCount } = await query(
+      `UPDATE discovery_jobs
+          SET status = 'failed',
+              error = COALESCE(error, 'interrupted — server restarted during run'),
+              finished_at = NOW()
+        WHERE status = 'running'`
+    );
+    if (rowCount > 0) console.log(`[boot] recovered ${rowCount} orphaned discovery job(s)`);
+  } catch (err) {
+    // table may not exist yet on a fresh DB; ignore
+    console.warn('[boot] orphan recovery skipped:', err.message);
+  }
+})();
 
 const tz = process.env.SEND_TIMEZONE || 'America/Chicago';
 

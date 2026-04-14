@@ -38,11 +38,26 @@ export async function discoverCandidates({ count = 5, hint = '' } = {}) {
     .join('')
     .trim();
 
-  const jsonText = text
-    .replace(/^```(?:json)?\s*/i, '')
-    .replace(/\s*```$/i, '')
-    .trim();
-
-  const parsed = JSON.parse(jsonText);
+  const jsonText = extractJsonBlock(text);
+  let parsed;
+  try {
+    parsed = JSON.parse(jsonText);
+  } catch (err) {
+    // Include the raw text in the error so it shows up in Railway logs and
+    // the failure banner — otherwise we just get "Unexpected token" which
+    // tells us nothing about what Claude actually returned.
+    const preview = text.slice(0, 400).replace(/\s+/g, ' ');
+    throw new Error(`Discovery JSON parse failed. First 400 chars of Claude's response: ${preview}`);
+  }
   return Array.isArray(parsed.candidates) ? parsed.candidates : [];
+}
+
+// Pull the first top-level JSON object out of a response that may have prose
+// before/after it or be wrapped in code fences.
+function extractJsonBlock(text) {
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fenced) return fenced[1].trim();
+  const brace = text.match(/\{[\s\S]*\}/);
+  if (brace) return brace[0];
+  return text;
 }
