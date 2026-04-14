@@ -12,7 +12,7 @@ export async function runResearchCycle() {
 
   for (const account of accounts) {
     try {
-      const enriched = await enrichAccount(account, signals);
+      const enriched = await enrichProspect(account, signals);
       await upsertProspect(enriched);
 
       if (enriched.disqualified) {
@@ -29,20 +29,23 @@ export async function runResearchCycle() {
   }
 }
 
-async function enrichAccount(account, allSignals) {
+// Enrich a single account using Claude + web search. Exported so the
+// on-demand pipeline (triggered from the web UI) can call it one prospect
+// at a time without pulling from Salesforce.
+export async function enrichProspect(account, allSignals = []) {
   const signal = allSignals.find((s) => s.domain === account.domain) || null;
 
   const userContent = `
 Account data:
 ${JSON.stringify(account, null, 2)}
 
-CommonRoom signals:
-${signal ? JSON.stringify(signal, null, 2) : 'No signals found'}
+CommonRoom signals (optional — may be empty):
+${signal ? JSON.stringify(signal, null, 2) : 'No signals found — rely on web_search.'}
   `.trim();
 
   const response = await client.messages.create({
     model: 'claude-sonnet-4-20250514',
-    max_tokens: 1000,
+    max_tokens: 2000,
     system: RESEARCH_PROMPT,
     messages: [{ role: 'user', content: userContent }],
     tools: [
@@ -56,7 +59,14 @@ ${signal ? JSON.stringify(signal, null, 2) : 'No signals found'}
   const text = response.content
     .filter((b) => b.type === 'text')
     .map((b) => b.text)
-    .join('');
+    .join('')
+    .trim();
 
-  return JSON.parse(text);
+  // Claude sometimes wraps JSON in ```json fences — strip them.
+  const jsonText = text
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/i, '')
+    .trim();
+
+  return JSON.parse(jsonText);
 }

@@ -30,6 +30,10 @@ CREATE TABLE IF NOT EXISTS prospects (
 CREATE INDEX IF NOT EXISTS prospects_domain_idx ON prospects(domain);
 CREATE INDEX IF NOT EXISTS prospects_fit_score_idx ON prospects(fit_score);
 
+-- Per-user ownership (backfilled for existing rows as NULL = shared/legacy).
+ALTER TABLE prospects ADD COLUMN IF NOT EXISTS owner_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS prospects_owner_idx ON prospects(owner_user_id);
+
 -- Approval queue (outbound drafts)
 CREATE TABLE IF NOT EXISTS approval_queue (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

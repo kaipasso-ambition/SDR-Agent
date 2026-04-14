@@ -20,6 +20,7 @@ export async function upsertProspect(prospect) {
     additional_context = null,
     disqualified = false,
     disqualify_reason = null,
+    owner_user_id = null,
   } = prospect;
 
   const sql = `
@@ -27,13 +28,13 @@ export async function upsertProspect(prospect) {
       id, company, domain, contact_name, contact_title, contact_email,
       industry, persona, seniority, fit_score, timing_signal, timing_signal_source,
       customer_status, sales_headcount_estimate, headcount_confidence,
-      additional_context, disqualified, disqualify_reason, researched_at
+      additional_context, disqualified, disqualify_reason, owner_user_id, researched_at
     )
     VALUES (
       COALESCE($1::uuid, gen_random_uuid()), $2, $3, $4, $5, $6,
       $7, $8, $9, $10, $11, $12,
       $13, $14, $15,
-      $16, $17, $18, NOW()
+      $16, $17, $18, $19, NOW()
     )
     ON CONFLICT (id) DO UPDATE SET
       company = EXCLUDED.company,
@@ -53,6 +54,7 @@ export async function upsertProspect(prospect) {
       additional_context = EXCLUDED.additional_context,
       disqualified = EXCLUDED.disqualified,
       disqualify_reason = EXCLUDED.disqualify_reason,
+      owner_user_id = COALESCE(EXCLUDED.owner_user_id, prospects.owner_user_id),
       researched_at = NOW()
     RETURNING *;
   `;
@@ -61,7 +63,7 @@ export async function upsertProspect(prospect) {
     prospect_id, company, domain, contact_name, contact_title, contact_email,
     industry, persona, seniority, fit_score, timing_signal, timing_signal_source,
     customer_status, sales_headcount_estimate, headcount_confidence,
-    additional_context, disqualified, disqualify_reason,
+    additional_context, disqualified, disqualify_reason, owner_user_id,
   ];
 
   const { rows } = await query(sql, values);

@@ -3,9 +3,8 @@
 import { Router } from 'express';
 import { verifyLogin, requireAuth } from '../auth.js';
 import { query } from '../db/index.js';
-import { getPendingDrafts, getPendingReplies, addToApprovalQueue } from '../queue/approval_queue.js';
-import { upsertProspect } from '../db/prospects.js';
-import { generateSequence } from '../agents/writer.js';
+import { getPendingDrafts, getPendingReplies } from '../queue/approval_queue.js';
+import { researchAndDraft } from '../pipeline.js';
 
 export const webRouter = Router();
 
@@ -60,77 +59,71 @@ webRouter.get('/', requireAuth, async (_req, res, next) => {
   }
 });
 
-webRouter.get('/drafts', requireAuth, async (_req, res, next) => {
+webRouter.get('/drafts', requireAuth, async (req, res, next) => {
   try {
-    const drafts = await getPendingDrafts();
+    const drafts = await getPendingDrafts(req.session.userId);
     res.render('drafts', { title: 'Drafts', drafts });
   } catch (err) {
     next(err);
   }
 });
 
-webRouter.get('/replies', requireAuth, async (_req, res, next) => {
+webRouter.get('/replies', requireAuth, async (req, res, next) => {
   try {
-    const replies = await getPendingReplies();
+    const replies = await getPendingReplies(req.session.userId);
     res.render('replies', { title: 'Replies', replies });
   } catch (err) {
     next(err);
   }
 });
 
-// Add a new prospect directly from the UI. Submitting inserts the prospect
-// and immediately generates a 3-touch sequence, which lands on /drafts.
+// Run the full sourcing pipeline on a single prospect from the UI:
+// research (Claude + web_search) → score fit → draft sequence → queue for
+// approval. Same pipeline the scheduled cron will run once Salesforce is wired.
 webRouter.get('/prospects/new', requireAuth, (_req, res) => {
-  res.render('prospect_new', { title: 'Add prospect', form: {}, error: null });
+  res.render('prospect_new', { title: 'Add prospect', form: {}, error: null, notice: null });
 });
 
-webRouter.post('/prospects/new', requireAuth, async (req, res, next) => {
+webRouter.post('/prospects/new', requireAuth, async (req, res) => {
   const body = req.body || {};
   const form = {
     company: (body.company || '').trim(),
     domain: (body.domain || '').trim() || null,
-    contact_name: (body.contact_name || '').trim(),
-    contact_title: (body.contact_title || '').trim() || null,
-    contact_email: (body.contact_email || '').trim() || null,
-    industry: body.industry || null,
-    persona: body.persona || null,
-    seniority: body.seniority || null,
-    customer_status: body.customer_status || 'prospect',
-    fit_score: body.fit_score ? Number(body.fit_score) : null,
-    timing_signal: (body.timing_signal || '').trim(),
-    additional_context: (body.additional_context || '').trim() || null,
+    contact_name: (body.contact_name || '').trim() || null,
   };
 
-  if (!form.company || !form.contact_name || !form.timing_signal) {
+  if (!form.company) {
     return res.render('prospect_new', {
-      title: 'Add prospect',
-      form,
-      error: 'Company, contact name, and timing signal are required.',
+      title: 'Add prospect', form,
+      error: 'Company is required.', notice: null,
     });
   }
 
   try {
-    const prospect = await upsertProspect({
-      ...form,
-      timing_signal_source: 'manual',
+    const result = await researchAndDraft({
+      company: form.company,
+      domain: form.domain,
+      contact_name: form.contact_name,
+      owner_user_id: req.session.userId,
     });
 
-    let draft;
-    try {
-      draft = await generateSequence(prospect);
-    } catch (err) {
-      console.error('[prospects/new] writer failed:', err);
+    if (!result.draft) {
+      // Prospect was saved, but didn't meet the drafting bar — explain why
+      // so the operator can judge whether the sourcing got it right.
       return res.render('prospect_new', {
-        title: 'Add prospect',
-        form,
-        error: 'Prospect saved, but the writer failed: ' + (err.message || 'unknown error') + '. Check Settings → Anthropic.',
+        title: 'Add prospect', form,
+        error: null,
+        notice: `Researched, but no draft created: ${result.reason}. The prospect was saved for later.`,
       });
     }
-
-    await addToApprovalQueue({ prospect, draft, status: 'pending' });
     res.redirect('/drafts');
   } catch (err) {
-    next(err);
+    console.error('[prospects/new] pipeline failed:', err);
+    res.render('prospect_new', {
+      title: 'Add prospect', form,
+      error: 'Pipeline failed: ' + (err.message || 'unknown error') + '. Check the Railway logs.',
+      notice: null,
+    });
   }
 });
 

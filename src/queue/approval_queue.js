@@ -41,30 +41,32 @@ export async function addToReplyQueue({
   return rows[0];
 }
 
-export async function getPendingDrafts() {
+export async function getPendingDrafts(userId = null) {
   const { rows } = await query(`
     SELECT
       aq.*,
       p.company, p.contact_name, p.contact_title, p.contact_email,
       p.persona, p.industry, p.seniority, p.fit_score AS prospect_fit_score,
       p.timing_signal, p.timing_signal_source, p.customer_status,
-      p.additional_context
+      p.additional_context, p.owner_user_id
     FROM approval_queue aq
     JOIN prospects p ON p.id = aq.prospect_id
     WHERE aq.status = 'pending'
+      AND ($1::uuid IS NULL OR p.owner_user_id = $1 OR p.owner_user_id IS NULL)
     ORDER BY aq.queued_at ASC;
-  `);
+  `, [userId]);
   return rows;
 }
 
-export async function getPendingReplies() {
+export async function getPendingReplies(userId = null) {
   const { rows } = await query(`
-    SELECT rq.*, p.company, p.contact_name, p.contact_email
+    SELECT rq.*, p.company, p.contact_name, p.contact_email, p.owner_user_id
     FROM reply_queue rq
     JOIN prospects p ON p.id = rq.prospect_id
     WHERE rq.status = 'pending'
+      AND ($1::uuid IS NULL OR p.owner_user_id = $1 OR p.owner_user_id IS NULL)
     ORDER BY rq.queued_at ASC;
-  `);
+  `, [userId]);
   return rows;
 }
 
