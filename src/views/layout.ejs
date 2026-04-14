@@ -38,7 +38,9 @@
       <%
         const runningMs = Date.now() - new Date(activeJob.started_at).getTime();
         const runningSec = Math.floor(runningMs / 1000);
-        const stuck = runningSec > 300; // 5 minutes = probably dead
+        // Multi-candidate runs: ~3 min research + ~30s writer per candidate,
+        // so 5 candidates = 15-18 min normally. Don't cry wolf before 12 min.
+        const stuck = runningSec > 720;
       %>
       <div class="<%= stuck ? 'bg-amber-50 border-amber-200 text-amber-900' : 'bg-emerald-50 border-emerald-200 text-emerald-900' %> border-b">
         <div class="max-w-6xl mx-auto px-4 py-3 text-sm flex items-center gap-3">
@@ -48,8 +50,9 @@
               <strong>Discovery has been running for <%= Math.floor(runningSec / 60) %> min — likely stuck.</strong>
               Background task may have failed silently. Check Railway logs (Deployments → live deploy → Logs) for <code>[discovery]</code> lines, or cancel and retry.
             <% } else { %>
-              <strong>Discovering <%= activeJob.requested_count %> new prospects</strong> (<%= runningSec %>s elapsed).
-              Claude is searching the web and drafting sequences. Drafts appear as each one finishes (typically 2–4 min total).
+              <strong>Discovering <%= activeJob.requested_count %> new prospects</strong>
+              (<%= runningSec < 60 ? runningSec + 's' : Math.floor(runningSec/60) + 'm ' + (runningSec%60) + 's' %> elapsed).
+              Claude is searching the web, researching each prospect, and drafting sequences. Expect ~3 min per candidate; full run usually 10–18 min.
             <% } %>
           </div>
           <% if (stuck) { %>
