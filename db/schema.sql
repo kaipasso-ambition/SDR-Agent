@@ -179,6 +179,35 @@ CREATE INDEX IF NOT EXISTS discovery_jobs_user_idx ON discovery_jobs(user_id, st
 -- candidate lists) so we can see WHY a run ended with 0 drafts from the UI.
 ALTER TABLE discovery_jobs ADD COLUMN IF NOT EXISTS diagnostics JSONB;
 
+-- Presence copilot: LinkedIn posts ingested from Sales Navigator email alerts.
+-- One row per post, deduped by post_url. Ranker populates rank_score; commenter
+-- populates draft_comment for the top ~10/day. Kai/Colin post manually.
+CREATE TABLE IF NOT EXISTS presence_posts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  author_name TEXT NOT NULL,
+  author_title TEXT,
+  author_company TEXT,
+  author_linkedin_url TEXT,
+  post_url TEXT UNIQUE,
+  post_snippet TEXT,
+  post_type TEXT,                -- 'share' | 'job_change' | 'news_mention' | 'comment' | 'other'
+  posted_at TIMESTAMPTZ,
+  received_at TIMESTAMPTZ DEFAULT NOW(),
+  rank_score NUMERIC,
+  rank_reason TEXT,
+  draft_comment TEXT,
+  drafted_at TIMESTAMPTZ,
+  status TEXT NOT NULL DEFAULT 'new',  -- 'new' | 'drafted' | 'posted' | 'skipped' | 'archived'
+  thumbs TEXT,                   -- 'up' | 'down' | null
+  feedback_note TEXT,
+  owner_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  source_email_id TEXT,          -- IMAP Message-ID for trace
+  raw_meta JSONB
+);
+CREATE INDEX IF NOT EXISTS presence_posts_status_idx ON presence_posts(status);
+CREATE INDEX IF NOT EXISTS presence_posts_received_idx ON presence_posts(received_at DESC);
+CREATE INDEX IF NOT EXISTS presence_posts_rank_idx ON presence_posts(rank_score DESC NULLS LAST);
+
 -- Integration credentials (stored after OAuth so users don't edit .env for these)
 CREATE TABLE IF NOT EXISTS integrations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

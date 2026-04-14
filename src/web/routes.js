@@ -6,6 +6,15 @@ import { query } from '../db/index.js';
 import { getPendingDrafts, getPendingReplies } from '../queue/approval_queue.js';
 import { researchAndDraft, runDiscoveryCycle, runPilotBatch } from '../pipeline.js';
 import { PILOT_BATCH } from '../lib/pilot_batch.js';
+import {
+  getPresenceFeed,
+  getPresenceStats,
+  markPosted,
+  markSkipped,
+  setThumbs,
+} from '../db/presence.js';
+import { pollPresenceInbox } from '../integrations/gmail_imap.js';
+import { runRankerCycle } from '../lib/presence_ranker.js';
 
 export const webRouter = Router();
 
@@ -375,6 +384,59 @@ webRouter.post('/settings/disconnect/:provider', requireAuth, async (req, res, n
   try {
     await query(`DELETE FROM integrations WHERE provider = $1;`, [req.params.provider]);
     res.redirect('/settings');
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------- Presence copilot ----------
+
+webRouter.get('/presence', requireAuth, async (_req, res, next) => {
+  try {
+    const [feed, stats] = await Promise.all([
+      getPresenceFeed({ limit: 30 }),
+      getPresenceStats(),
+    ]);
+    res.render('presence', { title: 'Presence', feed, stats });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Manual trigger: pull new Sales Nav digests and rank immediately. Useful for
+// testing before the cron fires. Fire-and-forget; redirects right back.
+webRouter.post('/presence/refresh', requireAuth, async (_req, res) => {
+  Promise.resolve()
+    .then(() => pollPresenceInbox())
+    .then((r) => { console.log('[presence/refresh] poll result:', r); return runRankerCycle(); })
+    .then((r) => console.log('[presence/refresh] rank result:', r))
+    .catch((err) => console.error('[presence/refresh] failed:', err));
+  res.redirect('/presence');
+});
+
+webRouter.post('/presence/:id/posted', requireAuth, async (req, res, next) => {
+  try {
+    await markPosted(req.params.id);
+    res.redirect('/presence');
+  } catch (err) {
+    next(err);
+  }
+});
+
+webRouter.post('/presence/:id/skip', requireAuth, async (req, res, next) => {
+  try {
+    await markSkipped(req.params.id);
+    res.redirect('/presence');
+  } catch (err) {
+    next(err);
+  }
+});
+
+webRouter.post('/presence/:id/thumbs', requireAuth, async (req, res, next) => {
+  try {
+    const thumbs = req.body?.thumbs === 'up' ? 'up' : req.body?.thumbs === 'down' ? 'down' : null;
+    await setThumbs(req.params.id, { thumbs, note: req.body?.note || null });
+    res.redirect('/presence');
   } catch (err) {
     next(err);
   }

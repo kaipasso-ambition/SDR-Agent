@@ -5,6 +5,8 @@ import { runWriterCycle } from './agents/writer.js';
 import { runReplyCycle } from './agents/reply_agent.js';
 import { runDiscoveryCycle } from './pipeline.js';
 import { sendApprovedMessages } from './sender.js';
+import { pollPresenceInbox } from './integrations/gmail_imap.js';
+import { runRankerCycle } from './lib/presence_ranker.js';
 import { startServer } from './api/server.js';
 import { query } from './db/index.js';
 
@@ -96,6 +98,29 @@ cron.schedule(
       await sendApprovedMessages();
     } catch (err) {
       console.error('[scheduler] sender failed:', err);
+    }
+  },
+  { timezone: tz }
+);
+
+// Presence copilot: poll Sales Nav digest inbox + rank + draft.
+// Runs every 4h during the workday — catches the morning Sales Nav digest
+// within hours of it landing, and the afternoon one too.
+cron.schedule(
+  '15 7,11,15,19 * * 1-5',
+  async () => {
+    if (!process.env.GMAIL_IMAP_USER || !process.env.GMAIL_IMAP_PASSWORD) {
+      console.log('[scheduler] presence skipped — GMAIL_IMAP_USER/PASSWORD not set');
+      return;
+    }
+    console.log('[scheduler] Starting presence poll + rank');
+    try {
+      const pollResult = await pollPresenceInbox();
+      console.log('[scheduler] presence poll:', pollResult);
+      const rankResult = await runRankerCycle();
+      console.log('[scheduler] presence rank:', rankResult);
+    } catch (err) {
+      console.error('[scheduler] presence cycle failed:', err);
     }
   },
   { timezone: tz }
