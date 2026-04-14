@@ -54,7 +54,11 @@ export async function pollPresenceInbox({ markSeen = true, dryRun = false } = {}
     try {
       // Unseen messages only. Gmail applies the label when our filter fires,
       // so this loop only iterates new Sales Nav digests.
-      const unseen = await imap.search({ seen: false });
+      //
+      // { uid: true } is critical — without it search returns sequence numbers,
+      // but fetchOne/messageFlagsAdd below use { uid: true } and will throw
+      // "Input cannot be null or undefined" when handed a seq number.
+      const unseen = await imap.search({ seen: false }, { uid: true });
       if (!unseen || unseen.length === 0) {
         console.log(`[gmail_imap] no unseen messages in "${label}"`);
         return stats;
