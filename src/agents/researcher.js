@@ -45,7 +45,9 @@ ${signal ? JSON.stringify(signal, null, 2) : 'No signals found — rely on web_s
 
   const response = await client.messages.create({
     model: 'claude-sonnet-4-20250514',
-    max_tokens: 2000,
+    // Was 2000 — web_search tool use + reasoning + JSON response can blow
+    // past that and truncate. 4000 gives enough headroom.
+    max_tokens: 4000,
     system: RESEARCH_PROMPT,
     messages: [{ role: 'user', content: userContent }],
     tools: [
@@ -62,13 +64,30 @@ ${signal ? JSON.stringify(signal, null, 2) : 'No signals found — rely on web_s
     .join('')
     .trim();
 
+  const searchCount = response.content.filter(
+    (b) => b.type === 'server_tool_use' && b.name === 'web_search'
+  ).length;
+
+  console.log(`[researcher] ${account.company}: stop=${response.stop_reason}, searches=${searchCount}, out_tok=${response.usage?.output_tokens}`);
+
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
   const brace = text.match(/\{[\s\S]*\}/);
   const jsonText = fenced ? fenced[1].trim() : (brace ? brace[0] : text);
+  let parsed;
   try {
-    return JSON.parse(jsonText);
+    parsed = JSON.parse(jsonText);
   } catch (err) {
     const preview = text.slice(0, 400).replace(/\s+/g, ' ');
     throw new Error(`Researcher JSON parse failed for ${account.company}. First 400 chars: ${preview}`);
   }
+
+  // Circuit breaker: if zero web_search calls, disqualify with a clear reason
+  // rather than passing through hallucinated research.
+  if (searchCount === 0) {
+    console.warn(`[researcher] ${account.company}: zero web_searches — disqualifying as unverified`);
+    parsed.disqualified = true;
+    parsed.disqualify_reason = 'researcher did not call web_search — data would be from training memory, not current web';
+    parsed.fit_score = Math.min(parsed.fit_score ?? 0, 40);
+  }
+  return parsed;
 }

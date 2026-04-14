@@ -85,12 +85,23 @@ export async function discoverCandidates({ count = 5, hint = '' } = {}) {
     domain: c.domain,
     industry: c.industry,
     signal_type: c.signal_type,
+    signal_date: c.signal_date,
+    source_url: c.source_url,
     total: c.estimated_total_headcount,
     sales: c.estimated_sales_headcount,
   }));
 
   console.log(`[discovery] parsed ${rawCandidates.length} raw candidates:`,
     rawCandidates.map((c) => `${c.company} [total=${c.estimated_total_headcount} sales=${c.estimated_sales_headcount}]`).join('; '));
+
+  // Circuit breaker: if Claude returned candidates but made zero web_search
+  // calls, it pulled them from training-data memory. The signals are
+  // hallucinated — drop the whole run rather than pass bad data downstream.
+  if (rawCandidates.length > 0 && searchCount === 0) {
+    diagnostics.error = 'Claude returned candidates without calling web_search — signals are from training data, not fresh web results. Run rejected.';
+    console.error('[discovery] REJECTED run: 0 web_searches made, signals are not grounded in real-time data');
+    return { candidates: [], diagnostics };
+  }
 
   // Belt-and-suspenders size filter. Record drops so the UI explains them.
   const drops = [];
