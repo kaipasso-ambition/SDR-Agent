@@ -67,20 +67,47 @@ export async function runDiscoveryCycle({ count = 5, hint = '', owner_user_id = 
   const updateJob = async (fields) => {
     if (!job_id) return;
     const keys = Object.keys(fields);
-    const sets = keys.map((k, i) => `${k} = $${i + 2}`).join(', ');
-    await query(`UPDATE discovery_jobs SET ${sets} WHERE id = $1`, [job_id, ...keys.map((k) => fields[k])]);
+    // diagnostics is jsonb — cast explicitly so pg doesn't reject a text value.
+    const sets = keys.map((k, i) => {
+      const cast = k === 'diagnostics' ? '::jsonb' : '';
+      return `${k} = $${i + 2}${cast}`;
+    }).join(', ');
+    const values = keys.map((k) => {
+      const v = fields[k];
+      return k === 'diagnostics' && v && typeof v === 'object' ? JSON.stringify(v) : v;
+    });
+    await query(`UPDATE discovery_jobs SET ${sets} WHERE id = $1`, [job_id, ...values]);
   };
 
-  let candidates;
+  let candidates, diagnostics;
   try {
-    candidates = await discoverCandidates({ count, hint });
+    const result = await discoverCandidates({ count, hint });
+    candidates = result.candidates;
+    diagnostics = result.diagnostics;
+    await updateJob({ diagnostics });
   } catch (err) {
     console.error('[discovery] discoverer failed:', err.message);
-    await updateJob({ status: 'failed', error: err.message, finished_at: new Date() });
+    await updateJob({
+      status: 'failed',
+      error: err.message,
+      finished_at: new Date(),
+      diagnostics: { error: err.message, stack: err.stack?.slice(0, 1000) },
+    });
     return { discovered: 0, drafted: 0, error: err.message };
   }
-  console.log(`[discovery] Claude returned ${candidates.length} candidates:`,
-    candidates.map((c) => `${c.company} (${c.signal_type})`).join(', '));
+  console.log(`[discovery] ${candidates.length} candidates cleared size filter:`,
+    candidates.map((c) => `${c.company} (${c.signal_type})`).join(', ') || '(none)');
+
+  if (candidates.length === 0) {
+    await updateJob({
+      status: 'completed',
+      discovered_count: 0,
+      drafted_count: 0,
+      skipped_count: 0,
+      finished_at: new Date(),
+    });
+    return { discovered: 0, drafted: 0, skipped: 0, error: null };
+  }
 
   // Dedup: drop any candidate whose domain we already have.
   const domains = candidates.map((c) => c.domain).filter(Boolean);

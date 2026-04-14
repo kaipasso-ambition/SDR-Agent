@@ -175,6 +175,10 @@ CREATE TABLE IF NOT EXISTS discovery_jobs (
 );
 CREATE INDEX IF NOT EXISTS discovery_jobs_user_idx ON discovery_jobs(user_id, started_at DESC);
 
+-- Free-form diagnostics (stop_reason, raw Claude text preview, pre/post-filter
+-- candidate lists) so we can see WHY a run ended with 0 drafts from the UI.
+ALTER TABLE discovery_jobs ADD COLUMN IF NOT EXISTS diagnostics JSONB;
+
 -- Integration credentials (stored after OAuth so users don't edit .env for these)
 CREATE TABLE IF NOT EXISTS integrations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

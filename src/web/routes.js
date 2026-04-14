@@ -205,7 +205,7 @@ webRouter.get('/discovery', requireAuth, async (req, res, next) => {
   try {
     const { rows } = await query(
       `SELECT id, status, requested_count, discovered_count, drafted_count,
-              skipped_count, error, started_at, finished_at,
+              skipped_count, error, started_at, finished_at, diagnostics,
               EXTRACT(EPOCH FROM (COALESCE(finished_at, NOW()) - started_at))::int AS duration_sec
          FROM discovery_jobs
         WHERE user_id = $1
