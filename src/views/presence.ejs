@@ -112,34 +112,42 @@
 
         <div class="mt-3 flex items-center gap-2 flex-wrap">
           <%
-            // All Sales Nav destinations resolve through the same click_url
-            // (the /comm redirect that lands on the lead's profile). Different
-            // labels just tell the operator what to do once they're there —
-            // click "Message", scroll Activity, etc. Deep-linking into the
-            // message composer deserves a separate iteration.
             const profileUrl = (p.raw_meta && p.raw_meta.click_url) || p.post_url;
+
+            // Sales Nav message-composer deep link. The lead URN comes straight
+            // from the digest (stashed by the parser in raw_meta.lead_urn).
+            // URL format is unverified — shipping blind per operator request;
+            // revert to profileUrl if it doesn't actually land on the composer.
+            const leadUrn = p.raw_meta && p.raw_meta.lead_urn;
+            const dmUrl = leadUrn
+              ? 'https://www.linkedin.com/sales/inbox/new-thread/?recipients=' + encodeURIComponent(leadUrn)
+              : profileUrl;
 
             // Primary action routes on post_type. The parser classifies each
             // digest block by sniffing "posted" / "commented on" / "reacted to"
             // in the surrounding HTML; classification is heuristic so the
             // secondary DM link is always visible as an override.
-            let primaryLabel, primaryHint;
+            let primaryLabel, primaryHint, primaryUrl;
             switch (p.post_type) {
               case 'comment':
                 primaryLabel = 'Open DM (copy draft)';
-                primaryHint = 'They commented on someone else\'s post — the thread is hard to locate, so DM them referencing their comment instead. Copies draft, opens Sales Nav profile. Click "Message" on the profile to compose.';
+                primaryHint = 'They commented on someone else\'s post — the thread is hard to locate, so DM them referencing their comment. Copies draft, opens Sales Nav message composer.';
+                primaryUrl = dmUrl;
                 break;
               case 'reaction':
                 primaryLabel = 'Open DM (copy draft)';
-                primaryHint = 'They reacted/liked rather than posting — nothing to comment on. DM them instead. Copies draft, opens Sales Nav profile.';
+                primaryHint = 'They reacted/liked rather than posting — nothing to comment on. DM them instead. Copies draft, opens Sales Nav message composer.';
+                primaryUrl = dmUrl;
                 break;
               case 'job_change':
                 primaryLabel = 'Open DM — congrats (copy draft)';
-                primaryHint = 'Job change: a short congrats DM lands better than a comment on the announcement post. Copies draft, opens Sales Nav profile. Click "Message" to send.';
+                primaryHint = 'Job change: a short congrats DM lands better than a comment on the announcement. Copies draft, opens Sales Nav message composer.';
+                primaryUrl = dmUrl;
                 break;
               default: // share, news_mention, other
                 primaryLabel = 'Open profile → comment (copy draft)';
                 primaryHint = 'Top-level post: scroll the lead\'s Activity feed and comment on the matching post. Copies the draft to your clipboard.';
+                primaryUrl = profileUrl;
             }
 
             // Google site:linkedin.com fallback — helps when Sales Nav
@@ -162,7 +170,7 @@
             type="button"
             class="open-post bg-slate-900 hover:bg-slate-800 text-white px-4 py-1.5 rounded text-sm"
             data-post-id="<%= p.id %>"
-            data-post-url="<%= profileUrl %>"
+            data-post-url="<%= primaryUrl %>"
             title="<%= primaryHint %>">
             <%= primaryLabel %>
           </button>
@@ -171,8 +179,8 @@
               type="button"
               class="open-post text-xs text-slate-500 hover:text-slate-800 underline"
               data-post-id="<%= p.id %>"
-              data-post-url="<%= profileUrl %>"
-              title="Can't find the post? DM them instead — opens profile and copies the draft. Click Message on the profile to compose.">
+              data-post-url="<%= dmUrl %>"
+              title="Can't find the post? DM them instead — opens Sales Nav message composer and copies the draft.">
               DM instead ↗
             </button>
           <% } %>
