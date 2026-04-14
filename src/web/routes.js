@@ -181,10 +181,12 @@ webRouter.get('/prospects/import', requireAuth, async (req, res, next) => {
     // ordered strongest-signal first, alternating owners, so limit=4 picks
     // the top 2 per rep.
     const raw = Number(req.query.limit);
-    const limit = Number.isFinite(raw) && raw > 0 && raw <= PILOT_BATCH.length ? raw : null;
-    const batch = limit ? PILOT_BATCH.slice(0, limit) : PILOT_BATCH;
+    const queryLimit = Number.isFinite(raw) && raw > 0 && raw <= PILOT_BATCH.length ? raw : null;
 
-    const uniqueOwners = [...new Set(batch.map((p) => p.owner_name))];
+    // Owner-resolution lookup always uses the full roster — we flag unresolved
+    // owners regardless of limit so the operator sees the problem before it
+    // bites them on the next run.
+    const uniqueOwners = [...new Set(PILOT_BATCH.map((p) => p.owner_name))];
     const ownerStatus = {};
     for (const name of uniqueOwners) {
       const { rows } = await query(
@@ -193,6 +195,18 @@ webRouter.get('/prospects/import', requireAuth, async (req, res, next) => {
       );
       ownerStatus[name] = rows[0] || null;
     }
+
+    // Running pilot job (if any) so we can lock the highlighted count to what
+    // is actually in flight, not whatever query string the user navigated in
+    // with.
+    const runningPilot = (await query(
+      `SELECT id, requested_count, started_at
+         FROM discovery_jobs
+        WHERE user_id = $1 AND status = 'running'
+          AND diagnostics IS NULL    -- pilot writes diagnostics at the end; running pilot has none yet
+        ORDER BY started_at DESC LIMIT 1`,
+      [req.session.userId]
+    )).rows[0] || null;
 
     const recentJob = (await query(
       `SELECT id, status, started_at, finished_at, drafted_count, skipped_count,
@@ -204,11 +218,23 @@ webRouter.get('/prospects/import', requireAuth, async (req, res, next) => {
       [req.session.userId]
     )).rows[0] || null;
 
+    // activeCount priority: running job's scope > URL ?limit > full batch.
+    // This way, once a run starts, navigating away and back still shows the
+    // correct highlighted subset.
+    const activeCount = runningPilot?.requested_count ?? queryLimit ?? PILOT_BATCH.length;
+
+    // Tag every row with active=true if it's in scope for the current run /
+    // selection. Full batch always rendered so the unchosen picks are visible
+    // but visually muted.
+    const batch = PILOT_BATCH.map((p, i) => ({ ...p, active: i < activeCount }));
+
     res.render('prospects_import', {
       title: 'Pilot batch',
       batch,
       fullBatchSize: PILOT_BATCH.length,
-      limit,
+      activeCount,
+      limit: queryLimit,
+      runningPilot,
       ownerStatus,
       recentJob,
     });

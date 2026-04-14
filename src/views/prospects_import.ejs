@@ -9,6 +9,9 @@
 
   const runningJob = recentJob && recentJob.status === 'running';
   const lastResults = recentJob && recentJob.diagnostics && recentJob.diagnostics.results;
+
+  const activeInKai   = kai.filter(function(p) { return p.active; }).length;
+  const activeInColin = colin.filter(function(p) { return p.active; }).length;
 %>
 
 <div class="mb-6 flex items-start justify-between gap-4">
@@ -16,20 +19,23 @@
     <h1 class="text-2xl font-semibold">
       Pilot batch
       <span class="text-slate-400 text-base font-normal">
-        (<%= batch.length %><% if (limit) { %> of <%= fullBatchSize %><% } %>)
+        <%= activeCount %> of <%= fullBatchSize %> in scope
       </span>
     </h1>
     <p class="text-sm text-slate-500 mt-1">
-      Hand-picked prospects from Kai's and Colin's books — transportation, telecom, and consumer finance.
-      Batch is ordered strongest-signal first, alternating owners. Append <code>?limit=N</code> to the URL to run only the top N.
-      Owners are hard-coded; drafts land in each owner's queue.
+      Hand-picked prospects — transportation, telecom, and consumer finance.
+      Batch is ordered strongest-signal first, alternating owners.
+      <strong>Highlighted rows</strong> are in scope for the next (or in-flight) run. Greyed rows are parked.
     </p>
     <div class="text-xs text-slate-500 mt-2 flex items-center gap-2">
-      <span>Quick limits:</span>
+      <span>Set scope:</span>
       <a href="/prospects/import?limit=2" class="underline hover:text-slate-900">2</a>
       <a href="/prospects/import?limit=4" class="underline hover:text-slate-900">4</a>
       <a href="/prospects/import?limit=6" class="underline hover:text-slate-900">6</a>
       <a href="/prospects/import" class="underline hover:text-slate-900">all <%= fullBatchSize %></a>
+      <% if (runningPilot) { %>
+        <span class="text-slate-400">· locked to <%= runningPilot.requested_count %> while a run is in flight</span>
+      <% } %>
     </div>
   </div>
   <form method="POST" action="/prospects/import">
@@ -39,7 +45,7 @@
       <%= (runningJob || unresolved.length > 0) ? 'disabled' : '' %>
       class="bg-slate-900 hover:bg-slate-800 text-white px-5 py-2 rounded text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed"
     >
-      <%= runningJob ? 'Running…' : ('Run research + draft (' + batch.length + ')') %>
+      <%= runningJob ? 'Running…' : ('Run research + draft (' + activeCount + ')') %>
     </button>
   </form>
 </div>
@@ -52,11 +58,16 @@
 <% } %>
 
 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-  <% [['Kai', kai], ['Colin', colin]].forEach(function(pair) { %>
-    <% var owner = pair[0], rows = pair[1]; %>
+  <% [['Kai', kai, activeInKai], ['Colin', colin, activeInColin]].forEach(function(tuple) { %>
+    <% var owner = tuple[0], rows = tuple[1], activeN = tuple[2]; %>
     <div class="bg-white border border-slate-200 rounded-lg overflow-hidden">
       <div class="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
-        <h2 class="font-semibold"><%= owner %>'s 5</h2>
+        <h2 class="font-semibold">
+          <%= owner %>'s picks
+          <span class="text-xs text-slate-500 font-normal">
+            (<%= activeN %> of <%= rows.length %> in scope)
+          </span>
+        </h2>
         <% var resolved = ownerStatus[owner]; %>
         <span class="pill <%= badge(!!resolved) %>">
           <%= resolved ? resolved.email : 'NOT RESOLVED' %>
@@ -64,9 +75,16 @@
       </div>
       <ul class="divide-y divide-slate-100">
         <% rows.forEach(function(p) { %>
-          <li class="px-4 py-3 text-sm">
+          <li class="px-4 py-3 text-sm <%= p.active ? 'bg-emerald-50/40 border-l-4 border-emerald-400' : 'opacity-40' %>">
             <div class="flex items-baseline justify-between gap-2">
-              <strong><%= p.company %></strong>
+              <div class="flex items-center gap-2">
+                <% if (p.active) { %>
+                  <span class="pill bg-emerald-100 text-emerald-800">in scope</span>
+                <% } else { %>
+                  <span class="pill bg-slate-100 text-slate-500">parked</span>
+                <% } %>
+                <strong><%= p.company %></strong>
+              </div>
               <span class="text-xs text-slate-400"><%= p.domain %></span>
             </div>
             <p class="text-xs text-slate-600 mt-1"><%= p.signal_note %></p>
