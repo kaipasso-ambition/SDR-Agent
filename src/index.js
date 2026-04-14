@@ -1,4 +1,7 @@
 import 'dotenv/config';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import cron from 'node-cron';
 import { runResearchCycle } from './agents/researcher.js';
 import { runWriterCycle } from './agents/writer.js';
@@ -8,7 +11,23 @@ import { sendApprovedMessages } from './sender.js';
 import { pollPresenceInbox } from './integrations/gmail_imap.js';
 import { runRankerCycle } from './lib/presence_ranker.js';
 import { startServer } from './api/server.js';
-import { query } from './db/index.js';
+import { query, pool } from './db/index.js';
+
+// On boot, apply db/schema.sql. Every statement is idempotent (IF NOT EXISTS /
+// ADD COLUMN IF NOT EXISTS / guarded DO blocks), so re-running on every boot
+// is safe and means new tables ship automatically on deploy — no manual
+// `railway run npm run migrate` step.
+(async () => {
+  try {
+    const __filename = fileURLToPath(import.meta.url);
+    const schemaPath = path.resolve(path.dirname(__filename), '..', 'db', 'schema.sql');
+    const sql = await fs.readFile(schemaPath, 'utf8');
+    await pool.query(sql);
+    console.log('[boot] schema.sql applied');
+  } catch (err) {
+    console.error('[boot] schema apply failed:', err.message);
+  }
+})();
 
 // On boot, fail any discovery job still marked 'running' — it was either
 // interrupted by a deploy/restart or it silently crashed. Leaving it
