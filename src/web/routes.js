@@ -177,9 +177,14 @@ webRouter.post('/discover', requireAuth, async (req, res, next) => {
 // burning discovery credits.
 webRouter.get('/prospects/import', requireAuth, async (req, res, next) => {
   try {
-    // Flag any rows whose owner name won't resolve so the operator sees it
-    // before clicking Run.
-    const uniqueOwners = [...new Set(PILOT_BATCH.map((p) => p.owner_name))];
+    // ?limit=N caps how many of the pre-sorted batch actually run. Batch is
+    // ordered strongest-signal first, alternating owners, so limit=4 picks
+    // the top 2 per rep.
+    const raw = Number(req.query.limit);
+    const limit = Number.isFinite(raw) && raw > 0 && raw <= PILOT_BATCH.length ? raw : null;
+    const batch = limit ? PILOT_BATCH.slice(0, limit) : PILOT_BATCH;
+
+    const uniqueOwners = [...new Set(batch.map((p) => p.owner_name))];
     const ownerStatus = {};
     for (const name of uniqueOwners) {
       const { rows } = await query(
@@ -201,7 +206,9 @@ webRouter.get('/prospects/import', requireAuth, async (req, res, next) => {
 
     res.render('prospects_import', {
       title: 'Pilot batch',
-      batch: PILOT_BATCH,
+      batch,
+      fullBatchSize: PILOT_BATCH.length,
+      limit,
       ownerStatus,
       recentJob,
     });
@@ -214,23 +221,28 @@ webRouter.post('/prospects/import', requireAuth, async (req, res, next) => {
   try {
     const ownerId = req.session.userId;
 
+    // Accept limit from form body (hidden input on the page) or query string.
+    const raw = Number(req.body?.limit ?? req.query?.limit);
+    const limit = Number.isFinite(raw) && raw > 0 && raw <= PILOT_BATCH.length ? raw : null;
+    const runCount = limit ?? PILOT_BATCH.length;
+
     const existing = await query(
       `SELECT id FROM discovery_jobs WHERE user_id = $1 AND status = 'running' LIMIT 1`,
       [ownerId]
     );
     if (existing.rows[0]) {
-      return res.redirect('/prospects/import');
+      return res.redirect(limit ? `/prospects/import?limit=${limit}` : '/prospects/import');
     }
 
     const { rows } = await query(
       `INSERT INTO discovery_jobs (user_id, status, requested_count)
        VALUES ($1, 'running', $2) RETURNING id`,
-      [ownerId, PILOT_BATCH.length]
+      [ownerId, runCount]
     );
     const jobId = rows[0].id;
 
     // Fire and forget — HTTP returns immediately, the banner tracks progress.
-    runPilotBatch({ job_id: jobId })
+    runPilotBatch({ job_id: jobId, limit })
       .then((r) => console.log('[pilot] batch finished:', r.drafted, 'drafted'))
       .catch((err) => {
         console.error('[pilot] batch crashed:', err);
@@ -240,7 +252,7 @@ webRouter.post('/prospects/import', requireAuth, async (req, res, next) => {
         ).catch(() => {});
       });
 
-    res.redirect('/prospects/import');
+    res.redirect(limit ? `/prospects/import?limit=${limit}` : '/prospects/import');
   } catch (err) {
     next(err);
   }

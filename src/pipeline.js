@@ -171,8 +171,14 @@ export async function runDiscoveryCycle({ count = 5, hint = '', owner_user_id = 
  * Writes progress into the same discovery_jobs row the regular /discover cycle
  * uses, so the running/stuck/completed banner in layout.ejs works unchanged.
  */
-export async function runPilotBatch({ job_id = null } = {}) {
-  console.log(`[pilot] START job=${job_id} batch_size=${PILOT_BATCH.length}`);
+export async function runPilotBatch({ job_id = null, limit = null } = {}) {
+  // Take the first N from PILOT_BATCH (batch is pre-sorted strongest-signal
+  // first, alternating owners, so limit=4 gives you the top 2 per rep).
+  const activeBatch = (limit && limit > 0 && limit < PILOT_BATCH.length)
+    ? PILOT_BATCH.slice(0, limit)
+    : PILOT_BATCH;
+
+  console.log(`[pilot] START job=${job_id} batch_size=${activeBatch.length} (of ${PILOT_BATCH.length})`);
 
   const updateJob = async (fields) => {
     if (!job_id) return;
@@ -190,7 +196,7 @@ export async function runPilotBatch({ job_id = null } = {}) {
 
   // Resolve owner names → user ids once up front. If a match fails, skip those
   // rows with a clear error rather than silently assigning them to no-one.
-  const uniqueOwners = [...new Set(PILOT_BATCH.map((p) => p.owner_name))];
+  const uniqueOwners = [...new Set(activeBatch.map((p) => p.owner_name))];
   const ownerMap = {};
   for (const name of uniqueOwners) {
     const { rows } = await query(
@@ -201,7 +207,7 @@ export async function runPilotBatch({ job_id = null } = {}) {
     console.log(`[pilot] owner "${name}" → ${rows[0] ? rows[0].email : 'NO MATCH'}`);
   }
 
-  const resolved = PILOT_BATCH.map((p) => ({ ...p, owner: ownerMap[p.owner_name] }));
+  const resolved = activeBatch.map((p) => ({ ...p, owner: ownerMap[p.owner_name] }));
   const skippedForOwner = resolved.filter((p) => !p.owner);
   const runnable = resolved.filter((p) => p.owner);
 
@@ -281,13 +287,15 @@ export async function runPilotBatch({ job_id = null } = {}) {
     finished_at: new Date(),
     diagnostics: {
       pilot_batch: true,
-      batch_size: PILOT_BATCH.length,
+      batch_size: activeBatch.length,
+      full_batch_size: PILOT_BATCH.length,
+      limit_applied: limit ?? null,
       concurrency: CONCURRENCY,
       results,
     },
   });
 
-  return { total: PILOT_BATCH.length, drafted, skipped, errored, results };
+  return { total: activeBatch.length, drafted, skipped, errored, results };
 }
 
 /**
