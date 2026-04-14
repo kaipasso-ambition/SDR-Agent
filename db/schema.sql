@@ -208,6 +208,27 @@ CREATE INDEX IF NOT EXISTS presence_posts_status_idx ON presence_posts(status);
 CREATE INDEX IF NOT EXISTS presence_posts_received_idx ON presence_posts(received_at DESC);
 CREATE INDEX IF NOT EXISTS presence_posts_rank_idx ON presence_posts(rank_score DESC NULLS LAST);
 
+-- Presence refresh job tracker — mirrors discovery_jobs. Each manual click
+-- of "Refresh now" inserts a row; the /presence view renders a banner from
+-- the latest row so users see that a poll+rank is in flight (and stop
+-- hammering the button). Cron-triggered polls don't create rows (they're
+-- invisible background work).
+CREATE TABLE IF NOT EXISTS presence_refresh_jobs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  status TEXT NOT NULL DEFAULT 'running',  -- 'running' | 'completed' | 'failed'
+  emails_seen INTEGER DEFAULT 0,
+  posts_upserted INTEGER DEFAULT 0,
+  posts_new INTEGER DEFAULT 0,
+  drafted INTEGER DEFAULT 0,
+  skipped INTEGER DEFAULT 0,
+  errored INTEGER DEFAULT 0,
+  error TEXT,
+  started_at TIMESTAMPTZ DEFAULT NOW(),
+  finished_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS presence_refresh_jobs_started_idx ON presence_refresh_jobs(started_at DESC);
+
 -- Integration credentials (stored after OAuth so users don't edit .env for these)
 CREATE TABLE IF NOT EXISTS integrations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -12,6 +12,10 @@ import {
   markPosted,
   markSkipped,
   setThumbs,
+  startPresenceJob,
+  finishPresenceJob,
+  failPresenceJob,
+  getLatestPresenceJob,
 } from '../db/presence.js';
 import { pollPresenceInbox } from '../integrations/gmail_imap.js';
 import { runRankerCycle } from '../lib/presence_ranker.js';
@@ -393,25 +397,57 @@ webRouter.post('/settings/disconnect/:provider', requireAuth, async (req, res, n
 
 webRouter.get('/presence', requireAuth, async (_req, res, next) => {
   try {
-    const [feed, stats] = await Promise.all([
+    const [feed, stats, activePresenceJob] = await Promise.all([
       getPresenceFeed({ limit: 30 }),
       getPresenceStats(),
+      getLatestPresenceJob(),
     ]);
-    res.render('presence', { title: 'Presence', feed, stats });
+    res.render('presence', { title: 'Presence', feed, stats, activePresenceJob });
   } catch (err) {
     next(err);
   }
 });
 
-// Manual trigger: pull new Sales Nav digests and rank immediately. Useful for
-// testing before the cron fires. Fire-and-forget; redirects right back.
-webRouter.post('/presence/refresh', requireAuth, async (_req, res) => {
-  Promise.resolve()
-    .then(() => pollPresenceInbox())
-    .then((r) => { console.log('[presence/refresh] poll result:', r); return runRankerCycle(); })
-    .then((r) => console.log('[presence/refresh] rank result:', r))
-    .catch((err) => console.error('[presence/refresh] failed:', err));
-  res.redirect('/presence');
+// Manual trigger: pull new Sales Nav digests and rank immediately. Fire-and-
+// forget, but we log each run as a presence_refresh_jobs row so the view can
+// render a "Refreshing…" banner until the work finishes. If a job is already
+// running we skip starting a second one — prevents the user hammering the
+// button from queueing up duplicate work.
+webRouter.post('/presence/refresh', requireAuth, async (req, res) => {
+  try {
+    const existing = await getLatestPresenceJob();
+    if (existing && existing.status === 'running') {
+      // Don't start a second job — the banner will show the one in flight.
+      return res.redirect('/presence');
+    }
+    const job = await startPresenceJob({ userId: req.session?.userId || null });
+
+    // Run the actual work in the background and update the job row as we go.
+    Promise.resolve()
+      .then(async () => {
+        const poll = await pollPresenceInbox();
+        console.log('[presence/refresh] poll result:', poll);
+        const rank = await runRankerCycle();
+        console.log('[presence/refresh] rank result:', rank);
+        await finishPresenceJob(job.id, {
+          emails_seen: poll.emails_seen,
+          posts_upserted: poll.posts_upserted,
+          posts_new: poll.posts_new,
+          drafted: rank.drafted,
+          skipped: rank.skipped,
+          errored: rank.errored,
+        });
+      })
+      .catch(async (err) => {
+        console.error('[presence/refresh] failed:', err);
+        try { await failPresenceJob(job.id, err.message || String(err)); } catch (_) {}
+      });
+
+    res.redirect('/presence');
+  } catch (err) {
+    console.error('[presence/refresh] route error:', err);
+    res.redirect('/presence');
+  }
 });
 
 webRouter.post('/presence/:id/posted', requireAuth, async (req, res, next) => {

@@ -138,3 +138,56 @@ export async function getPresenceStats() {
   `);
   return rows[0];
 }
+
+// ----- Refresh job tracker -----
+//
+// Each manual click of "Refresh now" on /presence inserts a row here so the
+// dashboard can render a live status banner (running → completed → auto-fade).
+// Cron-triggered polls don't create rows — they're invisible background work.
+
+export async function startPresenceJob({ userId = null } = {}) {
+  const { rows } = await query(
+    `INSERT INTO presence_refresh_jobs (user_id, status) VALUES ($1, 'running') RETURNING *`,
+    [userId]
+  );
+  return rows[0];
+}
+
+export async function finishPresenceJob(id, stats) {
+  const {
+    emails_seen = 0, posts_upserted = 0, posts_new = 0,
+    drafted = 0, skipped = 0, errored = 0,
+  } = stats || {};
+  await query(
+    `UPDATE presence_refresh_jobs
+        SET status = 'completed',
+            emails_seen = $2, posts_upserted = $3, posts_new = $4,
+            drafted = $5, skipped = $6, errored = $7,
+            finished_at = NOW()
+      WHERE id = $1`,
+    [id, emails_seen, posts_upserted, posts_new, drafted, skipped, errored]
+  );
+}
+
+export async function failPresenceJob(id, errorMessage) {
+  await query(
+    `UPDATE presence_refresh_jobs
+        SET status = 'failed', error = $2, finished_at = NOW()
+      WHERE id = $1`,
+    [id, errorMessage]
+  );
+}
+
+// Fetch the latest refresh job if it's currently running OR completed/failed
+// in the last 2 minutes. The view uses this to show a status banner that
+// auto-fades once the outcome is a few minutes stale.
+export async function getLatestPresenceJob() {
+  const { rows } = await query(
+    `SELECT * FROM presence_refresh_jobs
+      WHERE status = 'running'
+         OR finished_at > NOW() - INTERVAL '2 minutes'
+      ORDER BY started_at DESC
+      LIMIT 1`
+  );
+  return rows[0] || null;
+}

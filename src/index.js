@@ -48,6 +48,23 @@ import { query, pool } from './db/index.js';
   }
 })();
 
+// Same orphan recovery for presence_refresh_jobs — a deploy during a manual
+// refresh would otherwise freeze the "Refreshing…" banner on the dashboard.
+(async () => {
+  try {
+    const { rowCount } = await query(
+      `UPDATE presence_refresh_jobs
+          SET status = 'failed',
+              error = COALESCE(error, 'interrupted — server restarted during refresh'),
+              finished_at = NOW()
+        WHERE status = 'running'`
+    );
+    if (rowCount > 0) console.log(`[boot] recovered ${rowCount} orphaned presence refresh job(s)`);
+  } catch (err) {
+    console.warn('[boot] presence orphan recovery skipped:', err.message);
+  }
+})();
+
 const tz = process.env.SEND_TIMEZONE || 'America/Chicago';
 
 // Autonomous prospect discovery — 7am Mon-Fri. Claude searches the web for
