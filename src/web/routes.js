@@ -209,17 +209,26 @@ webRouter.get('/prospects/import', requireAuth, async (req, res, next) => {
       ownerStatus[name] = rows[0] || null;
     }
 
-    // Running pilot job (if any) so we can lock the highlighted count to what
-    // is actually in flight, not whatever query string the user navigated in
-    // with.
+    // Running pilot job (if any) so we can lock the highlighted rows to what
+    // is actually in flight. Detection key is diagnostics->>'pilot_batch' =
+    // 'true' — we stamp that on the INSERT now, along with the chosen
+    // indices, so the in-flight page can reflect the real selection instead
+    // of falling back to a top-N slice.
     const runningPilot = (await query(
-      `SELECT id, requested_count, started_at
+      `SELECT id, requested_count, started_at, diagnostics
          FROM discovery_jobs
         WHERE user_id = $1 AND status = 'running'
-          AND diagnostics IS NULL    -- pilot writes diagnostics at the end; running pilot has none yet
+          AND diagnostics->>'pilot_batch' = 'true'
         ORDER BY started_at DESC LIMIT 1`,
       [req.session.userId]
     )).rows[0] || null;
+
+    // Persisted selection: the POST handler stores indices in
+    // diagnostics.pilot_indices. Absent or empty array → fall back to the
+    // top-N view driven by requested_count (legacy path).
+    const runningPilotIndices = Array.isArray(runningPilot?.diagnostics?.pilot_indices)
+      ? runningPilot.diagnostics.pilot_indices.map(Number).filter(Number.isFinite)
+      : null;
 
     const recentJob = (await query(
       `SELECT id, status, started_at, finished_at, drafted_count, skipped_count,
@@ -231,15 +240,20 @@ webRouter.get('/prospects/import', requireAuth, async (req, res, next) => {
       [req.session.userId]
     )).rows[0] || null;
 
-    // activeCount priority: running job's scope > URL ?limit > full batch.
-    // This way, once a run starts, navigating away and back still shows the
-    // correct highlighted subset.
-    const activeCount = runningPilot?.requested_count ?? queryLimit ?? PILOT_BATCH.length;
-
-    // Tag every row with active=true if it's in scope for the current run /
-    // selection. Full batch always rendered so the unchosen picks are visible
-    // but visually muted.
-    const batch = PILOT_BATCH.map((p, i) => ({ ...p, active: i < activeCount }));
+    // Row-level active flag. If we have persisted pilot indices (running job
+    // or if we later add recentJob indices), use them verbatim — that's
+    // what the operator actually picked. Otherwise fall back to top-N.
+    let activeSet = null;
+    if (runningPilotIndices && runningPilotIndices.length > 0) {
+      activeSet = new Set(runningPilotIndices);
+    }
+    const activeCount = activeSet
+      ? activeSet.size
+      : (runningPilot?.requested_count ?? queryLimit ?? PILOT_BATCH.length);
+    const batch = PILOT_BATCH.map((p, i) => ({
+      ...p,
+      active: activeSet ? activeSet.has(i) : (i < activeCount),
+    }));
 
     res.render('prospects_import', {
       title: 'Pilot batch',
@@ -290,10 +304,18 @@ webRouter.post('/prospects/import', requireAuth, async (req, res, next) => {
       return res.redirect('/prospects/import');
     }
 
+    // Stamp pilot_batch + selected indices into diagnostics at INSERT time so
+    // the GET route can (a) reliably detect a running pilot and (b) highlight
+    // the exact rows the user ticked, not a misleading top-N slice. The
+    // pipeline's final diagnostics write must preserve pilot_indices.
+    const diagnosticsSeed = {
+      pilot_batch: true,
+      pilot_indices: indices.length > 0 ? indices : null,
+    };
     const { rows } = await query(
-      `INSERT INTO discovery_jobs (user_id, status, requested_count)
-       VALUES ($1, 'running', $2) RETURNING id`,
-      [ownerId, runCount]
+      `INSERT INTO discovery_jobs (user_id, status, requested_count, diagnostics)
+       VALUES ($1, 'running', $2, $3::jsonb) RETURNING id`,
+      [ownerId, runCount, JSON.stringify(diagnosticsSeed)]
     );
     const jobId = rows[0].id;
 

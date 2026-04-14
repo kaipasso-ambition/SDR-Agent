@@ -296,6 +296,9 @@ export async function runPilotBatch({ job_id = null, limit = null, indices = nul
     finished_at: new Date(),
     diagnostics: {
       pilot_batch: true,
+      // Preserve pilot_indices so the /prospects/import page can show the
+      // actual rows that ran (for the "last pilot run" section too).
+      pilot_indices: Array.isArray(indices) && indices.length > 0 ? indices : null,
       batch_size: activeBatch.length,
       full_batch_size: PILOT_BATCH.length,
       limit_applied: limit ?? null,
