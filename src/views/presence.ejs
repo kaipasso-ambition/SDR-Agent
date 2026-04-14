@@ -112,23 +112,41 @@
 
         <div class="mt-3 flex items-center gap-2 flex-wrap">
           <%
-            // Prefer the /comm/ tracking redirect (Sales Nav profile) when the
-            // parser stashed one in raw_meta — it drops the operator straight
-            // on the lead's profile where the post is visible. Fall back to
-            // the canonical post_url (legacy digests which included a direct
-            // /posts/ link).
-            const clickUrl = (p.raw_meta && p.raw_meta.click_url) || p.post_url;
-            const openLabel = (p.raw_meta && p.raw_meta.template === 'in_case_you_missed_it_digest')
-              ? 'Open profile (copy draft)'
-              : 'Open post (copy draft)';
+            // Sales Nav profile Activity doesn't reliably surface the digested
+            // post — it may be on public LinkedIn, or be a comment on someone
+            // else's thread. Content search on the snippet finds it wherever
+            // it lives. We quote the first ~10 words to keep the query tight
+            // and avoid matching on truncation ellipses.
+            const profileUrl = (p.raw_meta && p.raw_meta.click_url) || p.post_url;
+            let searchQuery = '';
+            if (p.post_snippet) {
+              const cleaned = p.post_snippet.replace(/[…]+$/g, '').replace(/\.{3,}$/g, '').trim();
+              const words = cleaned.split(/\s+/).slice(0, 10).join(' ');
+              searchQuery = words;
+            }
+            const searchUrl = searchQuery
+              ? 'https://www.linkedin.com/search/results/content/?keywords=' + encodeURIComponent(searchQuery)
+              : null;
           %>
-          <button
-            type="button"
-            class="open-post bg-slate-900 hover:bg-slate-800 text-white px-4 py-1.5 rounded text-sm"
-            data-post-id="<%= p.id %>"
-            data-post-url="<%= clickUrl %>">
-            <%= openLabel %>
-          </button>
+          <% if (searchUrl) { %>
+            <button
+              type="button"
+              class="open-post bg-slate-900 hover:bg-slate-800 text-white px-4 py-1.5 rounded text-sm"
+              data-post-id="<%= p.id %>"
+              data-post-url="<%= searchUrl %>"
+              title="Opens LinkedIn content search for this snippet — finds the post wherever it lives (public feed, comment, or reshare) — and copies the draft to your clipboard.">
+              Find post &amp; copy draft
+            </button>
+            <a href="<%= profileUrl %>" target="_blank" rel="noopener" class="text-xs text-slate-500 hover:text-slate-800 underline" title="Open the lead's Sales Nav profile as a fallback">profile ↗</a>
+          <% } else { %>
+            <button
+              type="button"
+              class="open-post bg-slate-900 hover:bg-slate-800 text-white px-4 py-1.5 rounded text-sm"
+              data-post-id="<%= p.id %>"
+              data-post-url="<%= profileUrl %>">
+              Open profile (copy draft)
+            </button>
+          <% } %>
           <form method="POST" action="/presence/<%= p.id %>/posted" class="inline">
             <button type="submit" class="text-xs text-emerald-700 hover:text-emerald-900 underline">Mark posted</button>
           </form>
