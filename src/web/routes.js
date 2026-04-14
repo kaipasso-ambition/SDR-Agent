@@ -4,7 +4,8 @@ import { Router } from 'express';
 import { verifyLogin, requireAuth } from '../auth.js';
 import { query } from '../db/index.js';
 import { getPendingDrafts, getPendingReplies } from '../queue/approval_queue.js';
-import { researchAndDraft, runDiscoveryCycle } from '../pipeline.js';
+import { researchAndDraft, runDiscoveryCycle, runPilotBatch } from '../pipeline.js';
+import { PILOT_BATCH } from '../lib/pilot_batch.js';
 
 export const webRouter = Router();
 
@@ -165,6 +166,81 @@ webRouter.post('/discover', requireAuth, async (req, res, next) => {
       });
 
     res.redirect('/drafts');
+  } catch (err) {
+    next(err);
+  }
+});
+
+// One-shot pilot-batch page: preview the 10 hand-picked prospects and, on
+// click, kick them all through research+draft at 5-way parallelism. Exists so
+// we can validate the full pipeline end-to-end on known-good picks without
+// burning discovery credits.
+webRouter.get('/prospects/import', requireAuth, async (_req, res, next) => {
+  try {
+    // Flag any rows whose owner name won't resolve so the operator sees it
+    // before clicking Run.
+    const uniqueOwners = [...new Set(PILOT_BATCH.map((p) => p.owner_name))];
+    const ownerStatus = {};
+    for (const name of uniqueOwners) {
+      const { rows } = await query(
+        `SELECT email, name FROM users WHERE LOWER(name) LIKE $1 OR LOWER(email) LIKE $1 LIMIT 1`,
+        [name.toLowerCase() + '%']
+      );
+      ownerStatus[name] = rows[0] || null;
+    }
+
+    const recentJob = (await query(
+      `SELECT id, status, started_at, finished_at, drafted_count, skipped_count,
+              discovered_count, error, diagnostics,
+              EXTRACT(EPOCH FROM (COALESCE(finished_at, NOW()) - started_at))::int AS duration_sec
+         FROM discovery_jobs
+        WHERE user_id = $1 AND diagnostics->>'pilot_batch' = 'true'
+        ORDER BY started_at DESC LIMIT 1`,
+      [req.session.userId]
+    )).rows[0] || null;
+
+    res.render('prospects_import', {
+      title: 'Pilot batch',
+      batch: PILOT_BATCH,
+      ownerStatus,
+      recentJob,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+webRouter.post('/prospects/import', requireAuth, async (req, res, next) => {
+  try {
+    const ownerId = req.session.userId;
+
+    const existing = await query(
+      `SELECT id FROM discovery_jobs WHERE user_id = $1 AND status = 'running' LIMIT 1`,
+      [ownerId]
+    );
+    if (existing.rows[0]) {
+      return res.redirect('/prospects/import');
+    }
+
+    const { rows } = await query(
+      `INSERT INTO discovery_jobs (user_id, status, requested_count)
+       VALUES ($1, 'running', $2) RETURNING id`,
+      [ownerId, PILOT_BATCH.length]
+    );
+    const jobId = rows[0].id;
+
+    // Fire and forget — HTTP returns immediately, the banner tracks progress.
+    runPilotBatch({ job_id: jobId })
+      .then((r) => console.log('[pilot] batch finished:', r.drafted, 'drafted'))
+      .catch((err) => {
+        console.error('[pilot] batch crashed:', err);
+        query(
+          `UPDATE discovery_jobs SET status = 'failed', error = $2, finished_at = NOW() WHERE id = $1`,
+          [jobId, err.message || 'unknown']
+        ).catch(() => {});
+      });
+
+    res.redirect('/prospects/import');
   } catch (err) {
     next(err);
   }

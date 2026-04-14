@@ -17,6 +17,7 @@ import { upsertProspect } from './db/prospects.js';
 import { addToApprovalQueue } from './queue/approval_queue.js';
 import { getCampaignRoster } from './db/campaigns.js';
 import { query } from './db/index.js';
+import { PILOT_BATCH } from './lib/pilot_batch.js';
 
 const MIN_FIT_TO_DRAFT = 60; // below this we save the prospect but skip drafting
 
@@ -160,6 +161,133 @@ export async function runDiscoveryCycle({ count = 5, hint = '', owner_user_id = 
     finished_at: new Date(),
   });
   return { discovered: fresh.length, drafted, skipped, error: null };
+}
+
+/**
+ * Pilot batch: run the 10 hand-picked prospects through research+draft at
+ * 5-concurrent parallelism. Owner routing is hard-coded by name on each row,
+ * resolved to a user_id at runtime via a LIKE match on users.name.
+ *
+ * Writes progress into the same discovery_jobs row the regular /discover cycle
+ * uses, so the running/stuck/completed banner in layout.ejs works unchanged.
+ */
+export async function runPilotBatch({ job_id = null } = {}) {
+  console.log(`[pilot] START job=${job_id} batch_size=${PILOT_BATCH.length}`);
+
+  const updateJob = async (fields) => {
+    if (!job_id) return;
+    const keys = Object.keys(fields);
+    const sets = keys.map((k, i) => {
+      const cast = k === 'diagnostics' ? '::jsonb' : '';
+      return `${k} = $${i + 2}${cast}`;
+    }).join(', ');
+    const values = keys.map((k) => {
+      const v = fields[k];
+      return k === 'diagnostics' && v && typeof v === 'object' ? JSON.stringify(v) : v;
+    });
+    await query(`UPDATE discovery_jobs SET ${sets} WHERE id = $1`, [job_id, ...values]);
+  };
+
+  // Resolve owner names → user ids once up front. If a match fails, skip those
+  // rows with a clear error rather than silently assigning them to no-one.
+  const uniqueOwners = [...new Set(PILOT_BATCH.map((p) => p.owner_name))];
+  const ownerMap = {};
+  for (const name of uniqueOwners) {
+    const { rows } = await query(
+      `SELECT id, name, email FROM users WHERE LOWER(name) LIKE $1 OR LOWER(email) LIKE $1 ORDER BY created_at ASC LIMIT 1`,
+      [name.toLowerCase() + '%']
+    );
+    ownerMap[name] = rows[0] || null;
+    console.log(`[pilot] owner "${name}" → ${rows[0] ? rows[0].email : 'NO MATCH'}`);
+  }
+
+  const resolved = PILOT_BATCH.map((p) => ({ ...p, owner: ownerMap[p.owner_name] }));
+  const skippedForOwner = resolved.filter((p) => !p.owner);
+  const runnable = resolved.filter((p) => p.owner);
+
+  // Concurrency-limited worker pool. 5 parallel research+draft chains is
+  // reasonable: each is Claude with web_search, and the Anthropic SDK will
+  // queue requests at the HTTP layer if we exceed its per-connection limit.
+  const CONCURRENCY = 5;
+  const results = [];
+  let idx = 0;
+
+  const worker = async () => {
+    while (idx < runnable.length) {
+      const i = idx++;
+      const pick = runnable[i];
+      const label = `${pick.company} → ${pick.owner.email}`;
+      const started = Date.now();
+      try {
+        const r = await researchAndDraft({
+          company: pick.company,
+          domain: pick.domain,
+          owner_user_id: pick.owner.id,
+        });
+        const ms = Date.now() - started;
+        results.push({
+          company: pick.company,
+          domain: pick.domain,
+          owner: pick.owner.email,
+          owner_name: pick.owner_name,
+          drafted: !!r.draft,
+          fit_score: r.prospect?.fit_score ?? null,
+          reason: r.reason,
+          disqualified: !!r.prospect?.disqualified,
+          duration_ms: ms,
+        });
+        console.log(`[pilot] ${label} done in ${ms}ms — drafted=${!!r.draft} score=${r.prospect?.fit_score} reason=${r.reason || '-'}`);
+      } catch (err) {
+        results.push({
+          company: pick.company,
+          domain: pick.domain,
+          owner: pick.owner.email,
+          owner_name: pick.owner_name,
+          drafted: false,
+          fit_score: null,
+          reason: 'pipeline error: ' + (err.message || 'unknown'),
+          error: true,
+          duration_ms: Date.now() - started,
+        });
+        console.error(`[pilot] ${label} failed:`, err.message);
+      }
+    }
+  };
+
+  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, runnable.length) }, worker));
+
+  for (const s of skippedForOwner) {
+    results.push({
+      company: s.company,
+      owner_name: s.owner_name,
+      drafted: false,
+      fit_score: null,
+      reason: `no user matched name "${s.owner_name}" — create that account and re-run`,
+      error: true,
+    });
+  }
+
+  const drafted = results.filter((r) => r.drafted).length;
+  const skipped = results.filter((r) => !r.drafted && !r.error).length;
+  const errored = results.filter((r) => r.error).length;
+
+  console.log(`[pilot] DONE job=${job_id} drafted=${drafted} skipped=${skipped} errored=${errored}`);
+
+  await updateJob({
+    status: 'completed',
+    discovered_count: runnable.length,
+    drafted_count: drafted,
+    skipped_count: skipped + errored,
+    finished_at: new Date(),
+    diagnostics: {
+      pilot_batch: true,
+      batch_size: PILOT_BATCH.length,
+      concurrency: CONCURRENCY,
+      results,
+    },
+  });
+
+  return { total: PILOT_BATCH.length, drafted, skipped, errored, results };
 }
 
 /**
