@@ -14,12 +14,24 @@ export async function listAttendeesForEvent(eventId) {
             r.account_name       AS matched_account_name,
             r.status             AS matched_account_status,
             r.owner_user_id      AS matched_account_owner_id,
-            u.name               AS added_by_name
+            u.name               AS added_by_name,
+            ui.name              AS invited_by_name,
+            -- Follow-up is overdue when it's been scheduled, not yet done,
+            -- and the due time has passed. Computed here so the view stays dumb.
+            (a.followup_due_at IS NOT NULL
+              AND a.followup_done_at IS NULL
+              AND a.followup_due_at <= NOW()) AS followup_overdue
        FROM event_attendees a
        LEFT JOIN accounts_registry r ON r.id = a.account_id
        LEFT JOIN users u             ON u.id = a.added_by_user_id
+       LEFT JOIN users ui            ON ui.id = a.invited_by_user_id
       WHERE a.event_id = $1
       ORDER BY
+        -- Overdue follow-ups float to the top — that's the AE's
+        -- "don't drop the thread" bucket.
+        (a.followup_due_at IS NOT NULL
+          AND a.followup_done_at IS NULL
+          AND a.followup_due_at <= NOW()) DESC,
         CASE a.invite_status
           WHEN 'target'   THEN 1
           WHEN 'invited'  THEN 2
@@ -150,4 +162,53 @@ export async function updateAttendee(id, patch) {
 
 export async function deleteAttendee(id) {
   await query(`DELETE FROM event_attendees WHERE id = $1`, [id]);
+}
+
+// Mark an attendee as invited AND schedule a follow-up N days out.
+// This is the explicit "I sent the note" action — far clearer than
+// the status dropdown, and it plants the reminder to circle back so
+// the AE doesn't let a warm thread go cold.
+export async function markInvited(id, { days = 3, userId = null } = {}) {
+  const { rows } = await query(
+    `UPDATE event_attendees
+        SET invite_status      = 'invited',
+            invited_at         = COALESCE(invited_at, NOW()),
+            invited_by_user_id = COALESCE(invited_by_user_id, $3),
+            followup_due_at    = NOW() + ($2 || ' days')::INTERVAL,
+            followup_done_at   = NULL,
+            updated_at         = NOW()
+      WHERE id = $1
+      RETURNING *`,
+    [id, String(days), userId]
+  );
+  return rows[0] || null;
+}
+
+export async function markFollowupDone(id) {
+  const { rows } = await query(
+    `UPDATE event_attendees
+        SET followup_done_at = NOW(),
+            updated_at       = NOW()
+      WHERE id = $1
+      RETURNING *`,
+    [id]
+  );
+  return rows[0] || null;
+}
+
+// Kick the follow-up N more days into the future. Doesn't clear
+// invited_at — the "sent on X" record stays; we're just pushing when
+// we want to re-surface this person.
+export async function snoozeFollowup(id, { days = 3 } = {}) {
+  const { rows } = await query(
+    `UPDATE event_attendees
+        SET followup_due_at  = GREATEST(COALESCE(followup_due_at, NOW()), NOW())
+                                 + ($2 || ' days')::INTERVAL,
+            followup_done_at = NULL,
+            updated_at       = NOW()
+      WHERE id = $1
+      RETURNING *`,
+    [id, String(days)]
+  );
+  return rows[0] || null;
 }

@@ -24,6 +24,15 @@
     if (!d) return '—';
     return new Date(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
   }
+  function relativeFromNow(d) {
+    if (!d) return '';
+    const diffMs = new Date(d).getTime() - Date.now();
+    const days = Math.round(diffMs / 86400000);
+    if (days === 0) return 'today';
+    if (days === 1) return 'tomorrow';
+    if (days === -1) return 'yesterday';
+    return days > 0 ? `in ${days} days` : `${-days} days ago`;
+  }
   const s = statusMeta[event.status] || statusMeta.planning;
   const slot = event.personal_invite_session || null;
   const hasSlot = !!(slot && (slot.title || slot.speaker));
@@ -152,7 +161,7 @@
                       <% } %>
                     <% } else if (a.company) { %>
                       <span><%= a.company %></span>
-                      <span class="text-[10px] text-slate-400 italic">(no match on your book)</span>
+                      <span class="text-[10px] text-slate-400 italic" title="Not matched to one of your accounts in the registry">(new company)</span>
                     <% } %>
                     <% if (a.email) { %><span>· <%= a.email %></span><% } %>
                     <% if (a.linkedin_url) { %><a href="<%= a.linkedin_url %>" target="_blank" rel="noopener" class="underline">LinkedIn</a><% } %>
@@ -175,6 +184,37 @@
                   </form>
                 </div>
               </div>
+
+              <!-- Follow-up tracker — visible once the AE has logged the note as sent -->
+              <% if (a.invited_at) { %>
+                <div class="mt-2 <%= a.followup_overdue ? 'bg-amber-50 border-amber-200' : 'bg-slate-50 border-slate-200' %> border rounded px-3 py-2 flex items-center gap-3 flex-wrap text-xs">
+                  <div class="flex-1 min-w-0">
+                    <span class="<%= a.followup_overdue ? 'text-amber-900 font-medium' : 'text-slate-700' %>">
+                      <% if (a.followup_done_at) { %>
+                        ✓ Followed up <%= relativeFromNow(a.followup_done_at) %>
+                      <% } else if (a.followup_overdue) { %>
+                        ⏰ Follow up — you sent the note <%= relativeFromNow(a.invited_at) %>
+                      <% } else { %>
+                        ✉️ Sent <%= relativeFromNow(a.invited_at) %> · follow up <%= relativeFromNow(a.followup_due_at) %>
+                      <% } %>
+                    </span>
+                    <% if (a.invited_by_name) { %>
+                      <span class="text-slate-400"> · by <%= a.invited_by_name %></span>
+                    <% } %>
+                  </div>
+                  <% if (!a.followup_done_at) { %>
+                    <div class="flex items-center gap-2 shrink-0">
+                      <form method="POST" action="/events/<%= event.id %>/attendees/<%= a.id %>/followup-done" class="inline">
+                        <button class="text-xs px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-medium">✓ Got reply</button>
+                      </form>
+                      <form method="POST" action="/events/<%= event.id %>/attendees/<%= a.id %>/snooze-followup" class="inline">
+                        <input type="hidden" name="days" value="3" />
+                        <button class="text-xs px-2 py-0.5 rounded border border-slate-300 hover:border-slate-500 text-slate-700" title="Push follow-up 3 days out">Snooze 3d</button>
+                      </form>
+                    </div>
+                  <% } %>
+                </div>
+              <% } %>
 
               <% if (a.invite_draft || a.meeting_draft) { %>
                 <details class="mt-2" <%= isOpen ? 'open' : '' %>>
@@ -222,6 +262,28 @@
                           <span class="text-[11px] text-slate-500">Tweak the note, then save. You own what goes out.</span>
                           <button type="submit" class="text-xs bg-slate-900 hover:bg-slate-800 text-white px-2.5 py-1 rounded font-medium">Save edits</button>
                         </div>
+                      </form>
+                    <% } %>
+
+                    <!-- Once you've pasted the note into LinkedIn/email, click this.
+                         Logs you as the sender, stamps when it went out, and
+                         sets a follow-up reminder so the thread doesn't go cold. -->
+                    <% if (!a.invited_at) { %>
+                      <form method="POST" action="/events/<%= event.id %>/attendees/<%= a.id %>/mark-invited"
+                            class="flex items-center gap-2 flex-wrap bg-emerald-50 border border-emerald-200 rounded px-3 py-2">
+                        <span class="text-xs text-emerald-900 flex-1">Sent it? Log as invited and I'll remind you to follow up.</span>
+                        <label class="text-[11px] text-emerald-900 flex items-center gap-1">
+                          Follow up in
+                          <select name="followup_days" class="border border-emerald-300 rounded px-1 py-0.5 text-xs bg-white">
+                            <option value="2">2 days</option>
+                            <option value="3" selected>3 days</option>
+                            <option value="5">5 days</option>
+                            <option value="7">1 week</option>
+                          </select>
+                        </label>
+                        <button class="text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1 rounded font-medium">
+                          ✓ I sent it
+                        </button>
                       </form>
                     <% } %>
                   </div>

@@ -622,6 +622,18 @@ CREATE TABLE IF NOT EXISTS event_attendees (
 CREATE INDEX IF NOT EXISTS event_attendees_event_idx ON event_attendees(event_id);
 CREATE INDEX IF NOT EXISTS event_attendees_account_idx ON event_attendees(account_id) WHERE account_id IS NOT NULL;
 
+-- Follow-up tracking. When the AE clicks "Mark invited," we stamp
+-- invited_at and set a default followup_due_at a few days out so the
+-- attendee surfaces as "follow up with them" in the list until the AE
+-- marks it done or snoozes.
+ALTER TABLE event_attendees ADD COLUMN IF NOT EXISTS invited_at         TIMESTAMPTZ;
+ALTER TABLE event_attendees ADD COLUMN IF NOT EXISTS invited_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE event_attendees ADD COLUMN IF NOT EXISTS followup_due_at    TIMESTAMPTZ;
+ALTER TABLE event_attendees ADD COLUMN IF NOT EXISTS followup_done_at   TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS event_attendees_followup_idx
+  ON event_attendees(followup_due_at)
+  WHERE followup_due_at IS NOT NULL AND followup_done_at IS NULL;
+
 -- Integration credentials (stored after OAuth so users don't edit .env for these)
 CREATE TABLE IF NOT EXISTS integrations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

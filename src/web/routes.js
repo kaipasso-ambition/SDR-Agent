@@ -86,6 +86,9 @@ import {
   updateAttendee,
   deleteAttendee,
   findAccountIdForCompany,
+  markInvited,
+  markFollowupDone,
+  snoozeFollowup,
 } from '../db/event_attendees.js';
 import { buildPlay } from '../agents/play_builder.js';
 import { runEventResearch } from '../agents/event_researcher.js';
@@ -1643,6 +1646,50 @@ webRouter.post('/events/:eid/attendees/:aid/delete', requireAuth, async (req, re
     }
     await deleteAttendee(req.params.aid);
     res.redirect(`/events/${req.params.eid}#attendees`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Explicit "I sent the note" action. Bumps status → invited, stamps
+// invited_at, and schedules a follow-up N days out so the attendee
+// resurfaces in the list with a "follow up" nudge. Clearer than the
+// dropdown, and plants the reminder in the same click.
+webRouter.post('/events/:eid/attendees/:aid/mark-invited', requireAuth, async (req, res, next) => {
+  try {
+    if (!UUID_RE.test(req.params.eid) || !UUID_RE.test(req.params.aid)) {
+      return res.redirect('/events');
+    }
+    const daysRaw = parseInt(req.body?.followup_days, 10);
+    const days = Number.isFinite(daysRaw) && daysRaw >= 1 && daysRaw <= 30 ? daysRaw : 3;
+    await markInvited(req.params.aid, { days, userId: req.session.userId || null });
+    res.redirect(`/events/${req.params.eid}?open=${req.params.aid}#a-${req.params.aid}`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+webRouter.post('/events/:eid/attendees/:aid/followup-done', requireAuth, async (req, res, next) => {
+  try {
+    if (!UUID_RE.test(req.params.eid) || !UUID_RE.test(req.params.aid)) {
+      return res.redirect('/events');
+    }
+    await markFollowupDone(req.params.aid);
+    res.redirect(`/events/${req.params.eid}#a-${req.params.aid}`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+webRouter.post('/events/:eid/attendees/:aid/snooze-followup', requireAuth, async (req, res, next) => {
+  try {
+    if (!UUID_RE.test(req.params.eid) || !UUID_RE.test(req.params.aid)) {
+      return res.redirect('/events');
+    }
+    const daysRaw = parseInt(req.body?.days, 10);
+    const days = Number.isFinite(daysRaw) && daysRaw >= 1 && daysRaw <= 30 ? daysRaw : 3;
+    await snoozeFollowup(req.params.aid, { days });
+    res.redirect(`/events/${req.params.eid}#a-${req.params.aid}`);
   } catch (err) {
     next(err);
   }
