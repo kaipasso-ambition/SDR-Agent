@@ -8,3 +8,8 @@ build/
 coverage/
 .vscode/
 .idea/
+
+# Salesforce exports + other local-only imports — sensitive, never commit.
+data/imports/*
+!data/imports/.gitkeep
+!data/imports/README.md

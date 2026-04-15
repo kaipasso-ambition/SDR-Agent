@@ -645,3 +645,38 @@ CREATE TABLE IF NOT EXISTS integrations (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- dead_deals: Closed Lost + Customer-Churned opportunities imported from
+-- Salesforce. Each row is one lost/churned opportunity; an account can have
+-- many (ConstructConnect tried 4 times). This is the input stream for the
+-- /revisit queue — we reuse the signal_analyzer against these accounts to
+-- detect what changed since we lost, and match against the original loss
+-- reason + pain to suggest a re-entry angle.
+--
+-- Dedup key is opportunity_id (Salesforce 18-char ID). Re-running the import
+-- monthly updates the row in place, never duplicates.
+CREATE TABLE IF NOT EXISTS dead_deals (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id UUID REFERENCES accounts_registry(id) ON DELETE CASCADE,
+  opportunity_id TEXT UNIQUE NOT NULL,
+  close_date DATE,
+  loss_reason TEXT,                          -- "Bad Timing" / "Competitive" / "No Engagement" / "No budget: Budget not set aside"
+  account_type_at_close TEXT,                -- 'Prospect' | 'Customer - Churned'
+  owner_name TEXT,                           -- AE name from SF (Kai Passo, Mark McWatters)
+  next_step TEXT,                            -- activity-note-y field, still useful context
+  current_state_pains TEXT,
+  business_technical_pains TEXT,
+  champion_raw TEXT,                         -- free text; resolved to champions table later
+  decision_criteria TEXT,
+  decision_process TEXT,
+  why_taking_call TEXT,
+  why_now TEXT,
+  why_ambition TEXT,
+  foa_note TEXT,                             -- Friend of Ambition flag + relationship
+  last_signal_scan_at TIMESTAMPTZ,
+  imported_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS dead_deals_account_idx ON dead_deals(account_id);
+CREATE INDEX IF NOT EXISTS dead_deals_close_date_idx ON dead_deals(close_date DESC NULLS LAST);
+CREATE INDEX IF NOT EXISTS dead_deals_loss_reason_idx ON dead_deals(loss_reason);
+
