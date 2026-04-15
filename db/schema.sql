@@ -583,6 +583,45 @@ ALTER TABLE play_events ADD COLUMN IF NOT EXISTS personal_invite_session JSONB;
 -- contact may legitimately be deleted later without breaking the play.
 ALTER TABLE account_plays ADD COLUMN IF NOT EXISTS personal_invite_contact_ids UUID[] DEFAULT '{}';
 
+-- Event targets — the people (not accounts) the AE wants to move at this
+-- event. Two actions live against each row:
+--   1. "Draft session invite" — a short pasteable invite from our
+--      speaker's voice to earmark one of the limited seats at the
+--      personal_invite_session.
+--   2. "Draft meeting request" — a short note asking for a 20-min
+--      exchange at the event.
+-- account_id lets us link a target back to the book when the company
+-- matches one of the AE's accounts; null when it's a net-new contact.
+-- invite_draft / meeting_draft hold the most recent Claude-drafted copy
+-- so the AE can reopen and tweak without re-paying the API call.
+CREATE TABLE IF NOT EXISTS event_attendees (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  event_id UUID NOT NULL REFERENCES play_events(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  title TEXT,
+  company TEXT,
+  linkedin_url TEXT,
+  email TEXT,
+  account_id UUID REFERENCES accounts_registry(id) ON DELETE SET NULL,
+  invite_status TEXT DEFAULT 'target' CHECK (invite_status IN (
+    'target',    -- we want to reach them; no move yet
+    'invited',   -- invite/meeting request sent
+    'accepted',  -- they said yes
+    'declined',  -- they said no
+    'met',       -- face-to-face happened
+    'passed'     -- we decided not to pursue (scarce seats)
+  )),
+  invite_draft TEXT,
+  meeting_draft TEXT,
+  notes TEXT,
+  source TEXT DEFAULT 'manual' CHECK (source IN ('manual','paste','csv','linkedin','import')),
+  added_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS event_attendees_event_idx ON event_attendees(event_id);
+CREATE INDEX IF NOT EXISTS event_attendees_account_idx ON event_attendees(account_id) WHERE account_id IS NOT NULL;
+
 -- Integration credentials (stored after OAuth so users don't edit .env for these)
 CREATE TABLE IF NOT EXISTS integrations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

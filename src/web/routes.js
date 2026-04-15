@@ -78,8 +78,21 @@ import {
   deleteEvent,
   setResearchStatus,
 } from '../db/play_events.js';
+import {
+  listAttendeesForEvent,
+  getAttendeeById,
+  createAttendee,
+  bulkCreateAttendees,
+  updateAttendee,
+  deleteAttendee,
+  findAccountIdForCompany,
+} from '../db/event_attendees.js';
 import { buildPlay } from '../agents/play_builder.js';
 import { runEventResearch } from '../agents/event_researcher.js';
+import {
+  draftSessionInvite,
+  draftMeetingRequest,
+} from '../agents/event_outreach_writer.js';
 
 export const webRouter = Router();
 
@@ -1402,15 +1415,19 @@ webRouter.get('/events/new', requireAuth, (_req, res) => {
 webRouter.get('/events/:id', requireAuth, async (req, res, next) => {
   try {
     if (!UUID_RE.test(req.params.id)) return res.redirect('/events');
-    const [event, plays] = await Promise.all([
+    const [event, plays, attendees] = await Promise.all([
       getEventById(req.params.id),
       listPlaysForEvent(req.params.id),
+      listAttendeesForEvent(req.params.id),
     ]);
     if (!event) return res.redirect('/events');
     res.render('event_detail', {
       title: event.name,
       event,
       plays,
+      attendees,
+      openAttendeeId: typeof req.query.open === 'string' && UUID_RE.test(req.query.open)
+        ? req.query.open : null,
     });
   } catch (err) {
     next(err);
@@ -1517,6 +1534,164 @@ webRouter.post('/events/:id/delete', requireAuth, async (req, res, next) => {
     if (!UUID_RE.test(req.params.id)) return res.redirect('/events');
     await deleteEvent(req.params.id);
     res.redirect('/events');
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------- Event attendees (targets) ----------
+//
+// The attendee list is the event's execution surface. The AE pastes or
+// manually adds people they're targeting, then works the list one row
+// at a time: draft a session invite, draft a meeting request, flip
+// status as things progress.
+
+// Parse a pasted attendee list. Accepts tab- or comma-separated lines:
+//   Name <TAB> Title <TAB> Company <TAB> LinkedIn <TAB> Email
+// Missing trailing columns are fine. Commas inside a cell are NOT
+// supported — paste tab-separated (copy from Sheets/Excel) to get full
+// fidelity. A leading header row with "Name"/"Title"/etc. is skipped.
+function parseAttendeeList(raw) {
+  if (!raw || typeof raw !== 'string') return [];
+  const out = [];
+  const lines = raw.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  for (let idx = 0; idx < lines.length; idx++) {
+    const line = lines[idx];
+    const sep = line.includes('\t') ? '\t' : ',';
+    const parts = line.split(sep).map((p) => p.trim());
+    // Skip header row.
+    if (idx === 0 && /^name$/i.test(parts[0])) continue;
+    if (!parts[0]) continue;
+    out.push({
+      name: parts[0],
+      title: parts[1] || null,
+      company: parts[2] || null,
+      linkedin_url: parts[3] || null,
+      email: parts[4] || null,
+    });
+  }
+  return out;
+}
+
+webRouter.post('/events/:id/attendees', requireAuth, async (req, res, next) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.redirect('/events');
+    const event = await getEventById(req.params.id);
+    if (!event) return res.redirect('/events');
+
+    const pasted = (req.body?.paste_list || '').trim();
+    if (pasted) {
+      const rows = parseAttendeeList(pasted);
+      await bulkCreateAttendees(event.id, rows, req.session.userId);
+    } else {
+      const name = (req.body?.name || '').trim();
+      if (!name) return res.redirect(`/events/${event.id}`);
+      await createAttendee({
+        event_id: event.id,
+        name,
+        title: (req.body?.title || '').trim() || null,
+        company: (req.body?.company || '').trim() || null,
+        linkedin_url: (req.body?.linkedin_url || '').trim() || null,
+        email: (req.body?.email || '').trim() || null,
+        notes: (req.body?.notes || '').trim() || null,
+        added_by_user_id: req.session.userId,
+      });
+    }
+    res.redirect(`/events/${event.id}#attendees`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Update an attendee — used for status flips (target → invited → met)
+// and manual corrections (fix title, re-link account).
+webRouter.post('/events/:eid/attendees/:aid', requireAuth, async (req, res, next) => {
+  try {
+    if (!UUID_RE.test(req.params.eid) || !UUID_RE.test(req.params.aid)) {
+      return res.redirect('/events');
+    }
+    const patch = {};
+    for (const k of ['name', 'title', 'company', 'linkedin_url', 'email', 'notes']) {
+      if (req.body?.[k] !== undefined) {
+        const v = typeof req.body[k] === 'string' ? req.body[k].trim() : req.body[k];
+        patch[k] = v === '' ? null : v;
+      }
+    }
+    if (req.body?.invite_status && ['target','invited','accepted','declined','met','passed'].includes(req.body.invite_status)) {
+      patch.invite_status = req.body.invite_status;
+    }
+    // If the AE changed the company, re-resolve the account match —
+    // cheap and often what they wanted when they edited it.
+    if (patch.company !== undefined) {
+      patch.account_id = patch.company ? await findAccountIdForCompany(patch.company) : null;
+    }
+    await updateAttendee(req.params.aid, patch);
+    res.redirect(`/events/${req.params.eid}#attendees`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+webRouter.post('/events/:eid/attendees/:aid/delete', requireAuth, async (req, res, next) => {
+  try {
+    if (!UUID_RE.test(req.params.eid) || !UUID_RE.test(req.params.aid)) {
+      return res.redirect('/events');
+    }
+    await deleteAttendee(req.params.aid);
+    res.redirect(`/events/${req.params.eid}#attendees`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Generate a Claude-drafted note for one attendee. kind=invite writes
+// the speaker-voice session invite; kind=meeting writes the AE-voice
+// meeting request. We persist the draft on the attendee row so
+// reopening the panel doesn't re-pay for the API call — the AE can
+// regenerate if they want a different take.
+webRouter.post('/events/:eid/attendees/:aid/draft', requireAuth, async (req, res, next) => {
+  try {
+    if (!UUID_RE.test(req.params.eid) || !UUID_RE.test(req.params.aid)) {
+      return res.redirect('/events');
+    }
+    const kind = req.body?.kind;
+    if (kind !== 'invite' && kind !== 'meeting') {
+      return res.redirect(`/events/${req.params.eid}#attendees`);
+    }
+    const [event, attendee] = await Promise.all([
+      getEventById(req.params.eid),
+      getAttendeeById(req.params.aid),
+    ]);
+    if (!event || !attendee || attendee.event_id !== event.id) {
+      return res.redirect(`/events/${req.params.eid}#attendees`);
+    }
+
+    const ae = req.session.userId
+      ? (await query(
+          `SELECT name, email FROM users WHERE id = $1`,
+          [req.session.userId]
+        )).rows[0] || null
+      : null;
+
+    try {
+      let text;
+      if (kind === 'invite') {
+        text = await draftSessionInvite({ event, attendee, ae });
+        await updateAttendee(attendee.id, { invite_draft: text });
+      } else {
+        text = await draftMeetingRequest({ event, attendee, ae });
+        await updateAttendee(attendee.id, { meeting_draft: text });
+      }
+    } catch (err) {
+      console.error(`[events/${event.id}/attendees/${attendee.id}/draft] ${kind} failed:`, err.message);
+      // Persist the error message visibly in the draft field so the
+      // AE sees WHY it failed (e.g. "No personal_invite_session") and
+      // can act on it — rather than a silent no-op.
+      const msg = `[draft failed] ${err.message}`;
+      const patch = kind === 'invite' ? { invite_draft: msg } : { meeting_draft: msg };
+      await updateAttendee(attendee.id, patch);
+    }
+    res.redirect(`/events/${event.id}?open=${attendee.id}#a-${attendee.id}`);
   } catch (err) {
     next(err);
   }

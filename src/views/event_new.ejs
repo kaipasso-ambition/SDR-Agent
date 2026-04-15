@@ -36,28 +36,26 @@
     </label>
 
     <label class="block text-sm">
-      <span class="font-medium text-slate-800">Context</span>
+      <span class="font-medium text-slate-800">Notes <span class="text-slate-400 font-normal">(paste the marketing brief, speaker details, whatever you have)</span></span>
       <textarea name="description" rows="4"
-                placeholder="Theme, sponsors, who we want to meet, why this moment matters. This feeds the play builder when you add plays under the event."
+                placeholder="e.g. 'Jared is speaking at 2pm Tuesday. Session has limited seats. Marketing has a list of expected attendees in Slack — will paste here.'"
                 class="w-full border border-slate-300 rounded px-3 py-2 mt-1"></textarea>
     </label>
 
-    <label class="block text-sm">
-      <span class="font-medium text-slate-800">Reference links <span class="text-slate-400 font-normal">(one per line — agenda page, sponsor list, invite list, prior-year recap)</span></span>
-      <textarea name="reference_links" rows="3"
-                placeholder="https://www.gartner.com/en/conferences/na/sales-us/sessions&#10;https://..."
-                class="w-full border border-slate-300 rounded px-3 py-2 mt-1 font-mono text-xs"></textarea>
-    </label>
-
-    <label class="block text-sm">
-      <span class="font-medium text-slate-800">Speaking slot <span class="text-slate-400 font-normal">(optional — any Ambition exec on stage, limited-seat session)</span></span>
-      <textarea name="speaking_note" rows="2"
-                placeholder="e.g. 'Our CEO Travis is speaking — very limited seating. Want to designate personal invites.'"
-                class="w-full border border-slate-300 rounded px-3 py-2 mt-1 text-sm"></textarea>
-      <span class="text-xs text-slate-500 mt-1 block">
-        If you paste links or a speaking note above, we'll kick off a background research run (~30–60s) to pull the agenda, audience profile, sessions, and angles you can play against.
-      </span>
-    </label>
+    <details class="text-sm">
+      <summary class="text-xs text-slate-500 cursor-pointer hover:text-slate-900">Optional · research links (agenda page, session list)</summary>
+      <div class="mt-2 space-y-2">
+        <textarea name="reference_links" rows="2"
+                  placeholder="https://..."
+                  class="w-full border border-slate-300 rounded px-3 py-2 mt-1 font-mono text-xs"></textarea>
+        <textarea name="speaking_note" rows="2"
+                  placeholder="Speaking slot note (optional) — 'Jared is on stage at 2pm, limited seats'"
+                  class="w-full border border-slate-300 rounded px-3 py-2 mt-1 text-xs"></textarea>
+        <span class="text-xs text-slate-500 block">
+          If you add a link or speaking note, we'll quietly pull the session details into the background so the "Draft invite" button has what it needs.
+        </span>
+      </div>
+    </details>
 
     <label class="block text-sm">
       <span class="font-medium text-slate-800">Status</span>
