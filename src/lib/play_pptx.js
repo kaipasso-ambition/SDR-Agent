@@ -1,68 +1,58 @@
-// Play → PowerPoint (.pptx) exporter. The file Google Slides imports
-// cleanly via File → Open → Upload → opens as an editable deck, or
-// lives natively in a Drive folder. We ship .pptx instead of hitting
-// the Slides API directly so there's no OAuth step in the loop —
-// the AE downloads, uploads to Drive, and shares from there.
+// Play → PowerPoint (.pptx) exporter. Three slides, readable at
+// the back of the room:
 //
-// Visual language mirrors the Ambition corporate deck: white
-// background, AMBITION wordmark + circular mark in the corner,
-// slate-900 bold titles, emerald accents for champion/positive and
-// a soft rose for risks/"what fails", and a "Month YYYY · ambition.com"
-// footer on every slide.
+//   1. Title            — AMBITION brand, play name + account.
+//   2. The play         — numbered step diagram, left-to-right, with a
+//                         "YOU ARE HERE" marker on the current step and
+//                         a "WHO HAS THE BALL" callout.
+//   3. The org          — contact tree (reports_to) with the path
+//                         numbered and the champion highlighted.
 //
-// Deck structure (same order every time so the AE can skim):
-//   1. Title — the play, the account, the date
-//   2. The play at a glance — instinct + hypothesis + contact path
-//   3. Execution path — sequenced moves as a numbered timeline
-//   4. Artifact slides — one per move that has a draft to paste
-//   5. Stakeholder narratives — who needs to believe what
-//   6. Risks · internal ask · positioning hooks
-//
-// Voice rule: champion-voice artifacts get an emerald accent bar so
-// the AE can see at-a-glance which slides they're meant to forward
-// vs. which are internal AE-only coach-notes.
+// Voice/brand rules:
+//   - White background, slate-900 ink, emerald accent — matches the
+//     Ambition corporate deck (AMBITION wordmark on every slide,
+//     "<month year> · ambition.com" footer).
+//   - Font sizes are deliberately big. This deck gets shared; it has
+//     to read at a glance, not reward squinting.
+//   - The full sales-kit content (artifacts, narratives, positioning
+//     hooks) lives in the app — the exported deck is the briefing
+//     summary, not the playbook in full.
 
 import PptxGenJS from 'pptxgenjs';
 
-// Brand palette — aligned to the Ambition marketing deck.
 const COLORS = {
-  ink:        '0F172A',   // slate-900 — titles
-  body:       '334155',   // slate-700 — copy
-  muted:      '64748B',   // slate-500 — captions, footers
-  rule:       'E2E8F0',   // slate-200 — hairlines
-  pageBg:     'FFFFFF',   // white page
-  ambition:   '10B981',   // emerald-500 — Ambition green
-  ambitionLo: 'D1FAE5',   // emerald-100 — soft fill
-  aeAccent:   '1E293B',   // slate-800 — AE voice
-  internal:   '0284C7',   // sky-600 — internal colleague voice
-  rose:       'F43F5E',   // rose-500 — risks / "what fails" column
-  roseLo:     'FFE4E6',   // rose-100
-  chipBg:     'F1F5F9',   // slate-100
+  ink:        '0F172A',   // slate-900
+  body:       '334155',   // slate-700
+  muted:      '64748B',   // slate-500
+  rule:       'E2E8F0',   // slate-200
+  surface:    'F8FAFC',   // slate-50
+  accent:     '059669',   // emerald-600  (Ambition green)
+  accentSoft: 'D1FAE5',   // emerald-100
+  accentInk:  '064E3B',   // emerald-900
+  warn:       'D97706',   // amber-600
+  risk:       'DC2626',   // red-600
+  bg:         'FFFFFF',
 };
 
-const ACTOR_TAG = {
-  champion:           { label: 'CHAMPION CARRIES', color: COLORS.ambition },
-  ae:                 { label: 'YOU (COACH)',       color: COLORS.aeAccent },
-  internal_colleague: { label: 'INTERNAL ASSIST',   color: COLORS.internal },
+const ROLE_LABEL = {
+  economic_buyer: 'Economic Buyer',
+  champion:       'Champion',
+  coach:          'Coach',
+  influencer:     'Influencer',
+  blocker:        'Blocker',
+  user:           'User',
+  unknown:        '—',
 };
 
-const ARTIFACT_TYPE_LABEL = {
-  slack_forward:      'Slack forward',
-  exec_talking_points:'Exec talking points',
-  one_pager:          'One-pager',
-  question_to_raise:  'Question to raise',
-  meeting_pre_read:   'Meeting pre-read',
+const STANCE_COLOR = {
+  hot:     '059669',
+  warm:    '10B981',
+  neutral: '94A3B8',
+  cold:    '60A5FA',
+  hostile: 'DC2626',
 };
 
-// LAYOUT_WIDE is 13.333 × 7.5 inches. Constants so future edits don't
-// drift from the brand grid.
-const PAGE_W = 13.333;
-const PAGE_H = 7.5;
-const MARGIN_X = 0.6;
-
-// Build a filename that's safe on Drive/Windows: lowercase, hyphens,
-// only alphanumerics, capped length. "TriNet — Hub-not-spoke" →
-// "trinet-hub-not-spoke-play.pptx".
+// Build a filename that's safe on Drive/Windows.
 export function buildFilename(accountName, namedPlay) {
   const slug = `${accountName || 'account'}-${namedPlay || 'play'}`
     .toLowerCase()
@@ -72,503 +62,521 @@ export function buildFilename(accountName, namedPlay) {
   return `${slug || 'play'}.pptx`;
 }
 
-// Main entry point — returns a Node Buffer of the .pptx file. The
-// caller streams this back to the browser with a
-// Content-Disposition: attachment header.
+// Main entry point — returns a Node Buffer of the .pptx file.
 export async function renderPlayPptx({ play, account, hypothesis, contacts = [] }) {
   const pptx = new PptxGenJS();
-  pptx.layout = 'LAYOUT_WIDE';
-  pptx.title = play.ai_expansion?.named_play || 'Account play';
-  pptx.company = 'Ambition';
+  pptx.layout = 'LAYOUT_WIDE';         // 13.333 x 7.5 inches
+  pptx.title = play.ai_expansion?.named_play || 'Account Play';
+  pptx.company = 'Ambition.com';
 
   const exp = play.ai_expansion || {};
+  const moves = Array.isArray(exp.moves) ? exp.moves : [];
   const byId = new Map(contacts.map((c) => [c.id, c]));
   const pathResolved = (play.contact_path || []).map((id) => byId.get(id)).filter(Boolean);
 
-  const footerDate = new Date(play.created_at || Date.now())
-    .toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+  // Current step: first move whose day is in the future relative to
+  // play.created_at. Falls back to the first move on fresh plays and
+  // the last move on plays that have run past their schedule.
+  const createdAt = play.created_at ? new Date(play.created_at).getTime() : Date.now();
+  const daysSince = Math.max(0, (Date.now() - createdAt) / 86400000);
+  let currentStepIdx = moves.findIndex((m) => (m.days_from_now ?? 0) >= daysSince);
+  if (currentStepIdx === -1) currentStepIdx = moves.length - 1;
+  if (moves.length === 0) currentStepIdx = -1;
 
-  const ctx = { pptx, footerDate };
-
-  addTitleSlide(ctx, { play, account, exp });
-  addOverviewSlide(ctx, { play, account, exp, pathResolved, hypothesis });
-
-  if (Array.isArray(exp.moves) && exp.moves.length > 0) {
-    addMovesSlides(ctx, exp.moves);
-    for (const move of exp.moves) {
-      const content = move?.artifact?.content;
-      if (content && String(content).trim()) {
-        addArtifactSlide(ctx, move);
-      }
-    }
-  }
-
-  if (exp.stakeholder_narratives && Object.keys(exp.stakeholder_narratives).length > 0) {
-    addStakeholdersSlide(ctx, exp.stakeholder_narratives);
-  }
-
-  addClosingSlide(ctx, exp);
+  addTitleSlide(pptx, { play, account, exp });
+  addPlaySlide(pptx, { play, account, exp, moves, currentStepIdx });
+  addOrgSlide(pptx, { account, contacts, pathResolved });
 
   const buf = await pptx.write({ outputType: 'nodebuffer' });
   return Buffer.isBuffer(buf) ? buf : Buffer.from(buf);
 }
 
-// ---------- branding primitives ----------
+// ---------- shared chrome ----------
 
-// Ambition wordmark — small "o" circle in emerald + bold "AMBITION"
-// in slate-900. Approximates the real logo; on a corporate-polished
-// deck the AE can swap in the real SVG via Slides > Insert > Image
-// after upload.
-function addWordmark(s, { x, y, size = 1.0 } = {}) {
-  const ringR = 0.13 * size;
-  // Open circle — stroke only, emerald. Placed as the "O" preceding AMBITION.
-  s.addShape('ellipse', {
-    x, y: y + 0.03 * size, w: ringR * 2, h: ringR * 2,
-    fill: { type: 'none' }, line: { color: COLORS.ambition, width: 2 * size },
+// AMBITION wordmark. Real logo lives outside the repo; we approximate
+// with a filled emerald ring + wordmark so the deck reads as on-brand
+// without shipping binary assets.
+function addBrandMark(s, { x, y }) {
+  s.addShape('oval', {
+    x, y, w: 0.32, h: 0.32,
+    fill: { color: COLORS.bg },
+    line: { color: COLORS.accent, width: 2.25 },
+  });
+  s.addShape('oval', {
+    x: x + 0.11, y: y + 0.11, w: 0.10, h: 0.10,
+    fill: { color: COLORS.accent }, line: { color: COLORS.accent },
   });
   s.addText('AMBITION', {
-    x: x + ringR * 2 + 0.08, y, w: 1.6 * size, h: 0.35 * size,
-    color: COLORS.ink, fontSize: 14 * size, bold: true, fontFace: 'Calibri',
-    charSpacing: 2, valign: 'middle',
+    x: x + 0.38, y: y + 0.02, w: 1.6, h: 0.28,
+    color: COLORS.ink,
+    fontSize: 14, bold: true, charSpacing: 3, fontFace: 'Calibri',
+    valign: 'middle',
   });
 }
 
-// Bottom-of-page footer: thin rule + "Month YYYY" left + "ambition.com" right.
-function addFooter(s, { footerDate }) {
+function addFooter(s, { leftText } = {}) {
   s.addShape('line', {
-    x: MARGIN_X, y: PAGE_H - 0.55, w: PAGE_W - MARGIN_X * 2, h: 0,
+    x: 0.6, y: 7.15, w: 12.2, h: 0,
     line: { color: COLORS.rule, width: 0.75 },
   });
-  s.addText(footerDate, {
-    x: MARGIN_X, y: PAGE_H - 0.45, w: 3.0, h: 0.3,
+  s.addText(leftText || monthYear(new Date()), {
+    x: 0.6, y: 7.2, w: 6, h: 0.25,
     color: COLORS.muted, fontSize: 10, fontFace: 'Calibri',
   });
   s.addText('ambition.com', {
-    x: PAGE_W - 3.0 - MARGIN_X, y: PAGE_H - 0.45, w: 3.0, h: 0.3,
+    x: 6.8, y: 7.2, w: 6, h: 0.25,
     color: COLORS.muted, fontSize: 10, fontFace: 'Calibri', align: 'right',
   });
 }
 
-// Shared "content slide" chrome: white background, wordmark top-right,
-// footer. Call at the top of every content slide.
-function dressContentSlide(pptx, ctx) {
-  const s = pptx.addSlide();
-  s.background = { color: COLORS.pageBg };
-  addWordmark(s, { x: PAGE_W - MARGIN_X - 1.7, y: 0.35, size: 0.85 });
-  addFooter(s, ctx);
-  return s;
+function monthYear(d) {
+  return d.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
 }
 
-// Large "page title" block. Keeps the grid consistent across content
-// slides so a deck feels like one document.
-function addPageTitle(s, { title, subtitle, kicker }) {
-  let y = 0.45;
-  if (kicker) {
-    s.addText(kicker.toUpperCase(), {
-      x: MARGIN_X, y, w: 9.0, h: 0.3,
-      color: COLORS.ambition, fontSize: 11, bold: true, charSpacing: 4, fontFace: 'Calibri',
-    });
-    y += 0.35;
-  }
-  s.addText(title, {
-    x: MARGIN_X, y, w: 10.5, h: 0.85,
-    color: COLORS.ink, fontSize: 32, bold: true, fontFace: 'Calibri', valign: 'top',
+function truncate(str, max) {
+  if (!str) return '';
+  const s = String(str);
+  if (s.length <= max) return s;
+  return s.slice(0, max - 1).trimEnd() + '…';
+}
+
+// ---------- slide 1: title ----------
+
+function addTitleSlide(pptx, { play, account, exp }) {
+  const s = pptx.addSlide();
+  s.background = { color: COLORS.bg };
+
+  addBrandMark(s, { x: 0.6, y: 0.55 });
+
+  s.addText('GAME PLAN', {
+    x: 0.6, y: 2.0, w: 7.5, h: 0.4,
+    color: COLORS.accent, fontSize: 16, bold: true, charSpacing: 4, fontFace: 'Calibri',
   });
+
+  s.addText(exp.named_play || 'Untitled play', {
+    x: 0.6, y: 2.45, w: 9.2, h: 2.6,
+    color: COLORS.ink, fontSize: 54, bold: true, fontFace: 'Calibri',
+    valign: 'top', lineSpacingMultiple: 1.05,
+  });
+
+  s.addText(
+    `for ${account?.account_name || 'Account'}${account?.industry ? '  ·  ' + account.industry : ''}`,
+    {
+      x: 0.6, y: 5.3, w: 9.2, h: 0.5,
+      color: COLORS.body, fontSize: 22, fontFace: 'Calibri',
+    }
+  );
+
+  // Decorative stripes on the right — echoes the reference title
+  // slide's bar-chart motif without requiring an image asset.
+  const stripeX = 10.2;
+  const stripeY = 2.4;
+  const bars = [
+    { w: 2.6, color: COLORS.accent,     t: 0    },
+    { w: 2.2, color: COLORS.accent,     t: 45   },
+    { w: 2.8, color: COLORS.accentSoft, t: 0    },
+    { w: 1.9, color: COLORS.accent,     t: 70   },
+  ];
+  bars.forEach((b, i) => {
+    s.addShape('roundRect', {
+      x: stripeX, y: stripeY + i * 0.75, w: b.w, h: 0.45,
+      fill: { color: b.color, transparency: b.t },
+      line: { type: 'none' },
+      rectRadius: 0.22,
+    });
+  });
+
+  addFooter(s, {
+    leftText: `${monthYear(new Date(play.created_at || Date.now()))}  ·  prepared for ${account?.account_name || 'the account'}`,
+  });
+}
+
+// ---------- slide 2: the play diagram ----------
+
+function addPlaySlide(pptx, { play, account, exp, moves, currentStepIdx }) {
+  const s = pptx.addSlide();
+  s.background = { color: COLORS.bg };
+  addBrandMark(s, { x: 11.2, y: 0.4 });
+
+  s.addText('The play', {
+    x: 0.6, y: 0.45, w: 9.0, h: 0.6,
+    color: COLORS.ink, fontSize: 34, bold: true, fontFace: 'Calibri',
+  });
+  const subtitle = exp.named_play
+    ? `${exp.named_play}${account?.account_name ? '  ·  ' + account.account_name : ''}`
+    : account?.account_name || '';
   if (subtitle) {
     s.addText(subtitle, {
-      x: MARGIN_X, y: y + 0.9, w: 10.5, h: 0.5,
-      color: COLORS.muted, fontSize: 14, fontFace: 'Calibri',
+      x: 0.6, y: 1.1, w: 9.0, h: 0.4,
+      color: COLORS.muted, fontSize: 14, italic: true, fontFace: 'Calibri',
     });
   }
-}
 
-// ---------- slide builders ----------
-
-function addTitleSlide({ pptx, footerDate }, { play, account, exp }) {
-  const s = pptx.addSlide();
-  s.background = { color: COLORS.pageBg };
-
-  // Wordmark top-left, slightly larger than content slides.
-  addWordmark(s, { x: MARGIN_X, y: 0.55, size: 1.25 });
-
-  // Kicker above the title.
-  s.addText('GAME PLAN', {
-    x: MARGIN_X, y: 2.25, w: 8, h: 0.35,
-    color: COLORS.ambition, fontSize: 13, bold: true, charSpacing: 4, fontFace: 'Calibri',
-  });
-
-  // Big bold title — the named play.
-  const titleText = exp.named_play || 'Account play';
-  s.addText(titleText, {
-    x: MARGIN_X, y: 2.7, w: 8.0, h: 2.4,
-    color: COLORS.ink, fontSize: 52, bold: true, fontFace: 'Calibri',
-    valign: 'top',
-  });
-
-  // Subtitle — the account line.
-  const sub = `for ${account?.account_name || 'Account'}${account?.industry ? ' · ' + account.industry : ''}`;
-  s.addText(sub, {
-    x: MARGIN_X, y: 5.25, w: 8.0, h: 0.6,
-    color: COLORS.body, fontSize: 20, fontFace: 'Calibri',
-  });
-
-  // Right-side decorative bars — approximates the brand-deck artwork
-  // (horizontal bars with avatars). We draw bars only since the real
-  // asset isn't in the repo; AE can swap art after upload if they want.
-  const bars = [
-    { w: 4.5, color: COLORS.ambition,   softW: 0.6 },
-    { w: 3.8, color: '5EEAD4',          softW: 0.9 },  // teal-300
-    { w: 3.2, color: 'FCD34D',          softW: 0.5 },  // amber-300
-    { w: 4.2, color: '818CF8',          softW: 1.2 },  // indigo-400
-  ];
-  const barStartX = 8.8;
-  const barStartY = 2.8;
-  const barH = 0.55;
-  const barGap = 0.55;
-  bars.forEach((b, i) => {
-    const y = barStartY + i * barGap;
-    // Soft lead
-    s.addShape('rect', {
-      x: barStartX, y, w: b.softW, h: barH,
-      fill: { color: b.color, transparency: 70 }, line: { type: 'none' },
+  if (moves.length === 0) {
+    s.addText('No moves on this play yet. Open it in Ambition to draft them.', {
+      x: 0.6, y: 3.0, w: 12.2, h: 0.8,
+      color: COLORS.muted, fontSize: 18, italic: true, fontFace: 'Calibri', align: 'center',
     });
-    // Main bar
-    s.addShape('rect', {
-      x: barStartX + b.softW + 0.08, y, w: b.w - b.softW - 0.08, h: barH,
-      fill: { color: b.color }, line: { type: 'none' },
-    });
-    // Circular "avatar" cap at the end
-    s.addShape('ellipse', {
-      x: barStartX + b.w + 0.1, y: y - 0.12, w: barH + 0.25, h: barH + 0.25,
-      fill: { color: COLORS.pageBg },
-      line: { color: b.color, width: 2 },
-    });
-  });
-
-  addFooter(s, { footerDate });
-}
-
-function addOverviewSlide(ctx, { play, account, exp, pathResolved, hypothesis }) {
-  const s = dressContentSlide(ctx.pptx, ctx);
-
-  addPageTitle(s, {
-    kicker: 'The play at a glance',
-    title: exp.named_play || 'The play',
-    subtitle: account?.account_name ? `For ${account.account_name}` : null,
-  });
-
-  const COL_Y = 2.35;
-
-  // Left column: YOUR INSTINCT
-  s.addText('YOUR INSTINCT', {
-    x: MARGIN_X, y: COL_Y, w: 6.0, h: 0.3,
-    color: COLORS.muted, fontSize: 10, bold: true, charSpacing: 3, fontFace: 'Calibri',
-  });
-  s.addText(play.instinct || '—', {
-    x: MARGIN_X, y: COL_Y + 0.35, w: 6.0, h: 1.2,
-    color: COLORS.ink, fontSize: 14, fontFace: 'Calibri', valign: 'top',
-  });
-
-  // Left column: HYPOTHESIS
-  if (hypothesis?.narrative_hook) {
-    s.addText('HYPOTHESIS', {
-      x: MARGIN_X, y: COL_Y + 1.7, w: 6.0, h: 0.3,
-      color: COLORS.muted, fontSize: 10, bold: true, charSpacing: 3, fontFace: 'Calibri',
-    });
-    s.addText(hypothesis.narrative_hook, {
-      x: MARGIN_X, y: COL_Y + 2.05, w: 6.0, h: 1.1,
-      color: COLORS.body, fontSize: 12, fontFace: 'Calibri', valign: 'top',
-    });
-
-    // Three-beat narrative
-    const n = hypothesis.narrative;
-    if (n && (n.current_state || n.future_state || n.bridge)) {
-      const beats = [];
-      if (n.current_state) beats.push({ tag: 'TODAY', text: n.current_state });
-      if (n.future_state)  beats.push({ tag: "IF WE WIN", text: n.future_state });
-      if (n.bridge)        beats.push({ tag: 'BRIDGE', text: n.bridge });
-      const startY = COL_Y + 3.3;
-      const h = Math.max(0.4, 1.2 / Math.max(beats.length, 1));
-      beats.forEach((b, i) => {
-        s.addText(
-          [
-            { text: `${b.tag}  `, options: { bold: true, color: COLORS.ambition, fontSize: 9 } },
-            { text: b.text, options: { color: COLORS.body, fontSize: 10 } },
-          ],
-          { x: MARGIN_X, y: startY + i * h, w: 6.0, h, fontFace: 'Calibri', valign: 'top' }
-        );
-      });
-    }
+    addFooter(s, {});
+    return;
   }
 
-  // Right column: CONTACT PATH — rendered as a vertical numbered
-  // timeline so it reads as "who we move through, in order."
-  const pathX = 7.2;
-  s.addText('THE PATH IN', {
-    x: pathX, y: COL_Y, w: 5.5, h: 0.3,
-    color: COLORS.muted, fontSize: 10, bold: true, charSpacing: 3, fontFace: 'Calibri',
+  // First row: up to 4 steps. Second row: next 4. Overflow collapses
+  // into a "+N more" pill.
+  const row1 = moves.slice(0, 4);
+  const row2 = moves.slice(4, 8);
+  const overflow = moves.slice(8);
+
+  drawStepRow(s, {
+    moves: row1,
+    startIdx: 0,
+    y: 1.85,
+    currentStepIdx,
+    overflowCount: overflow.length,
+    overflowOnThisRow: row2.length === 0,
   });
-
-  if (pathResolved.length === 0) {
-    s.addText('No path set yet.', {
-      x: pathX, y: COL_Y + 0.4, w: 5.5, h: 0.4,
-      color: COLORS.muted, fontSize: 12, italic: true, fontFace: 'Calibri',
-    });
-  } else {
-    const rowH = 0.7;
-    const startY = COL_Y + 0.4;
-    const maxRows = Math.min(pathResolved.length, 6);
-
-    // Connector rail behind the dots
-    if (maxRows > 1) {
-      s.addShape('line', {
-        x: pathX + 0.2, y: startY + 0.2,
-        w: 0, h: (maxRows - 1) * rowH,
-        line: { color: COLORS.rule, width: 1.5 },
-      });
-    }
-
-    pathResolved.slice(0, maxRows).forEach((c, i) => {
-      const y = startY + i * rowH;
-      const isChampion = c.deal_role === 'champion';
-      // Numbered dot
-      s.addShape('ellipse', {
-        x: pathX, y: y + 0.05, w: 0.4, h: 0.4,
-        fill: { color: isChampion ? COLORS.ambition : COLORS.pageBg },
-        line: { color: isChampion ? COLORS.ambition : COLORS.muted, width: 1.5 },
-      });
-      s.addText(String(i + 1), {
-        x: pathX, y: y + 0.05, w: 0.4, h: 0.4,
-        color: isChampion ? 'FFFFFF' : COLORS.ink,
-        fontSize: 11, bold: true, align: 'center', valign: 'middle', fontFace: 'Calibri',
-      });
-      s.addText(
-        [
-          { text: c.name || '—', options: { bold: true, color: COLORS.ink, fontSize: 13 } },
-          { text: c.title ? `   ${c.title}` : '', options: { color: COLORS.muted, fontSize: 10 } },
-        ],
-        { x: pathX + 0.55, y, w: 4.95, h: 0.35, fontFace: 'Calibri', valign: 'middle' }
-      );
-      if (c.deal_role || c.stance) {
-        s.addText(
-          `${c.deal_role || ''}${c.deal_role && c.stance ? ' · ' : ''}${c.stance || ''}`,
-          {
-            x: pathX + 0.55, y: y + 0.32, w: 4.95, h: 0.3,
-            color: isChampion ? COLORS.ambition : COLORS.muted,
-            fontSize: 10, italic: true, fontFace: 'Calibri',
-          }
-        );
-      }
+  if (row2.length > 0) {
+    drawStepRow(s, {
+      moves: row2,
+      startIdx: 4,
+      y: 3.55,
+      currentStepIdx,
+      overflowCount: overflow.length,
+      overflowOnThisRow: true,
     });
   }
+
+  const current = currentStepIdx >= 0 ? moves[currentStepIdx] : null;
+  drawBallCallout(s, { current, currentStepIdx, totalSteps: moves.length });
+
+  addFooter(s, {});
 }
 
-function addMovesSlides(ctx, moves) {
-  const { pptx } = ctx;
-  // 3 moves per slide reads cleanly without crowding.
-  const chunks = [];
-  for (let i = 0; i < moves.length; i += 3) chunks.push(moves.slice(i, i + 3));
+function drawStepRow(s, { moves, startIdx, y, currentStepIdx, overflowCount, overflowOnThisRow }) {
+  const boxW = 2.75;
+  const gap = 0.25;
+  const startX = 0.6;
+  const rowH = 1.5;
 
-  chunks.forEach((chunk, chunkIdx) => {
-    const s = dressContentSlide(pptx, ctx);
-    const suffix = chunks.length > 1 ? ` (${chunkIdx + 1}/${chunks.length})` : '';
-    addPageTitle(s, {
-      kicker: 'Execution path',
-      title: `Sequenced moves${suffix}`,
-      subtitle: 'The playbook, in order — who moves, when, and what they ask.',
-    });
+  moves.forEach((m, i) => {
+    const idx = startIdx + i;
+    const isCurrent = idx === currentStepIdx;
+    const isPast = idx < currentStepIdx;
+    const x = startX + i * (boxW + gap);
 
-    const rowH = 1.55;
-    const startY = 2.5;
-    chunk.forEach((m, i) => {
-      const y = startY + i * rowH;
-      const tag = ACTOR_TAG[m.actor_type] || ACTOR_TAG.ae;
-
-      // Step circle — emerald filled for visual cadence.
-      s.addShape('ellipse', {
-        x: MARGIN_X, y: y + 0.1, w: 0.6, h: 0.6,
-        fill: { color: COLORS.ambition }, line: { color: COLORS.ambition },
-      });
-      s.addText(String(m.step ?? i + 1), {
-        x: MARGIN_X, y: y + 0.1, w: 0.6, h: 0.6,
-        color: 'FFFFFF', fontSize: 18, bold: true,
-        align: 'center', valign: 'middle', fontFace: 'Calibri',
-      });
-
-      // Actor-type tag (caps, colored)
-      s.addText(tag.label, {
-        x: MARGIN_X + 0.8, y: y + 0.02, w: 3.0, h: 0.28,
-        color: tag.color, fontSize: 9, bold: true, charSpacing: 3, fontFace: 'Calibri',
-      });
-
-      // Actor name + channel + day
-      s.addText(
-        [
-          { text: m.actor || '—', options: { bold: true, color: COLORS.ink, fontSize: 14 } },
-          { text: `   ${m.channel || ''}${m.channel && m.days_from_now != null ? ' · ' : ''}${m.days_from_now != null ? `day ${m.days_from_now}` : ''}`,
-            options: { color: COLORS.muted, fontSize: 11 } },
-        ],
-        { x: MARGIN_X + 0.8, y: y + 0.3, w: 11.5, h: 0.32, fontFace: 'Calibri' }
-      );
-
-      // Ask
-      s.addText(m.ask || '', {
-        x: MARGIN_X + 0.8, y: y + 0.7, w: 11.0, h: 0.4,
-        color: COLORS.body, fontSize: 12, fontFace: 'Calibri', valign: 'top',
-      });
-      if (m.rationale) {
-        s.addText(m.rationale, {
-          x: MARGIN_X + 0.8, y: y + 1.1, w: 11.0, h: 0.35,
-          color: COLORS.muted, fontSize: 10, italic: true, fontFace: 'Calibri', valign: 'top',
-        });
-      }
-
-      // Artifact indicator
-      const hasArtifact = m.artifact && m.artifact.content && String(m.artifact.content).trim();
-      if (hasArtifact) {
-        s.addText('📋 artifact on next slide', {
-          x: PAGE_W - MARGIN_X - 2.2, y: y + 0.02, w: 2.2, h: 0.28,
-          color: COLORS.ambition, fontSize: 9, bold: true, align: 'right', fontFace: 'Calibri',
-        });
-      }
-
-      // Row divider
-      s.addShape('line', {
-        x: MARGIN_X, y: y + rowH - 0.08, w: PAGE_W - MARGIN_X * 2, h: 0,
-        line: { color: COLORS.rule, width: 0.75 },
-      });
-    });
-  });
-}
-
-function addArtifactSlide(ctx, move) {
-  const s = dressContentSlide(ctx.pptx, ctx);
-
-  const typeLabel = ARTIFACT_TYPE_LABEL[move.artifact.type] || 'Artifact';
-  const forChampion = move.artifact.for_actor === 'champion';
-  const accent = forChampion ? COLORS.ambition : COLORS.aeAccent;
-  const fill = forChampion ? COLORS.ambitionLo : COLORS.chipBg;
-
-  // Accent bar left edge — at-a-glance "champion forwards this" signal.
-  s.addShape('rect', {
-    x: 0, y: 0, w: 0.15, h: PAGE_H,
-    fill: { color: accent }, line: { type: 'none' },
-  });
-
-  addPageTitle(s, {
-    kicker: `Step ${move.step ?? ''}: ${typeLabel}`,
-    title: forChampion ? "For the champion to paste" : 'For you to carry',
-    subtitle: forChampion ? 'Champion voice — forward as-is' : 'AE voice — internal framing',
-  });
-
-  // Artifact panel
-  s.addShape('roundRect', {
-    x: MARGIN_X, y: 2.5, w: PAGE_W - MARGIN_X * 2, h: 4.2,
-    fill: { color: fill }, line: { color: COLORS.rule, width: 0.5 },
-    rectRadius: 0.1,
-  });
-  s.addText(move.artifact.content, {
-    x: MARGIN_X + 0.2, y: 2.65, w: PAGE_W - MARGIN_X * 2 - 0.4, h: 3.95,
-    color: COLORS.ink, fontSize: 13, fontFace: 'Calibri', valign: 'top',
-  });
-
-  // Meta row under the panel
-  s.addText(
-    [
-      { text: `${move.actor || ''}`, options: { color: COLORS.body, fontSize: 10, bold: true } },
-      { text: `   ${move.channel || ''}${move.channel && move.days_from_now != null ? ' · ' : ''}${move.days_from_now != null ? `day ${move.days_from_now}` : ''}`,
-        options: { color: COLORS.muted, fontSize: 10, italic: true } },
-    ],
-    { x: MARGIN_X, y: 6.8, w: PAGE_W - MARGIN_X * 2, h: 0.3, fontFace: 'Calibri' }
-  );
-}
-
-function addStakeholdersSlide(ctx, narratives) {
-  const s = dressContentSlide(ctx.pptx, ctx);
-  addPageTitle(s, {
-    kicker: 'Stakeholder narratives',
-    title: 'What each person needs to believe',
-    subtitle: 'In the champion\u2019s voice, not yours.',
-  });
-
-  const entries = Object.entries(narratives).slice(0, 6);
-  const rowH = 4.3 / Math.max(entries.length, 1);
-  entries.forEach(([name, text], i) => {
-    const y = 2.4 + i * rowH;
-    // Name pill
     s.addShape('roundRect', {
-      x: MARGIN_X, y: y + 0.05, w: 3.0, h: rowH - 0.15,
-      fill: { color: COLORS.ambitionLo }, line: { color: COLORS.ambition, width: 0.75 },
-      rectRadius: 0.08,
+      x, y, w: boxW, h: rowH,
+      fill: { color: isCurrent ? COLORS.accentSoft : (isPast ? COLORS.surface : COLORS.bg) },
+      line: { color: isCurrent ? COLORS.accent : COLORS.rule, width: isCurrent ? 2.5 : 1 },
+      rectRadius: 0.12,
     });
-    s.addText(name, {
-      x: MARGIN_X + 0.15, y: y + 0.05, w: 2.7, h: rowH - 0.15,
-      color: COLORS.ambition, fontSize: 13, bold: true, fontFace: 'Calibri', valign: 'middle',
-    });
-    // Narrative body
-    s.addText(text, {
-      x: MARGIN_X + 3.3, y, w: PAGE_W - MARGIN_X * 2 - 3.3, h: rowH - 0.1,
-      color: COLORS.body, fontSize: 12, fontFace: 'Calibri', valign: 'top',
-    });
-  });
-}
 
-function addClosingSlide(ctx, exp) {
-  const s = dressContentSlide(ctx.pptx, ctx);
-  addPageTitle(s, {
-    kicker: 'Coach notes',
-    title: 'Risks · internal ask · positioning',
-    subtitle: 'Read before you run the play.',
-  });
+    const circleColor = isPast ? COLORS.muted : (isCurrent ? COLORS.accent : COLORS.ink);
+    s.addShape('oval', {
+      x: x + 0.18, y: y + 0.18, w: 0.5, h: 0.5,
+      fill: { color: circleColor }, line: { color: circleColor },
+    });
+    s.addText(String(m.step ?? idx + 1), {
+      x: x + 0.18, y: y + 0.18, w: 0.5, h: 0.5,
+      color: 'FFFFFF', fontSize: 16, bold: true, align: 'center', valign: 'middle', fontFace: 'Calibri',
+    });
 
-  let y = 2.4;
+    if (isPast) {
+      s.addText('✓', {
+        x: x + boxW - 0.55, y: y + 0.1, w: 0.4, h: 0.4,
+        color: COLORS.accent, fontSize: 18, bold: true, align: 'right', fontFace: 'Calibri',
+      });
+    }
 
-  if (exp.internal_ask) {
-    s.addText('INTERNAL ASK', {
-      x: MARGIN_X, y, w: PAGE_W - MARGIN_X * 2, h: 0.3,
-      color: COLORS.muted, fontSize: 10, bold: true, charSpacing: 3, fontFace: 'Calibri',
+    s.addText(truncate(m.actor || '—', 26), {
+      x: x + 0.8, y: y + 0.15, w: boxW - 0.95, h: 0.35,
+      color: COLORS.ink, fontSize: 15, bold: true, fontFace: 'Calibri', valign: 'middle',
     });
-    s.addText(exp.internal_ask, {
-      x: MARGIN_X, y: y + 0.3, w: PAGE_W - MARGIN_X * 2, h: 0.8,
-      color: COLORS.ink, fontSize: 13, fontFace: 'Calibri', valign: 'top',
+    const channelLine = [m.channel, m.days_from_now != null ? `day ${m.days_from_now}` : null]
+      .filter(Boolean).join('  ·  ');
+    s.addText(channelLine || '—', {
+      x: x + 0.8, y: y + 0.5, w: boxW - 0.95, h: 0.3,
+      color: COLORS.muted, fontSize: 11, fontFace: 'Calibri', valign: 'middle',
     });
-    y += 1.3;
-  }
 
-  if (Array.isArray(exp.risks) && exp.risks.length > 0) {
-    s.addText('RISKS', {
-      x: MARGIN_X, y, w: PAGE_W - MARGIN_X * 2, h: 0.3,
-      color: COLORS.rose, fontSize: 10, bold: true, charSpacing: 3, fontFace: 'Calibri',
+    s.addText(truncate(m.ask || '', 110), {
+      x: x + 0.18, y: y + 0.85, w: boxW - 0.3, h: 0.55,
+      color: COLORS.body, fontSize: 11, fontFace: 'Calibri', valign: 'top',
     });
-    const bullets = exp.risks.map((r) => ({ text: r, options: { bullet: { code: '25A0' } } }));
-    s.addText(bullets, {
-      x: MARGIN_X, y: y + 0.3, w: PAGE_W - MARGIN_X * 2, h: 1.6,
-      color: COLORS.body, fontSize: 12, fontFace: 'Calibri', paraSpaceAfter: 6, valign: 'top',
-    });
-    y += 2.0;
-  }
 
-  if (Array.isArray(exp.positioning_hooks) && exp.positioning_hooks.length > 0) {
-    s.addText('POSITIONING HOOKS', {
-      x: MARGIN_X, y, w: PAGE_W - MARGIN_X * 2, h: 0.3,
-      color: COLORS.muted, fontSize: 10, bold: true, charSpacing: 3, fontFace: 'Calibri',
-    });
-    // Render as soft chips
-    let cx = MARGIN_X;
-    let cy = y + 0.4;
-    exp.positioning_hooks.forEach((hook) => {
-      const estW = Math.min(6.0, 0.35 + String(hook).length * 0.09);
-      if (cx + estW > PAGE_W - MARGIN_X) { cx = MARGIN_X; cy += 0.5; }
+    if (isCurrent) {
       s.addShape('roundRect', {
-        x: cx, y: cy, w: estW, h: 0.4,
-        fill: { color: COLORS.ambitionLo }, line: { color: COLORS.ambition, width: 0.5 },
+        x: x + boxW / 2 - 0.85, y: y - 0.42, w: 1.7, h: 0.32,
+        fill: { color: COLORS.accent }, line: { color: COLORS.accent },
         rectRadius: 0.08,
       });
-      s.addText(hook, {
-        x: cx, y: cy, w: estW, h: 0.4,
-        color: COLORS.ink, fontSize: 10, align: 'center', valign: 'middle', fontFace: 'Calibri',
+      s.addText('YOU ARE HERE', {
+        x: x + boxW / 2 - 0.85, y: y - 0.42, w: 1.7, h: 0.32,
+        color: 'FFFFFF', fontSize: 10, bold: true, align: 'center', valign: 'middle',
+        charSpacing: 2, fontFace: 'Calibri',
       });
-      cx += estW + 0.15;
+    }
+
+    if (i < moves.length - 1) {
+      s.addText('›', {
+        x: x + boxW - 0.02, y: y + 0.5, w: 0.3, h: 0.5,
+        color: COLORS.muted, fontSize: 24, bold: true, align: 'center', valign: 'middle',
+      });
+    }
+  });
+
+  if (overflowOnThisRow && overflowCount > 0) {
+    const lastX = startX + moves.length * (boxW + gap);
+    s.addShape('roundRect', {
+      x: lastX, y: y + 0.45, w: 1.6, h: 0.6,
+      fill: { color: COLORS.surface }, line: { color: COLORS.rule, width: 1 },
+      rectRadius: 0.3,
+    });
+    s.addText(`+${overflowCount} more`, {
+      x: lastX, y: y + 0.45, w: 1.6, h: 0.6,
+      color: COLORS.muted, fontSize: 12, bold: true, align: 'center', valign: 'middle', fontFace: 'Calibri',
     });
   }
+}
+
+function drawBallCallout(s, { current, currentStepIdx, totalSteps }) {
+  const y = 5.25;
+  s.addShape('roundRect', {
+    x: 0.6, y, w: 12.2, h: 1.55,
+    fill: { color: COLORS.ink }, line: { color: COLORS.ink },
+    rectRadius: 0.12,
+  });
+
+  s.addText('WHO HAS THE BALL', {
+    x: 0.9, y: y + 0.2, w: 6.0, h: 0.3,
+    color: COLORS.accentSoft, fontSize: 12, bold: true, charSpacing: 4, fontFace: 'Calibri',
+  });
+
+  const ballName = current?.actor || 'Not yet assigned';
+  s.addText(ballName, {
+    x: 0.9, y: y + 0.5, w: 8.5, h: 0.65,
+    color: 'FFFFFF', fontSize: 30, bold: true, fontFace: 'Calibri', valign: 'middle',
+  });
+
+  const subline = current
+    ? [current.channel, current.days_from_now != null ? `day ${current.days_from_now}` : null, truncate(current.ask || '', 90)]
+        .filter(Boolean).join('  ·  ')
+    : 'Open this play in Ambition to assign the first move.';
+  s.addText(subline, {
+    x: 0.9, y: y + 1.1, w: 8.8, h: 0.35,
+    color: COLORS.accentSoft, fontSize: 13, fontFace: 'Calibri', valign: 'middle',
+  });
+
+  if (currentStepIdx >= 0 && totalSteps > 0) {
+    s.addText('STEP', {
+      x: 10.4, y: y + 0.2, w: 2.2, h: 0.3,
+      color: COLORS.accentSoft, fontSize: 11, bold: true, charSpacing: 3, align: 'right', fontFace: 'Calibri',
+    });
+    s.addText(`${currentStepIdx + 1} / ${totalSteps}`, {
+      x: 10.4, y: y + 0.45, w: 2.2, h: 0.95,
+      color: 'FFFFFF', fontSize: 44, bold: true, align: 'right', valign: 'middle', fontFace: 'Calibri',
+    });
+  }
+}
+
+// ---------- slide 3: the org chart ----------
+
+function addOrgSlide(pptx, { account, contacts, pathResolved }) {
+  const s = pptx.addSlide();
+  s.background = { color: COLORS.bg };
+  addBrandMark(s, { x: 11.2, y: 0.4 });
+
+  s.addText('The org', {
+    x: 0.6, y: 0.45, w: 9.0, h: 0.6,
+    color: COLORS.ink, fontSize: 34, bold: true, fontFace: 'Calibri',
+  });
+  s.addText(
+    `${account?.account_name || 'Account'} — contacts on the board${pathResolved.length ? `. Path: ${pathResolved.length} stop${pathResolved.length === 1 ? '' : 's'}.` : ''}`,
+    {
+      x: 0.6, y: 1.1, w: 10.0, h: 0.4,
+      color: COLORS.muted, fontSize: 14, italic: true, fontFace: 'Calibri',
+    }
+  );
+
+  if (contacts.length === 0) {
+    s.addText('No contacts mapped yet. Add them from the account plan page.', {
+      x: 0.6, y: 3.0, w: 12.2, h: 0.8,
+      color: COLORS.muted, fontSize: 18, italic: true, fontFace: 'Calibri', align: 'center',
+    });
+    // Legend stays useful regardless
+    drawOrgLegend(s, 6.4);
+    addFooter(s, {});
+    return;
+  }
+
+  const tiers = buildTiers(contacts);
+  const pathIdx = new Map();
+  pathResolved.forEach((c, i) => pathIdx.set(c.id, i + 1));
+
+  const top = 1.9;
+  const bottom = 6.4;
+  const tierH = (bottom - top) / Math.max(tiers.length, 1);
+  const boxW = 2.35;
+  const boxH = Math.min(1.15, tierH - 0.3);
+  const usableW = 12.2;
+  const startX = 0.6;
+
+  // Draw connector lines FIRST so they sit behind the boxes.
+  tiers.forEach((tier, rowIdx) => {
+    const slotW = usableW / tier.length;
+    tier.forEach((c, colIdx) => {
+      if (!c.reports_to_contact_id) return;
+      const parentPos = locateContact(tiers, c.reports_to_contact_id, { top, tierH, usableW, startX, boxW, boxH });
+      if (!parentPos) return;
+      const cx = startX + colIdx * slotW + (slotW - boxW) / 2;
+      const cy = top + rowIdx * tierH + (tierH - boxH) / 2;
+      s.addShape('line', {
+        x: parentPos.x + boxW / 2, y: parentPos.y + boxH,
+        w: (cx + boxW / 2) - (parentPos.x + boxW / 2),
+        h: cy - (parentPos.y + boxH),
+        line: { color: COLORS.rule, width: 1.25 },
+      });
+    });
+  });
+
+  // Draw boxes
+  tiers.forEach((tier, rowIdx) => {
+    const slotW = usableW / tier.length;
+    tier.forEach((c, colIdx) => {
+      const cx = startX + colIdx * slotW + (slotW - boxW) / 2;
+      const cy = top + rowIdx * tierH + (tierH - boxH) / 2;
+      drawContactBox(s, {
+        x: cx, y: cy, w: boxW, h: boxH,
+        contact: c,
+        pathNumber: pathIdx.get(c.id) || null,
+      });
+    });
+  });
+
+  drawOrgLegend(s, 6.75);
+  addFooter(s, {});
+}
+
+function drawContactBox(s, { x, y, w, h, contact, pathNumber }) {
+  const isChampion = contact.deal_role === 'champion';
+  const onPath = pathNumber != null;
+  const fill = isChampion ? COLORS.accentSoft : (onPath ? COLORS.surface : COLORS.bg);
+  const borderColor = isChampion ? COLORS.accent : (onPath ? COLORS.ink : COLORS.rule);
+  const borderW = isChampion || onPath ? 2 : 1;
+
+  s.addShape('roundRect', {
+    x, y, w, h,
+    fill: { color: fill }, line: { color: borderColor, width: borderW },
+    rectRadius: 0.1,
+  });
+
+  if (onPath) {
+    s.addShape('oval', {
+      x: x - 0.12, y: y - 0.12, w: 0.4, h: 0.4,
+      fill: { color: COLORS.ink }, line: { color: COLORS.ink },
+    });
+    s.addText(String(pathNumber), {
+      x: x - 0.12, y: y - 0.12, w: 0.4, h: 0.4,
+      color: 'FFFFFF', fontSize: 13, bold: true, align: 'center', valign: 'middle', fontFace: 'Calibri',
+    });
+  }
+
+  const stanceColor = STANCE_COLOR[contact.stance] || COLORS.muted;
+  s.addShape('oval', {
+    x: x + w - 0.28, y: y + 0.12, w: 0.16, h: 0.16,
+    fill: { color: stanceColor }, line: { color: stanceColor },
+  });
+
+  s.addText(contact.name || '—', {
+    x: x + 0.15, y: y + 0.1, w: w - 0.5, h: 0.3,
+    color: COLORS.ink, fontSize: 14, bold: true, fontFace: 'Calibri', valign: 'middle',
+  });
+
+  s.addText(truncate(contact.title || '', 40), {
+    x: x + 0.15, y: y + 0.42, w: w - 0.3, h: 0.28,
+    color: COLORS.body, fontSize: 11, fontFace: 'Calibri', valign: 'middle',
+  });
+
+  const roleLabel = ROLE_LABEL[contact.deal_role] || '—';
+  const roleColor = isChampion
+    ? COLORS.accent
+    : (contact.deal_role === 'economic_buyer' ? COLORS.ink : COLORS.muted);
+  s.addText(roleLabel.toUpperCase(), {
+    x: x + 0.15, y: y + h - 0.35, w: w - 0.3, h: 0.28,
+    color: roleColor, fontSize: 9, bold: true, charSpacing: 2, fontFace: 'Calibri', valign: 'middle',
+  });
+}
+
+function drawOrgLegend(s, y) {
+  const items = [
+    { label: 'Champion',       color: COLORS.accent  },
+    { label: 'On path',        color: COLORS.ink     },
+    { label: 'Hot/Warm',       color: STANCE_COLOR.warm },
+    { label: 'Neutral',        color: STANCE_COLOR.neutral },
+    { label: 'Cold/Hostile',   color: STANCE_COLOR.hostile },
+  ];
+  let x = 0.6;
+  items.forEach((it) => {
+    s.addShape('oval', {
+      x, y: y + 0.06, w: 0.16, h: 0.16,
+      fill: { color: it.color }, line: { color: it.color },
+    });
+    s.addText(it.label, {
+      x: x + 0.22, y, w: 1.8, h: 0.28,
+      color: COLORS.muted, fontSize: 10, fontFace: 'Calibri', valign: 'middle',
+    });
+    x += 1.95;
+  });
+}
+
+// Tier contacts by reports_to graph depth. If no one reports to anyone,
+// fall back to deal_role seniority so the chart still reads top-down.
+function buildTiers(contacts) {
+  const byId = new Map(contacts.map((c) => [c.id, c]));
+  const hasAnyReports = contacts.some((c) => c.reports_to_contact_id && byId.has(c.reports_to_contact_id));
+
+  if (hasAnyReports) {
+    const depth = new Map();
+    function computeDepth(c, seen) {
+      if (depth.has(c.id)) return depth.get(c.id);
+      if (seen.has(c.id)) return 0; // cycle guard
+      seen.add(c.id);
+      if (!c.reports_to_contact_id || !byId.has(c.reports_to_contact_id)) {
+        depth.set(c.id, 0);
+        return 0;
+      }
+      const d = computeDepth(byId.get(c.reports_to_contact_id), seen) + 1;
+      depth.set(c.id, d);
+      return d;
+    }
+    contacts.forEach((c) => computeDepth(c, new Set()));
+    const max = Math.max(0, ...depth.values());
+    const tiers = Array.from({ length: max + 1 }, () => []);
+    contacts.forEach((c) => tiers[depth.get(c.id) || 0].push(c));
+    return tiers.map((t) => t.slice(0, 6)).filter((t) => t.length > 0);
+  }
+
+  // Fallback: tier by deal_role seniority.
+  const SENIOR = { economic_buyer: 0, champion: 1, coach: 1, influencer: 1, blocker: 1, user: 2, unknown: 2 };
+  const buckets = new Map();
+  contacts.forEach((c) => {
+    const tier = SENIOR[c.deal_role] ?? 2;
+    if (!buckets.has(tier)) buckets.set(tier, []);
+    buckets.get(tier).push(c);
+  });
+  return Array.from(buckets.keys()).sort().map((k) => buckets.get(k).slice(0, 6));
+}
+
+function locateContact(tiers, contactId, { top, tierH, usableW, startX, boxW, boxH }) {
+  for (let rowIdx = 0; rowIdx < tiers.length; rowIdx++) {
+    const tier = tiers[rowIdx];
+    const idx = tier.findIndex((c) => c.id === contactId);
+    if (idx === -1) continue;
+    const slotW = usableW / tier.length;
+    return {
+      x: startX + idx * slotW + (slotW - boxW) / 2,
+      y: top + rowIdx * tierH + (tierH - boxH) / 2,
+    };
+  }
+  return null;
 }
