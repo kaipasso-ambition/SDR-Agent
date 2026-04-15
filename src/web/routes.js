@@ -843,7 +843,7 @@ webRouter.post('/accounts/:id/notes', requireAuth, async (req, res, next) => {
 webRouter.get('/brief', requireAuth, async (req, res, next) => {
   try {
     const [signals, counts, activeJobRow] = await Promise.all([
-      getSignalsForBrief(req.session.userId, { limit: 5 }),
+      getSignalsForBrief(req.session.userId, { limit: 20 }),
       getSignalCounts(req.session.userId),
       query(`SELECT * FROM account_signal_jobs ORDER BY started_at DESC LIMIT 1`),
     ]);

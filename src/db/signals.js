@@ -103,19 +103,35 @@ export async function insertSignals(signals, jobId = null) {
   return { inserted, updated, total: inserted + updated };
 }
 
-// Top-N unacked signals for the /brief view, owner-scoped.
-// Ownership rule: include signals on accounts owned by this user OR
-// unowned (NULL) — so a fresh book shows everything until the AE claims
-// accounts. Rank risk-first, severity-weighted, recency as tiebreak.
-export async function getSignalsForBrief(userId, { limit = 5 } = {}) {
+// Top unacked signals for the /brief view, owner-scoped, ONE PER ACCOUNT.
+// Diversification rule: the Brief is "what moved across my book" — if
+// Boomi has five severity-5 defense-risk signals it shouldn't eat every
+// slot. We pick the highest-ranked signal per account via DISTINCT ON,
+// then re-sort those picks by rank so the most urgent accounts surface
+// first. account_signal_count lets the view render a "+N more on this
+// account" link to the Pulse page.
+//
+// Default limit bumped to 20: if 15 accounts have flags we want to see
+// all 15, not truncate to a hard-coded 5.
+export async function getSignalsForBrief(userId, { limit = 20 } = {}) {
   const { rows } = await query(
-    `SELECT s.*, a.account_name, a.domain, a.status AS account_status,
-            a.owner_user_id
-       FROM account_signals s
-       JOIN accounts_registry a ON a.id = s.account_id
-      WHERE s.status IN ('new', 'acknowledged')
-        AND (a.owner_user_id = $1 OR a.owner_user_id IS NULL)
-      ORDER BY ${RISK_WEIGHT_SQL} DESC, s.detected_at DESC
+    `SELECT picks.*
+       FROM (
+         SELECT DISTINCT ON (s.account_id)
+                s.*,
+                a.account_name, a.domain, a.status AS account_status,
+                a.owner_user_id,
+                (${RISK_WEIGHT_SQL}) AS rank_score,
+                (SELECT COUNT(*)::int FROM account_signals s2
+                  WHERE s2.account_id = s.account_id
+                    AND s2.status IN ('new', 'acknowledged')) AS account_signal_count
+           FROM account_signals s
+           JOIN accounts_registry a ON a.id = s.account_id
+          WHERE s.status IN ('new', 'acknowledged')
+            AND (a.owner_user_id = $1 OR a.owner_user_id IS NULL)
+          ORDER BY s.account_id, ${RISK_WEIGHT_SQL} DESC, s.detected_at DESC
+       ) picks
+      ORDER BY picks.rank_score DESC, picks.detected_at DESC
       LIMIT $2`,
     [userId, limit]
   );
