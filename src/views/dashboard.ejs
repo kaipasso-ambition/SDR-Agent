@@ -21,6 +21,25 @@
   </a>
 <% } %>
 
+<% if ((counts.playsActive || 0) > 0) { %>
+  <div class="block mb-4 bg-white border border-slate-200 rounded-lg p-4">
+    <div class="flex items-center justify-between gap-4 flex-wrap">
+      <div>
+        <div class="text-xs uppercase tracking-wide text-slate-500">Active plays</div>
+        <div class="text-lg font-semibold mt-1">
+          <%= counts.playsActive %> active
+          <% if ((counts.playsDueSoon || 0) > 0) { %>
+            <span class="text-sm text-amber-700 font-medium">· <%= counts.playsDueSoon %> due this week</span>
+          <% } %>
+        </div>
+        <div class="text-xs text-slate-500 mt-0.5">
+          Named plays in flight on your accounts. Open any account → Game Plan.
+        </div>
+      </div>
+    </div>
+  </div>
+<% } %>
+
 <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
   <div class="bg-white border border-slate-200 rounded-lg p-5">
     <div class="text-xs uppercase tracking-wide text-slate-500">Drafts pending</div>

@@ -1,0 +1,442 @@
+<%
+  const dealRoleMeta = {
+    economic_buyer: { label: 'Economic buyer', pill: 'bg-violet-100 text-violet-800' },
+    champion:       { label: 'Champion',        pill: 'bg-emerald-100 text-emerald-800' },
+    coach:          { label: 'Coach',           pill: 'bg-sky-100 text-sky-800' },
+    influencer:     { label: 'Influencer',      pill: 'bg-amber-100 text-amber-800' },
+    user:           { label: 'User',             pill: 'bg-slate-100 text-slate-700' },
+    blocker:        { label: 'Blocker',         pill: 'bg-red-100 text-red-800' },
+    unknown:        { label: 'Unclassified',    pill: 'bg-slate-100 text-slate-500' },
+  };
+  const stanceMeta = {
+    hot:     { label: '🔥 Hot',     cls: 'text-red-600 font-medium' },
+    warm:    { label: 'Warm',        cls: 'text-orange-600' },
+    neutral: { label: 'Neutral',     cls: 'text-slate-500' },
+    cold:    { label: 'Cold',        cls: 'text-sky-700' },
+    hostile: { label: 'Hostile',     cls: 'text-red-700 font-medium' },
+  };
+  const useCaseLabel = {
+    performance_graph:   'Performance Graph',
+    ascend_coaching:     'Ascend coaching',
+    gtm_governance:      'GTM Governance',
+    manager_enablement:  'Manager enablement',
+    rep_ramp:            'Rep ramp',
+    multi_team_rollup:   'Multi-team roll-up',
+  };
+  const playStatusMeta = {
+    drafting:   { label: 'Drafting',  cls: 'bg-amber-100 text-amber-800' },
+    active:     { label: 'Active',    cls: 'bg-emerald-100 text-emerald-800' },
+    paused:     { label: 'Paused',    cls: 'bg-slate-100 text-slate-700' },
+    won:        { label: 'Won',        cls: 'bg-violet-100 text-violet-800' },
+    lost:       { label: 'Lost',       cls: 'bg-slate-100 text-slate-500' },
+    abandoned:  { label: 'Abandoned', cls: 'bg-slate-100 text-slate-500' },
+  };
+
+  // Build the reports_to tree then flatten into a depth-annotated list so
+  // the template can render without a recursive EJS function (EJS scriptlet
+  // tags can't be nested inside a user-defined function body).
+  const byId = new Map(contacts.map((c) => [c.id, { ...c, children: [] }]));
+  const roots = [];
+  for (const c of byId.values()) {
+    const parentId = c.reports_to_contact_id;
+    if (parentId && byId.has(parentId)) byId.get(parentId).children.push(c);
+    else roots.push(c);
+  }
+  const contactRows = [];
+  function walk(node, depth) {
+    contactRows.push({ node, depth });
+    for (const child of node.children) walk(child, depth + 1);
+  }
+  for (const root of roots) walk(root, 0);
+%>
+
+<div class="mb-6">
+  <a href="/accounts/<%= account.id %>" class="text-xs text-slate-500 hover:text-slate-900">← <%= account.account_name %></a>
+  <div class="flex items-start justify-between gap-4 mt-2">
+    <div>
+      <h1 class="text-2xl font-semibold"><%= account.account_name %> — Game Plan</h1>
+      <p class="text-sm text-slate-500 mt-1 max-w-3xl">
+        The chess board (who's on it), the theory of the case (what we're playing for),
+        and the plays (our moves). Your instincts are the spine; Claude scaffolds around them.
+      </p>
+    </div>
+  </div>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+  <!-- ============ COLUMN 1: ORG CHART ============ -->
+  <section class="bg-white border border-slate-200 rounded-lg overflow-hidden">
+    <header class="px-4 py-3 border-b border-slate-200">
+      <h2 class="font-semibold">Org chart</h2>
+      <p class="text-xs text-slate-500 mt-0.5">
+        Click any contact to re-role, re-stance, or re-parent. Auto-placed pieces are marked 🔵.
+      </p>
+    </header>
+
+    <% if (roots.length === 0) { %>
+      <div class="p-5 text-sm text-slate-500">
+        No contacts yet. Add one below — or run a signal scan and Claude will auto-place people it finds.
+      </div>
+    <% } else { %>
+      <ul class="p-3 space-y-1 text-sm">
+        <% contactRows.forEach(function(row) { var node = row.node; var depth = row.depth; %>
+          <li style="padding-left: <%= depth * 16 %>px;">
+            <details class="group">
+              <summary class="cursor-pointer list-none flex items-start gap-2 py-1.5 px-2 hover:bg-slate-50 rounded">
+                <% if (depth > 0) { %><span class="text-slate-400">└─</span><% } %>
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-2 flex-wrap">
+                    <span class="font-medium text-slate-900"><%= node.name %></span>
+                    <% if (node.source === 'signal_mention') { %><span title="auto-placed from a signal">🔵</span><% } %>
+                    <span class="pill <%= (dealRoleMeta[node.deal_role] || dealRoleMeta.unknown).pill %>">
+                      <%= (dealRoleMeta[node.deal_role] || dealRoleMeta.unknown).label %>
+                    </span>
+                    <span class="text-xs <%= (stanceMeta[node.stance] || stanceMeta.neutral).cls %>">
+                      <%= (stanceMeta[node.stance] || stanceMeta.neutral).label %>
+                    </span>
+                  </div>
+                  <% if (node.title) { %><div class="text-xs text-slate-500"><%= node.title %></div><% } %>
+                </div>
+              </summary>
+              <form method="POST" action="/contacts/<%= node.id %>" class="bg-slate-50 border border-slate-200 rounded p-3 mt-1 mb-2 space-y-2 text-xs">
+                <div class="grid grid-cols-2 gap-2">
+                  <label class="block">
+                    <span class="text-slate-500">Name</span>
+                    <input name="name" value="<%= node.name %>" class="w-full border border-slate-300 rounded px-2 py-1 mt-0.5" />
+                  </label>
+                  <label class="block">
+                    <span class="text-slate-500">Title</span>
+                    <input name="title" value="<%= node.title || '' %>" class="w-full border border-slate-300 rounded px-2 py-1 mt-0.5" />
+                  </label>
+                  <label class="block">
+                    <span class="text-slate-500">Deal role</span>
+                    <select name="deal_role" class="w-full border border-slate-300 rounded px-2 py-1 mt-0.5">
+                      <% Object.keys(dealRoleMeta).forEach(function(k) { %>
+                        <option value="<%= k %>" <%= node.deal_role === k ? 'selected' : '' %>><%= dealRoleMeta[k].label %></option>
+                      <% }); %>
+                    </select>
+                  </label>
+                  <label class="block">
+                    <span class="text-slate-500">Stance</span>
+                    <select name="stance" class="w-full border border-slate-300 rounded px-2 py-1 mt-0.5">
+                      <% Object.keys(stanceMeta).forEach(function(k) { %>
+                        <option value="<%= k %>" <%= node.stance === k ? 'selected' : '' %>><%= stanceMeta[k].label %></option>
+                      <% }); %>
+                    </select>
+                  </label>
+                </div>
+                <label class="block">
+                  <span class="text-slate-500">Reports to</span>
+                  <select name="reports_to_contact_id" class="w-full border border-slate-300 rounded px-2 py-1 mt-0.5">
+                    <option value="">— top of org —</option>
+                    <% contacts.filter(function(c){ return c.id !== node.id; }).forEach(function(c) { %>
+                      <option value="<%= c.id %>" <%= node.reports_to_contact_id === c.id ? 'selected' : '' %>><%= c.name %> (<%= c.title || '—' %>)</option>
+                    <% }); %>
+                  </select>
+                </label>
+                <label class="block">
+                  <span class="text-slate-500">Notes</span>
+                  <textarea name="notes" rows="2" class="w-full border border-slate-300 rounded px-2 py-1 mt-0.5"><%= node.notes || '' %></textarea>
+                </label>
+                <div class="flex items-center gap-2">
+                  <button type="submit" class="bg-slate-900 hover:bg-slate-800 text-white px-3 py-1 rounded font-medium">Save</button>
+                  <button type="submit" formaction="/contacts/<%= node.id %>/delete" class="text-red-600 hover:text-red-800">Remove</button>
+                </div>
+              </form>
+            </details>
+          </li>
+        <% }); %>
+      </ul>
+    <% } %>
+
+    <details class="border-t border-slate-200 p-4 bg-slate-50">
+      <summary class="text-xs font-semibold text-slate-700 cursor-pointer">+ Add contact manually</summary>
+      <form method="POST" action="/accounts/<%= account.id %>/contacts" class="mt-3 space-y-2 text-xs">
+        <div class="grid grid-cols-2 gap-2">
+          <input name="name" placeholder="Name *" required class="border border-slate-300 rounded px-2 py-1" />
+          <input name="title" placeholder="Title" class="border border-slate-300 rounded px-2 py-1" />
+          <select name="deal_role" class="border border-slate-300 rounded px-2 py-1">
+            <% Object.keys(dealRoleMeta).forEach(function(k) { %>
+              <option value="<%= k %>" <%= k === 'unknown' ? 'selected' : '' %>><%= dealRoleMeta[k].label %></option>
+            <% }); %>
+          </select>
+          <select name="stance" class="border border-slate-300 rounded px-2 py-1">
+            <% Object.keys(stanceMeta).forEach(function(k) { %>
+              <option value="<%= k %>" <%= k === 'neutral' ? 'selected' : '' %>><%= stanceMeta[k].label %></option>
+            <% }); %>
+          </select>
+        </div>
+        <select name="reports_to_contact_id" class="w-full border border-slate-300 rounded px-2 py-1">
+          <option value="">— reports to (top of org) —</option>
+          <% contacts.forEach(function(c) { %>
+            <option value="<%= c.id %>"><%= c.name %> (<%= c.title || '—' %>)</option>
+          <% }); %>
+        </select>
+        <button type="submit" class="bg-slate-900 hover:bg-slate-800 text-white px-3 py-1 rounded font-medium">Add contact</button>
+      </form>
+    </details>
+  </section>
+
+  <!-- ============ COLUMN 2: HYPOTHESES ============ -->
+  <section class="bg-white border border-slate-200 rounded-lg overflow-hidden">
+    <header class="px-4 py-3 border-b border-slate-200">
+      <h2 class="font-semibold">Theory of the case</h2>
+      <p class="text-xs text-slate-500 mt-0.5">
+        Which Ambition use case fits this account, for which persona, supported by which signals.
+      </p>
+    </header>
+
+    <% if (hypotheses.length === 0) { %>
+      <div class="p-5 text-sm text-slate-500">
+        No hypotheses yet. Draft one below — plays attach to hypotheses so your reasoning carries forward.
+      </div>
+    <% } else { %>
+      <ul class="divide-y divide-slate-100">
+        <% hypotheses.forEach(function(h) { %>
+          <li class="p-4">
+            <div class="flex items-center gap-2 flex-wrap mb-1">
+              <span class="pill bg-slate-900 text-white"><%= useCaseLabel[h.use_case] || h.use_case %></span>
+              <span class="pill bg-sky-100 text-sky-800"><%= h.target_persona_id %></span>
+              <span class="text-xs text-slate-500">confidence <%= h.confidence %>/5</span>
+              <% if (h.status === 'validated') { %><span class="pill bg-emerald-100 text-emerald-800">validated</span>
+              <% } else if (h.status === 'disproven') { %><span class="pill bg-slate-100 text-slate-500">disproven</span>
+              <% } %>
+            </div>
+            <p class="text-sm text-slate-800"><%= h.narrative_hook %></p>
+            <div class="text-xs text-slate-500 mt-1"><%= h.evidence_count || 0 %> evidence signal<%= h.evidence_count === 1 ? '' : 's' %></div>
+            <details class="mt-2">
+              <summary class="text-xs text-slate-500 hover:text-slate-900 cursor-pointer">Edit</summary>
+              <form method="POST" action="/hypotheses/<%= h.id %>" class="mt-2 space-y-2 text-xs">
+                <textarea name="narrative_hook" rows="2" class="w-full border border-slate-300 rounded px-2 py-1"><%= h.narrative_hook %></textarea>
+                <div class="grid grid-cols-3 gap-2">
+                  <select name="status" class="border border-slate-300 rounded px-2 py-1">
+                    <option value="theory"     <%= h.status === 'theory' ? 'selected' : '' %>>Theory</option>
+                    <option value="validated"  <%= h.status === 'validated' ? 'selected' : '' %>>Validated</option>
+                    <option value="disproven"  <%= h.status === 'disproven' ? 'selected' : '' %>>Disproven</option>
+                  </select>
+                  <label class="flex items-center gap-1"><span class="text-slate-500">conf</span>
+                    <input type="number" min="1" max="5" name="confidence" value="<%= h.confidence %>" class="w-14 border border-slate-300 rounded px-2 py-1" />
+                  </label>
+                  <button type="submit" class="bg-slate-900 hover:bg-slate-800 text-white rounded font-medium">Save</button>
+                </div>
+                <button type="submit" formaction="/hypotheses/<%= h.id %>/delete" class="text-red-600 hover:text-red-800 text-xs">Remove</button>
+              </form>
+            </details>
+          </li>
+        <% }); %>
+      </ul>
+    <% } %>
+
+    <details class="border-t border-slate-200 p-4 bg-slate-50">
+      <summary class="text-xs font-semibold text-slate-700 cursor-pointer">+ New hypothesis</summary>
+      <form method="POST" action="/accounts/<%= account.id %>/hypotheses" class="mt-3 space-y-2 text-xs">
+        <div class="grid grid-cols-2 gap-2">
+          <select name="use_case" required class="border border-slate-300 rounded px-2 py-1">
+            <option value="">Use case *</option>
+            <% Object.keys(useCaseLabel).forEach(function(k) { %>
+              <option value="<%= k %>"><%= useCaseLabel[k] %></option>
+            <% }); %>
+          </select>
+          <select name="target_persona_id" required class="border border-slate-300 rounded px-2 py-1">
+            <option value="">Persona *</option>
+            <% personas.forEach(function(p) { %>
+              <option value="<%= p.id %>"><%= p.label || p.id %></option>
+            <% }); %>
+          </select>
+        </div>
+        <textarea name="narrative_hook" rows="2" required placeholder="Narrative hook — one line. &quot;Earnings call flagged tooling rationalization; pitch one Performance Graph across SDR + AE.&quot;" class="w-full border border-slate-300 rounded px-2 py-1"></textarea>
+        <div class="grid grid-cols-2 gap-2">
+          <label class="flex items-center gap-1"><span class="text-slate-500">confidence</span>
+            <input type="number" min="1" max="5" name="confidence" value="3" class="w-14 border border-slate-300 rounded px-2 py-1" />
+          </label>
+          <% if (pulseSignals && pulseSignals.length > 0) { %>
+            <details class="relative">
+              <summary class="cursor-pointer text-slate-500">Attach evidence signals (<%= pulseSignals.length %> available)</summary>
+              <div class="absolute z-10 right-0 mt-1 w-72 max-h-60 overflow-y-auto bg-white border border-slate-300 rounded p-2 shadow">
+                <% pulseSignals.forEach(function(s) { %>
+                  <label class="flex items-start gap-2 py-1 text-xs">
+                    <input type="checkbox" name="evidence_signal_ids" value="<%= s.id %>" />
+                    <span><%= s.title %></span>
+                  </label>
+                <% }); %>
+              </div>
+            </details>
+          <% } %>
+        </div>
+        <button type="submit" class="bg-slate-900 hover:bg-slate-800 text-white px-3 py-1 rounded font-medium">Save hypothesis</button>
+      </form>
+    </details>
+  </section>
+
+  <!-- ============ COLUMN 3: PLAYS ============ -->
+  <section class="bg-white border border-slate-200 rounded-lg overflow-hidden">
+    <header class="px-4 py-3 border-b border-slate-200 flex items-center justify-between gap-2">
+      <div>
+        <h2 class="font-semibold">Plays</h2>
+        <p class="text-xs text-slate-500 mt-0.5">Instinct + Claude's move sequence. Active plays surface on /brief.</p>
+      </div>
+    </header>
+
+    <!-- Composer -->
+    <details id="play-composer" class="border-b border-slate-200 p-4 bg-slate-50" <% if (composerOpen) { %>open<% } %>>
+      <summary class="text-sm font-semibold text-slate-900 cursor-pointer">
+        + Start a play
+        <% if (triggerSignal) { %><span class="text-xs text-slate-500 font-normal">· triggered by "<%= triggerSignal.title %>"</span><% } %>
+      </summary>
+      <form method="POST" action="/accounts/<%= account.id %>/plays" class="mt-3 space-y-3">
+        <% if (triggerSignal) { %>
+          <input type="hidden" name="triggered_by_signal_id" value="<%= triggerSignal.id %>" />
+          <div class="bg-white border border-slate-200 rounded p-3 text-xs">
+            <div class="text-slate-500 uppercase tracking-wide text-[10px] font-semibold mb-1">Triggering signal</div>
+            <div class="font-medium text-slate-900"><%= triggerSignal.title %></div>
+            <% if (triggerSignal.so_what) { %><div class="text-slate-600 mt-1"><%= triggerSignal.so_what %></div><% } %>
+          </div>
+        <% } %>
+
+        <label class="block text-sm">
+          <span class="font-medium text-slate-800">What's your read? <span class="text-slate-400 font-normal">(your instinct — Claude scaffolds around it)</span></span>
+          <textarea name="instinct" rows="3" required
+                    placeholder="e.g. 'SDR team already uses us. Want to get to the new CRO through our SDR champion before Q3 budget review.'"
+                    class="w-full border border-slate-300 rounded px-3 py-2 mt-1 text-sm"></textarea>
+        </label>
+
+        <% if (hypotheses.length > 0) { %>
+          <label class="block text-sm">
+            <span class="font-medium text-slate-800">Hypothesis</span>
+            <select name="hypothesis_id" class="w-full border border-slate-300 rounded px-3 py-2 mt-1 text-sm">
+              <option value="">— none —</option>
+              <% hypotheses.forEach(function(h) { %>
+                <option value="<%= h.id %>"><%= useCaseLabel[h.use_case] || h.use_case %> → <%= h.target_persona_id %></option>
+              <% }); %>
+            </select>
+          </label>
+        <% } %>
+
+        <% if (contacts.length > 0) { %>
+          <div class="text-sm">
+            <div class="font-medium text-slate-800 mb-1">Contact path <span class="text-slate-400 font-normal">(order matters — first move lands on the first pick)</span></div>
+            <div class="max-h-48 overflow-y-auto border border-slate-200 rounded p-2 space-y-1 bg-white">
+              <% contacts.forEach(function(c) { %>
+                <label class="flex items-start gap-2 text-xs py-1">
+                  <input type="checkbox" name="contact_path" value="<%= c.id %>" class="mt-0.5" />
+                  <span>
+                    <span class="font-medium"><%= c.name %></span>
+                    <span class="text-slate-500"><%= c.title ? '· ' + c.title : '' %></span>
+                    <span class="pill <%= (dealRoleMeta[c.deal_role] || dealRoleMeta.unknown).pill %> ml-1">
+                      <%= (dealRoleMeta[c.deal_role] || dealRoleMeta.unknown).label %>
+                    </span>
+                  </span>
+                </label>
+              <% }); %>
+            </div>
+          </div>
+        <% } %>
+
+        <button type="submit" class="bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded font-medium text-sm">
+          Build the play →
+        </button>
+        <p class="text-xs text-slate-500">Claude expands your instinct into a named play with 2–4 moves. Takes ~10s.</p>
+      </form>
+    </details>
+
+    <!-- Existing plays -->
+    <% if (plays.length === 0) { %>
+      <div class="p-5 text-sm text-slate-500">No plays yet.</div>
+    <% } else { %>
+      <ul class="divide-y divide-slate-100">
+        <% plays.forEach(function(p) {
+          const exp = p.ai_expansion || {};
+          const statusM = playStatusMeta[p.status] || playStatusMeta.drafting;
+        %>
+          <li id="play-<%= p.id %>" class="p-4">
+            <div class="flex items-start justify-between gap-3 mb-2">
+              <div>
+                <div class="text-sm font-semibold text-slate-900"><%= exp.named_play || '(no expansion yet)' %></div>
+                <div class="text-xs text-slate-500 mt-0.5">
+                  <% if (p.hypothesis_use_case) { %>
+                    <%= useCaseLabel[p.hypothesis_use_case] || p.hypothesis_use_case %> ·
+                  <% } %>
+                  by <%= p.author_name || 'unknown' %> · <%= new Date(p.created_at).toLocaleDateString() %>
+                </div>
+              </div>
+              <span class="pill <%= statusM.cls %>"><%= statusM.label %></span>
+            </div>
+
+            <div class="bg-slate-50 border-l-2 border-slate-300 px-3 py-2 text-sm text-slate-700 mb-3">
+              <span class="text-xs text-slate-500 uppercase tracking-wide font-semibold">Your instinct</span><br/>
+              <%= p.instinct %>
+            </div>
+
+            <% if (exp.moves && exp.moves.length > 0) { %>
+              <ol class="space-y-2 mb-3">
+                <% exp.moves.forEach(function(m) { %>
+                  <li class="text-sm flex gap-3">
+                    <span class="shrink-0 w-6 h-6 rounded-full bg-slate-900 text-white text-xs flex items-center justify-center font-semibold"><%= m.step %></span>
+                    <div class="flex-1">
+                      <div class="font-medium text-slate-900"><%= m.actor %> <span class="text-xs text-slate-500 font-normal">· <%= m.channel %> · day <%= m.days_from_now %></span></div>
+                      <div class="text-slate-700"><%= m.ask %></div>
+                      <% if (m.rationale) { %><div class="text-xs text-slate-500 italic mt-0.5"><%= m.rationale %></div><% } %>
+                    </div>
+                  </li>
+                <% }); %>
+              </ol>
+            <% } else { %>
+              <div class="bg-amber-50 border border-amber-200 rounded p-3 text-xs text-amber-900 mb-3">
+                Expansion missing — Claude may have failed to parse.
+                <form method="POST" action="/plays/<%= p.id %>/rebuild" class="inline">
+                  <button class="underline hover:no-underline ml-1">Rebuild</button>
+                </form>
+              </div>
+            <% } %>
+
+            <% if (exp.internal_ask) { %>
+              <div class="text-xs mb-2">
+                <span class="uppercase tracking-wide text-slate-500 font-semibold">Internal ask</span>
+                <span class="text-slate-700">· <%= exp.internal_ask %></span>
+              </div>
+            <% } %>
+
+            <% if (exp.risks && exp.risks.length > 0) { %>
+              <div class="text-xs mb-2">
+                <span class="uppercase tracking-wide text-slate-500 font-semibold">Risks</span>
+                <ul class="text-slate-700 list-disc list-inside mt-0.5">
+                  <% exp.risks.forEach(function(r) { %><li><%= r %></li><% }); %>
+                </ul>
+              </div>
+            <% } %>
+
+            <% if (exp.positioning_hooks && exp.positioning_hooks.length > 0) { %>
+              <div class="text-xs mb-2 flex items-center gap-1 flex-wrap">
+                <span class="uppercase tracking-wide text-slate-500 font-semibold">Positioning:</span>
+                <% exp.positioning_hooks.forEach(function(h) { %><span class="pill bg-slate-100 text-slate-700"><%= h %></span><% }); %>
+              </div>
+            <% } %>
+
+            <!-- Status / next action editor -->
+            <details class="mt-3">
+              <summary class="text-xs text-slate-500 hover:text-slate-900 cursor-pointer">Update status / next action</summary>
+              <form method="POST" action="/plays/<%= p.id %>" class="mt-2 space-y-2 text-xs">
+                <div class="grid grid-cols-3 gap-2">
+                  <select name="status" class="border border-slate-300 rounded px-2 py-1">
+                    <% Object.keys(playStatusMeta).forEach(function(k) { %>
+                      <option value="<%= k %>" <%= p.status === k ? 'selected' : '' %>><%= playStatusMeta[k].label %></option>
+                    <% }); %>
+                  </select>
+                  <input name="next_action" value="<%= p.next_action || '' %>" placeholder="next action" class="border border-slate-300 rounded px-2 py-1 col-span-2" />
+                </div>
+                <div class="flex items-center gap-2">
+                  <input type="date" name="next_action_due" value="<%= p.next_action_due ? new Date(p.next_action_due).toISOString().slice(0,10) : '' %>" class="border border-slate-300 rounded px-2 py-1" />
+                  <button type="submit" class="bg-slate-900 hover:bg-slate-800 text-white px-3 py-1 rounded font-medium">Save</button>
+                  <button type="submit" formaction="/plays/<%= p.id %>/rebuild" class="text-slate-600 hover:text-slate-900 underline">Rebuild expansion</button>
+                  <button type="submit" formaction="/plays/<%= p.id %>/delete" class="text-red-600 hover:text-red-800 underline">Delete</button>
+                </div>
+              </form>
+            </details>
+          </li>
+        <% }); %>
+      </ul>
+    <% } %>
+  </section>
+
+</div>

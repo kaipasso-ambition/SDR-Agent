@@ -49,6 +49,25 @@ import {
 } from '../db/presence.js';
 import { pollPresenceInbox } from '../integrations/gmail_imap.js';
 import { runRankerCycle } from '../lib/presence_ranker.js';
+import {
+  listContactsForAccount,
+  getContactById,
+  createContact,
+  updateContact,
+  deleteContact,
+  listHypothesesForAccount,
+  getHypothesisById,
+  createHypothesis,
+  updateHypothesis,
+  deleteHypothesis,
+  listPlaysForAccount,
+  getPlayById,
+  createPlay,
+  updatePlay,
+  deletePlay,
+  countActivePlays,
+} from '../db/game_plan.js';
+import { buildPlay } from '../agents/play_builder.js';
 
 export const webRouter = Router();
 
@@ -944,6 +963,336 @@ webRouter.post('/signals/:id/play', requireAuth, async (req, res, next) => {
   }
 });
 
+// ============================================================================
+// Game Plan — /accounts/:id/plan + contacts/hypotheses/plays CRUD
+//
+// Shared scope: plays and hypotheses are team-visible on the account
+// (per design decision). author_user_id is captured so we can attribute
+// but access checks only gate by account visibility.
+// ============================================================================
+
+// Plan view — the chess board (org chart), hypotheses, and plays for one
+// account. Pre-fills the play composer when called with
+// ?new_play=1&signal=<id> from the /brief Start-a-play button.
+webRouter.get('/accounts/:id/plan', requireAuth, async (req, res, next) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.redirect('/accounts');
+    const accountId = req.params.id;
+    const bundle = await getAccountBundle(accountId);
+    if (!bundle) return res.redirect('/accounts');
+
+    const [contacts, hypotheses, plays] = await Promise.all([
+      listContactsForAccount(accountId),
+      listHypothesesForAccount(accountId),
+      listPlaysForAccount(accountId),
+    ]);
+
+    // If the Start-a-play button handed us a signal_id, hydrate it so
+    // the composer can show "triggered by: <signal title>".
+    const triggerSignalId = typeof req.query?.signal === 'string' ? req.query.signal : null;
+    const triggerSignal = triggerSignalId && UUID_RE.test(triggerSignalId)
+      ? await getSignalById(triggerSignalId)
+      : null;
+
+    res.render('account_plan', {
+      title: `${bundle.account.account_name} — Plan`,
+      account: bundle.account,
+      contacts,
+      hypotheses,
+      plays,
+      pulseSignals: bundle.signals,
+      triggerSignal,
+      composerOpen: req.query?.new_play === '1',
+      personas: PERSONAS,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------- Contacts ----------
+
+webRouter.post('/accounts/:id/contacts', requireAuth, async (req, res, next) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.redirect('/accounts');
+    const name = (req.body?.name || '').trim();
+    if (!name) return res.redirect(`/accounts/${req.params.id}/plan`);
+    await createContact({
+      account_id: req.params.id,
+      name,
+      title: (req.body?.title || '').trim() || null,
+      email: (req.body?.email || '').trim() || null,
+      linkedin_url: (req.body?.linkedin_url || '').trim() || null,
+      deal_role: req.body?.deal_role || 'unknown',
+      stance: req.body?.stance || 'neutral',
+      reports_to_contact_id: req.body?.reports_to_contact_id && UUID_RE.test(req.body.reports_to_contact_id)
+        ? req.body.reports_to_contact_id
+        : null,
+      notes: (req.body?.notes || '').trim() || null,
+      created_by_user_id: req.session.userId,
+    });
+    res.redirect(`/accounts/${req.params.id}/plan`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Movable. Accepts any subset of the editable fields; undefined fields
+// stay put. Handles re-role, re-stance, re-parent in one route.
+webRouter.post('/contacts/:id', requireAuth, async (req, res, next) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.redirect('/accounts');
+    const contact = await getContactById(req.params.id);
+    if (!contact) return res.redirect('/accounts');
+
+    // Special case: re-parenting to self or a descendant would create a
+    // cycle. Cheapest defense: disallow re-parenting to self. Broader
+    // descendant-cycle detection deferred — at AE scale the tree is <50 nodes
+    // and the editor will make cycles visually obvious.
+    const patch = {};
+    for (const k of ['name', 'title', 'email', 'linkedin_url', 'deal_role', 'stance', 'notes']) {
+      if (req.body?.[k] !== undefined) patch[k] = req.body[k] || null;
+    }
+    if (req.body?.reports_to_contact_id !== undefined) {
+      const v = req.body.reports_to_contact_id;
+      if (!v || v === '') patch.reports_to_contact_id = null;
+      else if (UUID_RE.test(v) && v !== contact.id) patch.reports_to_contact_id = v;
+    }
+    await updateContact(contact.id, patch);
+    res.redirect(`/accounts/${contact.account_id}/plan`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+webRouter.post('/contacts/:id/delete', requireAuth, async (req, res, next) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.redirect('/accounts');
+    const contact = await getContactById(req.params.id);
+    if (!contact) return res.redirect('/accounts');
+    await deleteContact(contact.id);
+    res.redirect(`/accounts/${contact.account_id}/plan`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------- Hypotheses ----------
+
+webRouter.post('/accounts/:id/hypotheses', requireAuth, async (req, res, next) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.redirect('/accounts');
+    const use_case = (req.body?.use_case || '').trim();
+    const target_persona_id = (req.body?.target_persona_id || '').trim();
+    const narrative_hook = (req.body?.narrative_hook || '').trim();
+    if (!use_case || !target_persona_id || !narrative_hook) {
+      return res.redirect(`/accounts/${req.params.id}/plan`);
+    }
+    const evidence_signal_ids = []
+      .concat(req.body?.evidence_signal_ids || [])
+      .filter((v) => typeof v === 'string' && UUID_RE.test(v));
+    await createHypothesis({
+      account_id: req.params.id,
+      use_case,
+      target_persona_id,
+      narrative_hook,
+      evidence_signal_ids,
+      confidence: parseInt(req.body?.confidence, 10) || 3,
+      status: req.body?.status || 'theory',
+      created_by_user_id: req.session.userId,
+    });
+    res.redirect(`/accounts/${req.params.id}/plan`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+webRouter.post('/hypotheses/:id', requireAuth, async (req, res, next) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.redirect('/accounts');
+    const h = await getHypothesisById(req.params.id);
+    if (!h) return res.redirect('/accounts');
+    const patch = {};
+    for (const k of ['use_case', 'target_persona_id', 'narrative_hook', 'status']) {
+      if (req.body?.[k] !== undefined) patch[k] = req.body[k];
+    }
+    if (req.body?.confidence !== undefined) {
+      const n = parseInt(req.body.confidence, 10);
+      if (n >= 1 && n <= 5) patch.confidence = n;
+    }
+    await updateHypothesis(h.id, patch);
+    res.redirect(`/accounts/${h.account_id}/plan`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+webRouter.post('/hypotheses/:id/delete', requireAuth, async (req, res, next) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.redirect('/accounts');
+    const h = await getHypothesisById(req.params.id);
+    if (!h) return res.redirect('/accounts');
+    await deleteHypothesis(h.id);
+    res.redirect(`/accounts/${h.account_id}/plan`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------- Plays ----------
+
+// Compose a new play. Inserts with the AE's instinct immediately, then
+// synchronously calls buildPlay (≤15s) so the expansion lands before the
+// redirect. If Claude fails, the play persists with ai_expansion=null and
+// the view surfaces a "Rebuild expansion" button.
+webRouter.post('/accounts/:id/plays', requireAuth, async (req, res, next) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.redirect('/accounts');
+    const accountId = req.params.id;
+    const instinct = (req.body?.instinct || '').trim();
+    if (!instinct) return res.redirect(`/accounts/${accountId}/plan`);
+
+    const hypothesis_id = req.body?.hypothesis_id && UUID_RE.test(req.body.hypothesis_id)
+      ? req.body.hypothesis_id
+      : null;
+    const triggered_by_signal_id = req.body?.triggered_by_signal_id && UUID_RE.test(req.body.triggered_by_signal_id)
+      ? req.body.triggered_by_signal_id
+      : null;
+    const contact_path = []
+      .concat(req.body?.contact_path || [])
+      .filter((v) => typeof v === 'string' && UUID_RE.test(v));
+
+    // Create first with no expansion, then fill in — keeps the DB row
+    // durable even if the Claude call throws.
+    const play = await createPlay({
+      account_id: accountId,
+      hypothesis_id,
+      triggered_by_signal_id,
+      author_user_id: req.session.userId,
+      instinct,
+      contact_path,
+      status: 'drafting',
+    });
+
+    try {
+      const [account, hypothesis, signal, allContacts, priorPlays] = await Promise.all([
+        (async () => (await getAccountBundle(accountId))?.account)(),
+        hypothesis_id ? getHypothesisById(hypothesis_id) : null,
+        triggered_by_signal_id ? getSignalById(triggered_by_signal_id) : null,
+        listContactsForAccount(accountId),
+        listPlaysForAccount(accountId),
+      ]);
+      const byId = new Map(allContacts.map((c) => [c.id, c]));
+      const contact_path_resolved = contact_path.map((id) => byId.get(id)).filter(Boolean);
+      const { expansion } = await buildPlay({
+        account,
+        instinct,
+        hypothesis,
+        contact_path_resolved,
+        triggering_signal: signal,
+        prior_plays: priorPlays
+          .filter((p) => p.id !== play.id)
+          .map((p) => ({
+            named_play: p.ai_expansion?.named_play || null,
+            status: p.status,
+          })),
+      });
+      if (expansion) {
+        await updatePlay(play.id, { ai_expansion: expansion, status: 'active' });
+      }
+    } catch (err) {
+      console.error('[plays/create] expansion failed:', err.message);
+      // Leave as drafting; the UI will show "Rebuild".
+    }
+
+    // If a signal triggered the play, mark it 'playing' so /brief reflects.
+    if (triggered_by_signal_id) {
+      await setSignalPlaying(triggered_by_signal_id).catch(() => {});
+    }
+
+    res.redirect(`/accounts/${accountId}/plan#play-${play.id}`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+webRouter.post('/plays/:id', requireAuth, async (req, res, next) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.redirect('/accounts');
+    const play = await getPlayById(req.params.id);
+    if (!play) return res.redirect('/accounts');
+    const patch = {};
+    for (const k of ['instinct', 'status', 'next_action']) {
+      if (req.body?.[k] !== undefined) patch[k] = req.body[k] || null;
+    }
+    if (req.body?.next_action_due !== undefined) {
+      patch.next_action_due = req.body.next_action_due || null;
+    }
+    if (req.body?.hypothesis_id !== undefined) {
+      const v = req.body.hypothesis_id;
+      patch.hypothesis_id = v && UUID_RE.test(v) ? v : null;
+    }
+    await updatePlay(play.id, patch);
+    res.redirect(`/accounts/${play.account_id}/plan#play-${play.id}`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Re-run buildPlay on an existing play — useful when Claude failed on
+// first compose, or when the AE edited the instinct and wants a fresh
+// expansion.
+webRouter.post('/plays/:id/rebuild', requireAuth, async (req, res, next) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.redirect('/accounts');
+    const play = await getPlayById(req.params.id);
+    if (!play) return res.redirect('/accounts');
+    const accountId = play.account_id;
+    const [account, hypothesis, signal, allContacts, priorPlays] = await Promise.all([
+      (async () => (await getAccountBundle(accountId))?.account)(),
+      play.hypothesis_id ? getHypothesisById(play.hypothesis_id) : null,
+      play.triggered_by_signal_id ? getSignalById(play.triggered_by_signal_id) : null,
+      listContactsForAccount(accountId),
+      listPlaysForAccount(accountId),
+    ]);
+    const byId = new Map(allContacts.map((c) => [c.id, c]));
+    const contact_path_resolved = (play.contact_path || [])
+      .map((id) => byId.get(id))
+      .filter(Boolean);
+    const { expansion } = await buildPlay({
+      account,
+      instinct: play.instinct,
+      hypothesis,
+      contact_path_resolved,
+      triggering_signal: signal,
+      prior_plays: priorPlays
+        .filter((p) => p.id !== play.id)
+        .map((p) => ({ named_play: p.ai_expansion?.named_play || null, status: p.status })),
+    });
+    if (expansion) {
+      await updatePlay(play.id, {
+        ai_expansion: expansion,
+        status: play.status === 'drafting' ? 'active' : play.status,
+      });
+    }
+    res.redirect(`/accounts/${accountId}/plan#play-${play.id}`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+webRouter.post('/plays/:id/delete', requireAuth, async (req, res, next) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.redirect('/accounts');
+    const play = await getPlayById(req.params.id);
+    if (!play) return res.redirect('/accounts');
+    await deletePlay(play.id);
+    res.redirect(`/accounts/${play.account_id}/plan`);
+  } catch (err) {
+    next(err);
+  }
+});
+
 // Manual full-book scan trigger — dev + end-to-end smoke before the cron
 // goes live. Accepts optional ?account=<id> to scope to a single
 // account (same path the Pulse "Rescan" button uses).
@@ -1007,12 +1356,13 @@ webRouter.post('/accounts/:id/signals/rescan', requireAuth, async (req, res, nex
 // ---------- Helpers ----------
 
 async function getCounts(userId = null) {
-  const [drafts, replies, researched, sent, sigCounts] = await Promise.all([
+  const [drafts, replies, researched, sent, sigCounts, playCounts] = await Promise.all([
     query(`SELECT COUNT(*)::int AS n FROM approval_queue WHERE status = 'pending';`),
     query(`SELECT COUNT(*)::int AS n FROM reply_queue WHERE status = 'pending';`),
     query(`SELECT COUNT(*)::int AS n FROM prospects WHERE researched_at >= date_trunc('day', NOW());`),
     query(`SELECT COUNT(*)::int AS n FROM sent_messages WHERE sent_at >= date_trunc('week', NOW());`),
     userId ? getSignalCounts(userId) : Promise.resolve({ this_week: 0, defense: 0, offense: 0, unacked_total: 0 }),
+    userId ? countActivePlays(userId) : Promise.resolve({ active: 0, due_soon: 0 }),
   ]);
   return {
     pendingDrafts: drafts.rows[0].n,
@@ -1023,6 +1373,8 @@ async function getCounts(userId = null) {
     signalsDefense: sigCounts.defense,
     signalsOffense: sigCounts.offense,
     signalsUnacked: sigCounts.unacked_total,
+    playsActive: playCounts.active,
+    playsDueSoon: playCounts.due_soon,
   };
 }
 
