@@ -19,6 +19,21 @@ import { REVISIT_SCAN_PROMPT } from '../src/prompts/revisit_scan.js';
 
 const client = new Anthropic();
 
+// Remove <cite index="..."></cite> tags from any string in a value, keeping
+// the inner text. web_search injects these around quoted spans; the source_url
+// is the citation we actually want, so the inline tags are just noise.
+const CITE_TAG_RE = /<\/?cite[^>]*>/g;
+function stripCiteTags(value) {
+  if (typeof value === 'string') return value.replace(CITE_TAG_RE, '').trim();
+  if (Array.isArray(value)) return value.map(stripCiteTags);
+  if (value && typeof value === 'object') {
+    const out = {};
+    for (const [k, v] of Object.entries(value)) out[k] = stripCiteTags(v);
+    return out;
+  }
+  return value;
+}
+
 function fmtDeal(d) {
   return {
     account_name: d.account_name,
@@ -140,6 +155,12 @@ Scan the web for what has CHANGED since close_date that might neutralize the los
     console.log(text);
     return;
   }
+
+  // web_search wraps cited spans in <cite index="...">...</cite>. Strip the
+  // tag wrappers (keep the inner text) recursively across every string field
+  // so output reads cleanly. The source_url itself is the citation; the inline
+  // tags are noise.
+  parsed = stripCiteTags(parsed);
 
   if (!Array.isArray(parsed) || parsed.length === 0) {
     console.log('\n[scan] NO TRIGGERS returned. Claude found nothing material since close_date.\n');
