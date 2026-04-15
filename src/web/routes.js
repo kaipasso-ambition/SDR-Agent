@@ -32,9 +32,9 @@ import {
   acknowledgeSignal,
   dismissSignal,
   setSignalPlaying,
+  restoreSignal,
   getSignalCounts,
   getLastScanForAccount,
-  PER_ACCOUNT_CAP,
 } from '../db/signals.js';
 import {
   getPresenceFeed,
@@ -844,7 +844,7 @@ webRouter.post('/accounts/:id/notes', requireAuth, async (req, res, next) => {
 webRouter.get('/brief', requireAuth, async (req, res, next) => {
   try {
     const [signals, counts, activeJobRow] = await Promise.all([
-      getSignalsForBrief(req.session.userId, { limit: 20 }),
+      getSignalsForBrief(req.session.userId, { limit: 100 }),
       getSignalCounts(req.session.userId),
       query(`SELECT * FROM account_signal_jobs ORDER BY started_at DESC LIMIT 1`),
     ]);
@@ -856,7 +856,6 @@ webRouter.get('/brief', requireAuth, async (req, res, next) => {
       counts,
       activeJob,
       runningJob,
-      perAccountCap: PER_ACCOUNT_CAP,
     });
   } catch (err) {
     next(err);
@@ -895,6 +894,19 @@ webRouter.post('/signals/:id/dismiss', requireAuth, async (req, res, next) => {
   try {
     if (!UUID_RE.test(req.params.id)) return res.redirect('/brief');
     await dismissSignal(req.params.id);
+    res.redirect(req.body?.back || '/brief');
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Bring an archived signal back into the active list. Used when a newer
+// related signal lands on the same account and the AE wants the older
+// context back in view.
+webRouter.post('/signals/:id/restore', requireAuth, async (req, res, next) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.redirect('/brief');
+    await restoreSignal(req.params.id);
     res.redirect(req.body?.back || '/brief');
   } catch (err) {
     next(err);

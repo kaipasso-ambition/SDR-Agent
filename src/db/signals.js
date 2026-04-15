@@ -103,42 +103,22 @@ export async function insertSignals(signals, jobId = null) {
   return { inserted, updated, total: inserted + updated };
 }
 
-// Top unacked signals for the /brief view, owner-scoped, capped at
-// PER_ACCOUNT_CAP rows per account. Balancing act: without a cap, one
-// account with five severity-5 signals eats every slot (the Boomi
-// problem). With cap=1 (the first fix), an account with 4 legitimate
-// flags shows only its top one, and the counts card ("8 this week")
-// mismatches the list ("2 rows"). Cap=3 lets a hot account show depth
-// while still leaving room for coverage across the book. Anything
-// beyond the cap is still reachable via the "+N more on this account"
-// link that drops into the Pulse page.
-//
-// Ranking inside the partition: risk-first, severity, recency.
-// Outer ordering: rank_score DESC so the most urgent accounts float up.
-export const PER_ACCOUNT_CAP = 3;
-
-export async function getSignalsForBrief(userId, { limit = 20 } = {}) {
+// All non-dismissed signals for the /brief view, owner-scoped. No
+// per-account cap: every real signal is important, the AE decides which
+// to act on and which to archive. Ranking: risk-first, severity,
+// recency. Dismissed signals are excluded here but persist in the DB —
+// they show up on the account's archive tab for context when the next
+// signal lands on the same account.
+export async function getSignalsForBrief(userId, { limit = 100 } = {}) {
   const { rows } = await query(
-    `SELECT picks.*
-       FROM (
-         SELECT s.*,
-                a.account_name, a.domain, a.status AS account_status,
-                a.owner_user_id,
-                (${RISK_WEIGHT_SQL}) AS rank_score,
-                (SELECT COUNT(*)::int FROM account_signals s2
-                  WHERE s2.account_id = s.account_id
-                    AND s2.status IN ('new', 'acknowledged')) AS account_signal_count,
-                ROW_NUMBER() OVER (
-                  PARTITION BY s.account_id
-                  ORDER BY ${RISK_WEIGHT_SQL} DESC, s.detected_at DESC
-                ) AS rn
-           FROM account_signals s
-           JOIN accounts_registry a ON a.id = s.account_id
-          WHERE s.status IN ('new', 'acknowledged')
-            AND (a.owner_user_id = $1 OR a.owner_user_id IS NULL)
-       ) picks
-      WHERE picks.rn <= ${PER_ACCOUNT_CAP}
-      ORDER BY picks.rank_score DESC, picks.detected_at DESC
+    `SELECT s.*,
+            a.account_name, a.domain, a.status AS account_status,
+            a.owner_user_id
+       FROM account_signals s
+       JOIN accounts_registry a ON a.id = s.account_id
+      WHERE s.status IN ('new', 'acknowledged', 'playing')
+        AND (a.owner_user_id = $1 OR a.owner_user_id IS NULL)
+      ORDER BY ${RISK_WEIGHT_SQL} DESC, s.detected_at DESC
       LIMIT $2`,
     [userId, limit]
   );
@@ -202,6 +182,16 @@ export async function dismissSignal(id) {
 export async function setSignalPlaying(id) {
   await query(
     `UPDATE account_signals SET status = 'playing' WHERE id = $1`,
+    [id]
+  );
+}
+
+// Pull a dismissed signal back into the active brief. Lands as
+// 'acknowledged' (not 'new') so it doesn't re-trigger the unread badge —
+// the AE explicitly chose to resurface it for context.
+export async function restoreSignal(id) {
+  await query(
+    `UPDATE account_signals SET status = 'acknowledged' WHERE id = $1`,
     [id]
   );
 }
