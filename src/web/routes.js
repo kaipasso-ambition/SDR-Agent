@@ -34,6 +34,7 @@ import {
   setSignalPlaying,
   getSignalCounts,
   getLastScanForAccount,
+  PER_ACCOUNT_CAP,
 } from '../db/signals.js';
 import {
   getPresenceFeed,
@@ -855,6 +856,7 @@ webRouter.get('/brief', requireAuth, async (req, res, next) => {
       counts,
       activeJob,
       runningJob,
+      perAccountCap: PER_ACCOUNT_CAP,
     });
   } catch (err) {
     next(err);
