@@ -27,6 +27,27 @@
       note; landing at a churned account → win-back play; anywhere else → warm outbound.
     </p>
   </div>
+  <% const totalAccounts = (counts.customer||0) + (counts.churned||0) + (counts.prospect||0) + (counts.disqualified||0); %>
+  <% if (totalAccounts > 0) { %>
+    <form method="POST" action="/accounts/clear" onsubmit="return confirmClearAccounts(this);" class="shrink-0">
+      <input type="hidden" name="confirm" value="" id="clearConfirmField" />
+      <button type="submit" class="text-xs border border-red-200 text-red-700 hover:bg-red-50 px-3 py-2 rounded font-medium">
+        Clear all accounts
+      </button>
+    </form>
+    <script>
+      function confirmClearAccounts(form) {
+        var typed = window.prompt(
+          'This will permanently delete all <%= totalAccounts %> accounts in the book.\n\n' +
+          'Prospects, drafts, and sent messages are NOT deleted — only the accounts_registry rows go.\n\n' +
+          'Type CLEAR to confirm.'
+        );
+        if (typed == null) return false;
+        form.querySelector('#clearConfirmField').value = typed;
+        return (typed || '').trim().toUpperCase() === 'CLEAR';
+      }
+    </script>
+  <% } %>
 </div>
 
 <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">

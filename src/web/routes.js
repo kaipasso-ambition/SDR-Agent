@@ -19,6 +19,7 @@ import {
   listAccounts,
   getAccountStatusCounts,
   getAccountBundle,
+  clearAllAccounts,
 } from '../db/accounts_registry.js';
 import { runChampionCheckCycle } from '../agents/champion_tracker.js';
 import {
@@ -702,6 +703,23 @@ webRouter.post('/accounts/import', requireAuth, async (req, res, next) => {
     }
     const results = await ingestAccountCsv(rows);
     flashImport(req, 'accountsImport', results);
+    res.redirect('/accounts');
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Wipe the entire accounts book. Destructive + fast to call, so we require
+// the operator to type the confirm string in the UI; the server re-checks it
+// as a belt-and-braces so a malformed POST can't nuke the table.
+webRouter.post('/accounts/clear', requireAuth, async (req, res, next) => {
+  try {
+    if ((req.body?.confirm || '').trim().toUpperCase() !== 'CLEAR') {
+      flashImport(req, 'accountsImport', [{ index: 0, ok: false, errors: ['clear cancelled — confirmation string did not match'] }]);
+      return res.redirect('/accounts');
+    }
+    const removed = await clearAllAccounts();
+    flashImport(req, 'accountsImport', [{ index: 0, ok: true, inserted: false, name: `cleared ${removed} account${removed === 1 ? '' : 's'}`, status: 'removed' }]);
     res.redirect('/accounts');
   } catch (err) {
     next(err);

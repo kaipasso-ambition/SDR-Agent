@@ -301,6 +301,16 @@ export async function getAccountBundle(id) {
   return { account, prospects, drafts, sent, championCounts };
 }
 
+// Nuke the entire accounts book. Used by the "Clear all accounts" button
+// when an operator wants to wipe imported test data before loading the real
+// roster. Nothing FKs to accounts_registry (prospects match by domain, not
+// FK), so a plain DELETE is safe. Returns the number of rows removed so the
+// UI can confirm "N accounts cleared".
+export async function clearAllAccounts() {
+  const { rowCount } = await query(`DELETE FROM accounts_registry`);
+  return rowCount || 0;
+}
+
 export async function getAccountStatusCounts() {
   const { rows } = await query(
     `SELECT status, COUNT(*)::int AS n FROM accounts_registry GROUP BY status`
