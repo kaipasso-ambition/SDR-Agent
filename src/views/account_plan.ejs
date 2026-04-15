@@ -461,7 +461,16 @@
                   by <%= p.author_name || 'unknown' %> · <%= new Date(p.created_at).toLocaleDateString() %>
                 </div>
               </div>
-              <span class="pill <%= statusM.cls %>"><%= statusM.label %></span>
+              <div class="flex items-center gap-2">
+                <% if (exp.named_play) { %>
+                  <a href="/plays/<%= p.id %>/export.pptx"
+                     class="text-xs inline-flex items-center gap-1 border border-slate-300 hover:border-emerald-500 hover:text-emerald-700 text-slate-700 px-2 py-1 rounded font-medium"
+                     title="Download as .pptx — opens in Google Slides via File → Open → Upload">
+                    📊 Export to Slides
+                  </a>
+                <% } %>
+                <span class="pill <%= statusM.cls %>"><%= statusM.label %></span>
+              </div>
             </div>
 
             <div class="bg-slate-50 border-l-2 border-slate-300 px-3 py-2 text-sm text-slate-700 mb-3">

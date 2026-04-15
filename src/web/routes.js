@@ -1321,6 +1321,42 @@ webRouter.post('/plays/:id/delete', requireAuth, async (req, res, next) => {
   }
 });
 
+// Export the play as .pptx — opens cleanly in Google Slides via
+// File → Open → Upload, or drop into a Drive folder. We ship .pptx
+// instead of hitting the Slides API so there's no OAuth dance in the
+// loop. The deck mirrors the Nasralla output: title, overview with
+// path + hypothesis, sequenced moves, a slide per champion artifact,
+// stakeholder narratives, risks + positioning.
+webRouter.get('/plays/:id/export.pptx', requireAuth, async (req, res, next) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.redirect('/accounts');
+    const play = await getPlayById(req.params.id);
+    if (!play) return res.redirect('/accounts');
+
+    const [bundle, hypothesis, contacts] = await Promise.all([
+      getAccountBundle(play.account_id),
+      play.hypothesis_id ? getHypothesisById(play.hypothesis_id) : null,
+      listContactsForAccount(play.account_id),
+    ]);
+    const account = bundle?.account;
+    if (!account) return res.redirect('/accounts');
+
+    const { renderPlayPptx, buildFilename } = await import('../lib/play_pptx.js');
+    const buf = await renderPlayPptx({ play, account, hypothesis, contacts });
+    const filename = buildFilename(account.account_name, play.ai_expansion?.named_play);
+
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+    );
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Length', buf.length);
+    res.send(buf);
+  } catch (err) {
+    next(err);
+  }
+});
+
 // Manual full-book scan trigger — dev + end-to-end smoke before the cron
 // goes live. Accepts optional ?account=<id> to scope to a single
 // account (same path the Pulse "Rescan" button uses).
