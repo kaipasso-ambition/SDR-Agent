@@ -180,31 +180,49 @@
                 <details class="mt-2" <%= isOpen ? 'open' : '' %>>
                   <summary class="text-xs text-slate-500 cursor-pointer hover:text-slate-900">
                     <% if (a.invite_draft && a.meeting_draft) { %>
-                      Drafts ready · invite + note
+                      Drafts ready · invite + note (edit, then copy)
                     <% } else if (a.invite_draft) { %>
-                      Session invite ready
+                      Session invite ready (edit, then copy)
                     <% } else { %>
-                      Meeting note ready
+                      Meeting note ready (edit, then copy)
                     <% } %>
                   </summary>
                   <div class="mt-2 space-y-2">
                     <% if (a.invite_draft) { %>
-                      <div class="bg-violet-50 border border-violet-200 rounded p-3">
+                      <form method="POST" action="/events/<%= event.id %>/attendees/<%= a.id %>"
+                            class="bg-violet-50 border border-violet-200 rounded p-3">
+                        <input type="hidden" name="open" value="<%= a.id %>" />
                         <div class="flex items-center justify-between mb-1">
-                          <div class="text-[10px] uppercase tracking-wide font-semibold text-violet-800">🎤 Session invite (speaker voice)</div>
-                          <button type="button" onclick="copyDraft(this)" data-draft-id="invite-<%= a.id %>" class="text-xs underline text-violet-700 hover:text-violet-900">Copy</button>
+                          <div class="text-[10px] uppercase tracking-wide font-semibold text-violet-800">🎤 Session invite · your voice, sent from you</div>
+                          <div class="flex items-center gap-2">
+                            <button type="button" onclick="copyDraft(this)" data-draft-id="invite-<%= a.id %>" class="text-xs underline text-violet-700 hover:text-violet-900">Copy</button>
+                          </div>
                         </div>
-                        <pre id="invite-<%= a.id %>" class="whitespace-pre-wrap font-sans text-sm text-slate-800"><%= a.invite_draft %></pre>
-                      </div>
+                        <textarea id="invite-<%= a.id %>" name="invite_draft" rows="7"
+                                  class="w-full bg-white border border-violet-200 rounded px-2 py-1.5 font-sans text-sm text-slate-800 focus:border-violet-500 focus:outline-none"><%= a.invite_draft %></textarea>
+                        <div class="flex items-center justify-between mt-1.5">
+                          <span class="text-[11px] text-slate-500">Tweak the note, then save. You own what goes out.</span>
+                          <button type="submit" class="text-xs bg-violet-600 hover:bg-violet-700 text-white px-2.5 py-1 rounded font-medium">Save edits</button>
+                        </div>
+                      </form>
                     <% } %>
                     <% if (a.meeting_draft) { %>
-                      <div class="bg-slate-50 border border-slate-200 rounded p-3">
+                      <form method="POST" action="/events/<%= event.id %>/attendees/<%= a.id %>"
+                            class="bg-slate-50 border border-slate-200 rounded p-3">
+                        <input type="hidden" name="open" value="<%= a.id %>" />
                         <div class="flex items-center justify-between mb-1">
-                          <div class="text-[10px] uppercase tracking-wide font-semibold text-slate-600">✉️ "Are you going?" note (your voice)</div>
-                          <button type="button" onclick="copyDraft(this)" data-draft-id="meeting-<%= a.id %>" class="text-xs underline text-slate-600 hover:text-slate-900">Copy</button>
+                          <div class="text-[10px] uppercase tracking-wide font-semibold text-slate-600">✉️ "Are you going?" note · your voice, sent from you</div>
+                          <div class="flex items-center gap-2">
+                            <button type="button" onclick="copyDraft(this)" data-draft-id="meeting-<%= a.id %>" class="text-xs underline text-slate-600 hover:text-slate-900">Copy</button>
+                          </div>
                         </div>
-                        <pre id="meeting-<%= a.id %>" class="whitespace-pre-wrap font-sans text-sm text-slate-800"><%= a.meeting_draft %></pre>
-                      </div>
+                        <textarea id="meeting-<%= a.id %>" name="meeting_draft" rows="7"
+                                  class="w-full bg-white border border-slate-300 rounded px-2 py-1.5 font-sans text-sm text-slate-800 focus:border-slate-500 focus:outline-none"><%= a.meeting_draft %></textarea>
+                        <div class="flex items-center justify-between mt-1.5">
+                          <span class="text-[11px] text-slate-500">Tweak the note, then save. You own what goes out.</span>
+                          <button type="submit" class="text-xs bg-slate-900 hover:bg-slate-800 text-white px-2.5 py-1 rounded font-medium">Save edits</button>
+                        </div>
+                      </form>
                     <% } %>
                   </div>
                 </details>
@@ -326,7 +344,9 @@
     const id = btn.getAttribute('data-draft-id');
     const el = document.getElementById(id);
     if (!el) return;
-    navigator.clipboard.writeText(el.innerText).then(function() {
+    // el is a <textarea> now (editable drafts). Use .value, not .innerText.
+    const text = 'value' in el ? el.value : el.innerText;
+    navigator.clipboard.writeText(text).then(function() {
       const prev = btn.innerText;
       btn.innerText = 'Copied ✓';
       setTimeout(function() { btn.innerText = prev; }, 1200);

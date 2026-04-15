@@ -30,6 +30,9 @@ export async function draftSessionInvite({ event, attendee, ae }) {
   if (!slot || !(slot.speaker || slot.title)) {
     throw new Error('No personal_invite_session on this event — add a speaker/session first.');
   }
+  if (!ae || !ae.name) {
+    throw new Error('Cannot draft an invite without a signed-in sender — AE identity is required.');
+  }
   const payload = {
     event: {
       name: event.name,
@@ -39,7 +42,7 @@ export async function draftSessionInvite({ event, attendee, ae }) {
     },
     speaker: {
       name: slot.speaker || 'our CEO',
-      title: slot.speaker_title || null,
+      title: slot.speaker_title || 'our CEO',
       session_title: slot.title || null,
       session_time: slot.session_time || null,
       seat_cap_note: slot.seat_cap_note || 'very limited seating',
@@ -57,7 +60,7 @@ export async function draftSessionInvite({ event, attendee, ae }) {
           angles_for_ambition: event.context.angles_for_ambition,
         }
       : null,
-    ae: ae ? { name: ae.name, email: ae.email } : null,
+    ae: { name: ae.name, email: ae.email || null },
   };
   return runDraft(SESSION_INVITE_PROMPT, payload);
 }

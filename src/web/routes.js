@@ -1611,7 +1611,7 @@ webRouter.post('/events/:eid/attendees/:aid', requireAuth, async (req, res, next
       return res.redirect('/events');
     }
     const patch = {};
-    for (const k of ['name', 'title', 'company', 'linkedin_url', 'email', 'notes']) {
+    for (const k of ['name', 'title', 'company', 'linkedin_url', 'email', 'notes', 'invite_draft', 'meeting_draft']) {
       if (req.body?.[k] !== undefined) {
         const v = typeof req.body[k] === 'string' ? req.body[k].trim() : req.body[k];
         patch[k] = v === '' ? null : v;
@@ -1626,7 +1626,11 @@ webRouter.post('/events/:eid/attendees/:aid', requireAuth, async (req, res, next
       patch.account_id = patch.company ? await findAccountIdForCompany(patch.company) : null;
     }
     await updateAttendee(req.params.aid, patch);
-    res.redirect(`/events/${req.params.eid}#attendees`);
+    // If the caller passed `open=<id>` (the edit-draft form does), keep
+    // the details panel open on redirect — otherwise just anchor to the list.
+    const openParam = req.body?.open && UUID_RE.test(req.body.open) ? `?open=${req.body.open}` : '';
+    const hash = req.body?.open ? `#a-${req.body.open}` : '#attendees';
+    res.redirect(`/events/${req.params.eid}${openParam}${hash}`);
   } catch (err) {
     next(err);
   }

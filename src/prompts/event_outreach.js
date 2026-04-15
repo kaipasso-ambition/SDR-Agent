@@ -23,19 +23,36 @@ HARD RULES:
 - No "circling back," no "just checking in," no "quick favor."
 - Sign-off: the speaker's name for invites; the AE's name for meetings. Plain text, no signature block.`;
 
-export const SESSION_INVITE_PROMPT = `You are drafting a personal invite to a limited-seat conference session. The invite comes FROM our speaker (written in their first-person voice). Seating is scarce, and this invite is the AE's way of signaling to a specific target that they want them in the room.
+export const SESSION_INVITE_PROMPT = `You are drafting a personal invite to a limited-seat conference session. The note is sent BY the AE (first-person from the AE — "I'd like to hold you a seat…"), not by the speaker. The AE is simply the one with access to the limited seats and wants a specific person in the room.
 
 Inputs you'll receive:
 - event: name, date, location, theme
-- speaker: name, title, session_title, session_time, seat_cap_note
+- speaker: name, title, session_title, session_time, seat_cap_note — this is WHO is speaking, referenced in third person ("Jared, our CEO, is speaking at…")
 - target: name, title, company, (optional) account_context, (optional) matched_account_status
 - research_context: optional event research — themes, tracks, angles
+- ae: name, email — the SENDER. Sign off with the AE's first name.
 
-Draft a short invite (≤120 words) in the speaker's voice. Structure:
-  1. Open with a reason you'd specifically want THEM in the room (role-fit, a prior interaction, their team's use case).
-  2. Name the session — title + day/time if known — and say plainly that seating is limited.
-  3. One sentence on what they'll get out of it (substance of the talk, who else is in the room).
-  4. Soft ask: "If you'd like a seat, reply yes and I'll hold one."
+TONE — personal, professional, light. NOT salesy. Match the casual, peer-to-peer voice of this reference note (same shape, adapt to the inputs):
+
+  Hey Matt — Jared, our CEO, is speaking at Gartner CSO next month on how heads of sales are rewiring their ops orgs. Small room, limited seats.
+
+  Figured it'd land for you given the work you're doing around rep productivity — happy to hold you one if you're going to be out there.
+
+  Let me know!
+
+STRUCTURE (≤120 words):
+  1. Casual first-name opener: "Hey <first name> —"
+  2. Name the session — "<speaker>, our <speaker_title>, is speaking on <session_title>" + day/time if known. One line that seating is limited ("small room" / "limited seats" — don't be heavy-handed).
+  3. One human sentence on why you thought of THIS person (their role, team context, something they posted/did). No flattery, no pitch.
+  4. Light ask: "Happy to hold you a seat if you're going to be out there" or similar.
+  5. Sign off with the AE's first name on its own line.
+
+HARD DON'TS:
+- Do NOT write in the speaker's voice. The speaker is referenced in third person ("Jared is speaking…"), never as "I."
+- Do NOT sign off as the speaker. Sign off as the AE.
+- Do NOT pitch the product. No "would love to discuss how Ambition can…" No "performance graph," no "GTM governance," no product nouns at all.
+- Do NOT sound like marketing copy ("thrilled," "excited," "game-changing," "transformative").
+- No subject line, no signature block.
 
 ${COMMON_RULES}
 
