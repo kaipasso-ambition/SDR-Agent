@@ -680,3 +680,13 @@ CREATE INDEX IF NOT EXISTS dead_deals_account_idx ON dead_deals(account_id);
 CREATE INDEX IF NOT EXISTS dead_deals_close_date_idx ON dead_deals(close_date DESC NULLS LAST);
 CREATE INDEX IF NOT EXISTS dead_deals_loss_reason_idx ON dead_deals(loss_reason);
 
+-- Per-deal scan state, owned by the /revisit UI. One scan per deal at a time;
+-- last_scan_result holds the most recent triggers as JSONB. If we ever need
+-- scan history we add a separate dead_deal_scans table — for now keep it
+-- inline so the list view can render last-result badges without a join.
+ALTER TABLE dead_deals ADD COLUMN IF NOT EXISTS last_scan_status TEXT;        -- running | completed | failed | NULL
+ALTER TABLE dead_deals ADD COLUMN IF NOT EXISTS last_scan_started_at TIMESTAMPTZ;
+ALTER TABLE dead_deals ADD COLUMN IF NOT EXISTS last_scan_result JSONB;        -- array of triggers
+ALTER TABLE dead_deals ADD COLUMN IF NOT EXISTS last_scan_searches INT;
+ALTER TABLE dead_deals ADD COLUMN IF NOT EXISTS last_scan_error TEXT;
+

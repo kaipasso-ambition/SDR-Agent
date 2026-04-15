@@ -27,6 +27,14 @@ import {
 import { PERSONAS } from '../lib/personas.js';
 import { runChampionCheckCycle } from '../agents/champion_tracker.js';
 import { runSignalScanCycle } from '../agents/signal_analyzer.js';
+import { scanDeadDeal } from '../agents/revisit_scanner.js';
+import {
+  getDeadDealByOpportunityId,
+  setScanRunning,
+  setScanResult,
+  setScanFailed,
+  listDeadDealsWithScan,
+} from '../db/dead_deals.js';
 import {
   getSignalsForBrief,
   getSignalById,
@@ -899,6 +907,68 @@ webRouter.post('/accounts/:id/notes', requireAuth, async (req, res, next) => {
     const clipped = notes.slice(0, 4000);
     await updateAccountNotes(req.params.id, clipped);
     res.redirect(`/accounts/${req.params.id}`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------- Revisit (Closed Lost / Churn) ----------
+//
+// The /revisit channel asks Claude to web-scan ONE dead deal at a time and
+// return triggers that might neutralise the original loss reason. We don't
+// run a cron — this is on-demand, AE-driven: pick a row, click Scan, eyeball
+// the triggers. Persistence is cheap (last_scan_* columns on dead_deals).
+
+webRouter.get('/revisit', requireAuth, async (req, res, next) => {
+  try {
+    const deals = await listDeadDealsWithScan({ limit: 300 });
+    res.render('revisit', { title: 'Revisit', deals });
+  } catch (err) {
+    next(err);
+  }
+});
+
+webRouter.get('/revisit/:opportunity_id', requireAuth, async (req, res, next) => {
+  try {
+    const deal = await getDeadDealByOpportunityId(req.params.opportunity_id);
+    if (!deal) return res.redirect('/revisit');
+    res.render('revisit_detail', { title: deal.account_name, deal });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Kick off a scan. Fire-and-forget — we flip the row to 'running' before
+// returning so the detail page shows a spinner immediately, then update
+// to 'completed' or 'failed' from the background promise. Same pattern as
+// /events/:id/research and /champions/check-now.
+webRouter.post('/revisit/:opportunity_id/scan', requireAuth, async (req, res, next) => {
+  try {
+    const oppId = req.params.opportunity_id;
+    const deal = await getDeadDealByOpportunityId(oppId);
+    if (!deal) return res.redirect('/revisit');
+
+    // Don't start a second scan while one is in flight on this deal.
+    if (deal.last_scan_status === 'running') {
+      return res.redirect(`/revisit/${encodeURIComponent(oppId)}`);
+    }
+
+    await setScanRunning(oppId);
+
+    // Fire and forget. Errors get persisted to last_scan_error so the
+    // detail page can show them.
+    Promise.resolve()
+      .then(async () => {
+        const result = await scanDeadDeal(deal);
+        await setScanResult(oppId, result);
+        console.log(`[revisit] scan ${oppId} done — ${result.triggers.length} triggers, ${result.searches} searches, skipped=${result.skipped || 'no'}`);
+      })
+      .catch(async (err) => {
+        console.error(`[revisit] scan ${oppId} failed:`, err);
+        try { await setScanFailed(oppId, err.message || String(err)); } catch (_) {}
+      });
+
+    res.redirect(`/revisit/${encodeURIComponent(oppId)}`);
   } catch (err) {
     next(err);
   }

@@ -13,52 +13,8 @@
 // Env: reuses the same DATABASE_URL + ANTHROPIC_API_KEY as the app.
 
 import 'dotenv/config';
-import Anthropic from '@anthropic-ai/sdk';
 import { query, pool } from '../src/db/index.js';
-import { REVISIT_SCAN_PROMPT } from '../src/prompts/revisit_scan.js';
-
-const client = new Anthropic();
-
-// Remove <cite index="..."></cite> tags from any string in a value, keeping
-// the inner text. web_search injects these around quoted spans; the source_url
-// is the citation we actually want, so the inline tags are just noise.
-const CITE_TAG_RE = /<\/?cite[^>]*>/g;
-function stripCiteTags(value) {
-  if (typeof value === 'string') return value.replace(CITE_TAG_RE, '').trim();
-  if (Array.isArray(value)) return value.map(stripCiteTags);
-  if (value && typeof value === 'object') {
-    const out = {};
-    for (const [k, v] of Object.entries(value)) out[k] = stripCiteTags(v);
-    return out;
-  }
-  return value;
-}
-
-function fmtDeal(d) {
-  return {
-    account_name: d.account_name,
-    account_status: d.account_status,
-    industry: d.industry,
-    opportunity_id: d.opportunity_id,
-    close_date: d.close_date,
-    loss_reason: d.loss_reason,
-    account_type_at_close: d.account_type_at_close,
-    linkedin: d.notes && d.notes.startsWith('LinkedIn: ') ? d.notes.slice(10) : null,
-    owner_name: d.owner_name,
-    original_context: {
-      current_state_pains: d.current_state_pains,
-      business_technical_pains: d.business_technical_pains,
-      champion_raw: d.champion_raw,
-      decision_criteria: d.decision_criteria,
-      decision_process: d.decision_process,
-      why_taking_call: d.why_taking_call,
-      why_now: d.why_now,
-      why_ambition: d.why_ambition,
-      foa_note: d.foa_note,
-      next_step: d.next_step,
-    },
-  };
-}
+import { scanDeadDeal } from '../src/agents/revisit_scanner.js';
 
 async function findDeal({ oppId, accountName }) {
   if (oppId) {
@@ -104,77 +60,47 @@ async function listAll() {
 }
 
 async function scan(deal) {
-  const context = fmtDeal(deal);
-  const userContent = `
-Account and deal context:
-${JSON.stringify(context, null, 2)}
-
-Scan the web for what has CHANGED since close_date that might neutralize the loss_reason. Return the JSON array per the instructions.
-`.trim();
-
   console.log('\n[scan] sending to Claude with web_search…');
-  const t0 = Date.now();
+  const result = await scanDeadDeal(deal);
+  const elapsed = Math.round(result.elapsed_ms / 1000);
 
-  const response = await client.messages.create({
-    model: 'claude-sonnet-4-20250514',
-    max_tokens: 4000,
-    system: REVISIT_SCAN_PROMPT,
-    messages: [{ role: 'user', content: userContent }],
-    tools: [{ type: 'web_search_20250305', name: 'web_search' }],
-  }, { timeout: 4 * 60 * 1000 });
-
-  const elapsed = Math.round((Date.now() - t0) / 1000);
-  const text = response.content.filter(b => b.type === 'text').map(b => b.text).join('').trim();
-  const searchCount = response.content.filter(b => b.type === 'server_tool_use' && b.name === 'web_search').length;
-  const searchQueries = response.content
-    .filter(b => b.type === 'server_tool_use' && b.name === 'web_search')
-    .map(b => b.input?.query).filter(Boolean);
-
-  console.log(`[scan] done in ${elapsed}s — ${searchCount} web searches`);
-  if (searchQueries.length) {
+  console.log(`[scan] done in ${elapsed}s — ${result.searches} web searches`);
+  if (result.queries.length) {
     console.log('[scan] queries used:');
-    searchQueries.forEach(q => console.log(`         - ${q}`));
+    result.queries.forEach(q => console.log(`         - ${q}`));
   }
 
-  if (searchCount === 0) {
+  if (result.skipped === 'no_web_search') {
     console.log('\n[scan] CIRCUIT BREAKER TRIPPED — zero web searches. Output is training-data only and unreliable. Rejecting.\n');
     console.log('---raw text below---\n');
-    console.log(text);
+    console.log(result.raw);
     return;
   }
-
-  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  const bracket = text.match(/\[[\s\S]*\]/);
-  const jsonText = fenced ? fenced[1].trim() : (bracket ? bracket[0] : text);
-
-  let parsed;
-  try {
-    parsed = JSON.parse(jsonText);
-  } catch {
+  if (result.skipped === 'parse_failure') {
     console.log('\n[scan] JSON parse failed. Raw text:\n');
-    console.log(text);
+    console.log(result.raw);
+    return;
+  }
+  if (result.skipped === 'not_array') {
+    console.log('\n[scan] Model returned non-array JSON. Raw text:\n');
+    console.log(result.raw);
     return;
   }
 
-  // web_search wraps cited spans in <cite index="...">...</cite>. Strip the
-  // tag wrappers (keep the inner text) recursively across every string field
-  // so output reads cleanly. The source_url itself is the citation; the inline
-  // tags are noise.
-  parsed = stripCiteTags(parsed);
-
-  if (!Array.isArray(parsed) || parsed.length === 0) {
+  const triggers = result.triggers;
+  if (triggers.length === 0) {
     console.log('\n[scan] NO TRIGGERS returned. Claude found nothing material since close_date.\n');
     console.log('This is a valid answer — not every dead deal has a fresh revisit moment.');
     console.log('\n--- DEBUG: raw model text below (verify whether Claude really returned [] or the parser dropped something) ---\n');
-    console.log(text || '(empty response)');
+    console.log(result.raw || '(empty response)');
     console.log('\n--- end raw text ---\n');
     return;
   }
 
-  console.log(`\n[scan] ${parsed.length} trigger(s) returned:\n`);
-  for (let i = 0; i < parsed.length; i++) {
-    const s = parsed[i];
-    console.log(`━━━ Trigger ${i + 1} / ${parsed.length} ━━━`);
+  console.log(`\n[scan] ${triggers.length} trigger(s) returned:\n`);
+  for (let i = 0; i < triggers.length; i++) {
+    const s = triggers[i];
+    console.log(`━━━ Trigger ${i + 1} / ${triggers.length} ━━━`);
     console.log(`  type:       ${s.signal_type}   severity: ${s.severity}   loss_reason_link: ${s.loss_reason_link}`);
     console.log(`  title:      ${s.trigger_title}`);
     console.log(`  summary:    ${s.trigger_summary}`);

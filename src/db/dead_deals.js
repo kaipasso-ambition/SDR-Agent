@@ -94,3 +94,93 @@ export async function countDeadDeals() {
   const { rows } = await query(`SELECT COUNT(*)::int AS n FROM dead_deals`);
   return rows[0]?.n || 0;
 }
+
+// ---------- Revisit scan state ----------
+//
+// One scan per deal at a time. last_scan_status drives the UI:
+//   NULL       — never scanned
+//   running    — kicked off, no result yet (banner spins)
+//   completed  — last_scan_result holds the trigger array
+//   failed     — last_scan_error holds the message
+//
+// We don't keep history yet. If/when we do, add a dead_deal_scans table; for
+// now the inline columns let the list page render last-result counts cheaply.
+
+/**
+ * Fetch one dead deal joined with its account (everything the scanner needs
+ * to build context). Lookup by opportunity_id, since that's what the URL
+ * uses — UUID surrogate keys aren't useful in this section of the app.
+ */
+export async function getDeadDealByOpportunityId(opportunityId) {
+  const { rows } = await query(
+    `SELECT dd.*, a.account_name, a.domain, a.status AS account_status,
+            a.industry, a.notes
+       FROM dead_deals dd
+       JOIN accounts_registry a ON a.id = dd.account_id
+      WHERE dd.opportunity_id = $1
+      LIMIT 1`,
+    [opportunityId]
+  );
+  return rows[0] || null;
+}
+
+export async function setScanRunning(opportunityId) {
+  await query(
+    `UPDATE dead_deals
+        SET last_scan_status     = 'running',
+            last_scan_started_at = NOW(),
+            last_scan_error      = NULL
+      WHERE opportunity_id = $1`,
+    [opportunityId]
+  );
+}
+
+/**
+ * Persist the final result of a scan. `result` is the object returned by
+ * scanDeadDeal — we store the trigger array, the search count, and stamp
+ * last_signal_scan_at so the list view can show "scanned X minutes ago".
+ */
+export async function setScanResult(opportunityId, result) {
+  await query(
+    `UPDATE dead_deals
+        SET last_scan_status   = 'completed',
+            last_scan_result   = $2::jsonb,
+            last_scan_searches = $3,
+            last_scan_error    = NULL,
+            last_signal_scan_at = NOW()
+      WHERE opportunity_id = $1`,
+    [opportunityId, JSON.stringify(result.triggers || []), result.searches || 0]
+  );
+}
+
+export async function setScanFailed(opportunityId, errorMessage) {
+  await query(
+    `UPDATE dead_deals
+        SET last_scan_status = 'failed',
+            last_scan_error  = $2
+      WHERE opportunity_id = $1`,
+    [opportunityId, (errorMessage || 'unknown').slice(0, 1000)]
+  );
+}
+
+/**
+ * List for the /revisit index — every dead deal + the headline scan state.
+ * Cheap query; the trigger array is included so the list can show a count
+ * pill without a second round-trip.
+ */
+export async function listDeadDealsWithScan({ limit = 200 } = {}) {
+  const { rows } = await query(
+    `SELECT dd.opportunity_id, dd.close_date, dd.loss_reason,
+            dd.account_type_at_close, dd.owner_name,
+            dd.last_scan_status, dd.last_scan_started_at, dd.last_signal_scan_at,
+            dd.last_scan_searches, dd.last_scan_error,
+            COALESCE(jsonb_array_length(dd.last_scan_result), 0) AS trigger_count,
+            a.account_name, a.domain, a.status AS account_status, a.industry
+       FROM dead_deals dd
+       JOIN accounts_registry a ON a.id = dd.account_id
+      ORDER BY dd.close_date DESC NULLS LAST, dd.imported_at DESC
+      LIMIT $1`,
+    [limit]
+  );
+  return rows;
+}
