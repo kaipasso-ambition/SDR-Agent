@@ -90,6 +90,26 @@ export async function insertSignals(signals, jobId = null) {
     if (rows[0].was_inserted) inserted++;
     else updated++;
     touchedAccounts.add(s.account_id);
+
+    // Auto-place contacts the model named in this signal. Dedup lives in
+    // upsertContactFromMention (by account_id + LOWER(name)); manual AE
+    // classifications never get clobbered. Wrapped so a bad row doesn't
+    // abort signal insertion.
+    if (Array.isArray(s.mentioned_contacts) && s.mentioned_contacts.length > 0) {
+      const { upsertContactFromMention } = await import('./game_plan.js');
+      for (const m of s.mentioned_contacts) {
+        try {
+          await upsertContactFromMention({
+            account_id: s.account_id,
+            name: m?.name,
+            title: m?.title || null,
+            deal_role_guess: m?.deal_role_guess || 'unknown',
+          });
+        } catch (err) {
+          console.warn('[signals] contact auto-place failed:', err.message);
+        }
+      }
+    }
   }
 
   if (touchedAccounts.size > 0) {

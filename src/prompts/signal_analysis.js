@@ -47,6 +47,7 @@ FIELD DISCIPLINE — this is a HARD CONSTRAINT:
 - summary:  2 sentences of factual context. Neutral. No positioning words.
 - so_what:  interpretation for the AE. USES the Ambition 2.0 lexicon. ≤2 sentences. Names the GTM problem the signal implies and connects it to where Ambition sits (Performance Graph / GTM Governance / manager layer / coaching at scale).
 - recommended_move: ONE concrete step the AE can take this week. USES the lexicon. Not a demo ask. Examples: "Draft a note to the new CRO referencing Ambition's coverage of their SDR team and offer a 20-min exchange on how peers are handling the manager layer during consolidation." / "Loop in CS — this is a renewal pre-quake; stage a Performance Graph ROI recap before the Q2 budget review."
+- mentioned_contacts: array of people the signal names at the target company. For each one, return {name, title?, deal_role_guess?}. deal_role_guess is ONE of economic_buyer (CRO/CCO/CFO/VP-Sales-level), champion (known advocate), influencer (RevOps/Enablement leader), user (frontline manager or rep), unknown. Omit the field if you can't tell. Empty array [] if no one is named.
 
 OUTPUT FORMAT — valid JSON, an ARRAY (possibly empty):
 
@@ -61,7 +62,10 @@ OUTPUT FORMAT — valid JSON, an ARRAY (possibly empty):
     "recommended_move": "<one concrete action for this AE, this week>",
     "source_url": "<real URL from your search>",
     "source_excerpt": "<≤200 chars quoted or paraphrased from the source>",
-    "dedup_key": "<stable slug — lower-case, hyphenated, e.g. 'procore-new-cro-july-announcement'>"
+    "dedup_key": "<stable slug — lower-case, hyphenated, e.g. 'procore-new-cro-july-announcement'>",
+    "mentioned_contacts": [
+      { "name": "Morgan Chen", "title": "CRO", "deal_role_guess": "economic_buyer" }
+    ]
   }
 ]
 
