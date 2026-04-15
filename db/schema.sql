@@ -383,6 +383,133 @@ ALTER TABLE approval_queue ADD COLUMN IF NOT EXISTS signal_id UUID
   REFERENCES account_signals(id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS approval_queue_signal_idx ON approval_queue(signal_id);
 
+-- ============================================================================
+-- Game Plan (Sprint 2 foundations)
+--
+-- Three tables modelling enterprise account navigation as chess:
+--   1. account_contacts    — the pieces on the board (org chart + deal role)
+--   2. account_hypotheses  — our current theory of the case (use case to sell)
+--   3. account_plays       — the move sequence (instinct + AI expansion)
+--
+-- Schema-only for now; DB layer + UI + play_builder prompt ship next.
+-- ============================================================================
+
+-- People at the account with a deal role and stance. self-referencing
+-- reports_to_contact_id makes it a tree (org chart). Can link to a
+-- tracked champion if we already know them, or stand alone if freshly
+-- placed by a signal mention.
+CREATE TABLE IF NOT EXISTS account_contacts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id UUID NOT NULL REFERENCES accounts_registry(id) ON DELETE CASCADE,
+  champion_id UUID REFERENCES champions(id) ON DELETE SET NULL,
+  name TEXT NOT NULL,
+  title TEXT,
+  email TEXT,
+  linkedin_url TEXT,
+  -- Deal role in Miller-Heiman / Challenger terms. 'unknown' is the
+  -- landing state for signal-mentioned contacts until the AE classifies.
+  deal_role TEXT DEFAULT 'unknown' CHECK (deal_role IN (
+    'economic_buyer', 'champion', 'coach', 'influencer',
+    'blocker', 'user', 'unknown'
+  )),
+  -- Stance toward us specifically. Separate from deal_role because
+  -- a blocker can still be neutral, and a champion can go cold.
+  stance TEXT DEFAULT 'neutral' CHECK (stance IN (
+    'hot', 'warm', 'neutral', 'cold', 'hostile'
+  )),
+  reports_to_contact_id UUID REFERENCES account_contacts(id) ON DELETE SET NULL,
+  last_touchpoint_at TIMESTAMPTZ,
+  last_touchpoint_type TEXT,  -- e.g. 'email_sent', 'reply_received', 'meeting'
+  notes TEXT,
+  source TEXT DEFAULT 'manual' CHECK (source IN (
+    'manual', 'enrichment', 'signal_mention'
+  )),
+  created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS account_contacts_account_idx
+  ON account_contacts(account_id);
+CREATE INDEX IF NOT EXISTS account_contacts_reports_to_idx
+  ON account_contacts(reports_to_contact_id);
+-- One contact per (account, linkedin_url) if LinkedIn is known — prevents
+-- duplicate insertion when a signal re-mentions the same person.
+CREATE UNIQUE INDEX IF NOT EXISTS account_contacts_account_linkedin_unique
+  ON account_contacts(account_id, LOWER(linkedin_url))
+  WHERE linkedin_url IS NOT NULL;
+
+-- Our current theory of what to sell and why. An account can carry
+-- multiple hypotheses (different angles for different personas). The
+-- play chooses one.
+CREATE TABLE IF NOT EXISTS account_hypotheses (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id UUID NOT NULL REFERENCES accounts_registry(id) ON DELETE CASCADE,
+  -- Which Ambition capability this hypothesis maps to. Enum is
+  -- deliberately small; messaging rides on narrative_hook, not on
+  -- cutting the capability finer.
+  use_case TEXT NOT NULL CHECK (use_case IN (
+    'performance_graph', 'ascend_coaching', 'gtm_governance',
+    'manager_enablement', 'rep_ramp', 'multi_team_rollup'
+  )),
+  -- Who we'd pitch this to. Mirrors PERSONAS in src/lib/personas.js
+  -- (frontline_mgr | revops | cro_exec).
+  target_persona_id TEXT NOT NULL,
+  narrative_hook TEXT NOT NULL,
+  -- Signals that support this theory. Array not FK-table because
+  -- order doesn't matter and we want set semantics.
+  evidence_signal_ids UUID[] DEFAULT ARRAY[]::UUID[],
+  confidence INTEGER DEFAULT 3 CHECK (confidence BETWEEN 1 AND 5),
+  status TEXT DEFAULT 'theory' CHECK (status IN ('theory', 'validated', 'disproven')),
+  created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS account_hypotheses_account_idx
+  ON account_hypotheses(account_id);
+CREATE INDEX IF NOT EXISTS account_hypotheses_status_idx
+  ON account_hypotheses(status);
+
+-- The play artifact. Instinct + AI expansion + contact path. Status
+-- lifecycle: drafting -> active -> (paused?) -> won|lost|abandoned.
+-- triggered_by_signal_id and hypothesis_id are nullable so a play can
+-- be composed freeform (no originating signal, no formal hypothesis
+-- yet) — the AE's strategic thinking isn't always reactive.
+CREATE TABLE IF NOT EXISTS account_plays (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id UUID NOT NULL REFERENCES accounts_registry(id) ON DELETE CASCADE,
+  hypothesis_id UUID REFERENCES account_hypotheses(id) ON DELETE SET NULL,
+  triggered_by_signal_id UUID REFERENCES account_signals(id) ON DELETE SET NULL,
+  author_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  instinct TEXT,
+  -- Claude's expansion: {named_play, moves[], internal_ask, risks,
+  -- positioning_hooks, ai_model_version}. JSONB so the schema of the
+  -- expansion can evolve with prompt iteration without migrations.
+  ai_expansion JSONB,
+  -- Ordered list of contact_ids tracing the path through the org.
+  -- Validation (contacts all belong to account_id) lives in the DB
+  -- layer, not a DB constraint — constraints on array element FKs
+  -- would require a trigger and aren't worth the complexity.
+  contact_path UUID[] DEFAULT ARRAY[]::UUID[],
+  status TEXT DEFAULT 'drafting' CHECK (status IN (
+    'drafting', 'active', 'paused', 'won', 'lost', 'abandoned'
+  )),
+  next_action TEXT,
+  next_action_due DATE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS account_plays_account_idx
+  ON account_plays(account_id);
+CREATE INDEX IF NOT EXISTS account_plays_status_idx
+  ON account_plays(status);
+CREATE INDEX IF NOT EXISTS account_plays_author_idx
+  ON account_plays(author_user_id);
+-- Surfaces "plays with a next action due this week" on the dashboard
+-- without a full table scan.
+CREATE INDEX IF NOT EXISTS account_plays_next_due_idx
+  ON account_plays(next_action_due)
+  WHERE status = 'active' AND next_action_due IS NOT NULL;
+
 -- Integration credentials (stored after OAuth so users don't edit .env for these)
 CREATE TABLE IF NOT EXISTS integrations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
