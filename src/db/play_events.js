@@ -85,17 +85,20 @@ export async function createEvent({
   location = null,
   description = null,
   context = null,
+  reference_links = [],
   status = 'planning',
   created_by_user_id = null,
 }) {
   const { rows } = await query(
     `INSERT INTO play_events (
-       name, kind, event_date, location, description, context, status, created_by_user_id
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       name, kind, event_date, location, description, context,
+       reference_links, status, created_by_user_id
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7::text[], $8, $9)
      RETURNING *`,
     [
       name, kind, event_date, location, description,
       context ? JSON.stringify(context) : null,
+      reference_links,
       status, created_by_user_id,
     ]
   );
@@ -117,11 +120,50 @@ export async function updateEvent(id, patch) {
     fields.push(`context = $${++i}`);
     values.push(patch.context ? JSON.stringify(patch.context) : null);
   }
+  if (patch.reference_links !== undefined) {
+    fields.push(`reference_links = $${++i}::text[]`);
+    values.push(patch.reference_links || []);
+  }
+  if (patch.personal_invite_session !== undefined) {
+    fields.push(`personal_invite_session = $${++i}`);
+    values.push(patch.personal_invite_session
+      ? JSON.stringify(patch.personal_invite_session)
+      : null);
+  }
   if (fields.length === 0) return getEventById(id);
   fields.push(`updated_at = NOW()`);
   const { rows } = await query(
     `UPDATE play_events SET ${fields.join(', ')} WHERE id = $1 RETURNING *`,
     [id, ...values]
+  );
+  return rows[0] || null;
+}
+
+// Research lifecycle — tiny helpers so the agent doesn't have to
+// reach into the DB directly. setResearchStatus flips the badge the
+// UI shows; completeResearch writes both the payload and the
+// timestamp in one statement so the view never sees a half-updated
+// row.
+export async function setResearchStatus(id, status, error = null) {
+  await query(
+    `UPDATE play_events
+        SET research_status = $2, research_error = $3, updated_at = NOW()
+      WHERE id = $1`,
+    [id, status, error]
+  );
+}
+
+export async function completeResearch(id, context) {
+  const { rows } = await query(
+    `UPDATE play_events
+        SET context = $2,
+            research_status = 'completed',
+            research_error = NULL,
+            researched_at = NOW(),
+            updated_at = NOW()
+      WHERE id = $1
+      RETURNING *`,
+    [id, context ? JSON.stringify(context) : null]
   );
   return rows[0] || null;
 }

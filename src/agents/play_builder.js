@@ -18,6 +18,8 @@ export async function buildPlay({
   hypothesis = null,
   contact_path_resolved = [],   // array of {name, title, deal_role, stance}
   triggering_signal = null,     // {title, so_what, recommended_move} or null
+  event = null,                 // play_events row when the play belongs to one
+  personal_invites = [],        // contacts getting a limited-seat invite at the event
   prior_plays = [],             // compact array of {named_play, status}
 }) {
   if (!instinct || !instinct.trim()) {
@@ -69,6 +71,33 @@ export async function buildPlay({
           recommended_move: triggering_signal.recommended_move,
         }
       : null,
+    // When the play is scoped to an event, give the model the researched
+    // context (theme, audience profile, angles, recommended_moves, and
+    // — when relevant — the Ambition speaking slot). This lets the
+    // expansion anchor on event-specific angles instead of re-deriving
+    // them from the account alone.
+    event: event
+      ? {
+          name: event.name,
+          kind: event.kind,
+          event_date: event.event_date,
+          location: event.location,
+          description: event.description || null,
+          context: event.context || null,
+          personal_invite_session: event.personal_invite_session || null,
+        }
+      : null,
+    // Contacts (from this account's contact_path) who are being given a
+    // seat at the event's limited-seat session. The model should build
+    // the invite as a CHAMPION-CARRIED message from our speaker/CEO,
+    // not a generic "hope to see you there" — scarcity is the whole
+    // point of the artifact.
+    personal_invites: (personal_invites || []).map((c) => ({
+      name: c.name,
+      title: c.title,
+      deal_role: c.deal_role,
+      stance: c.stance,
+    })),
     prior_plays: prior_plays.slice(0, 5),
   };
 

@@ -364,17 +364,80 @@
         <% } %>
 
         <% if (typeof events !== 'undefined' && events && events.length > 0) { %>
+          <%
+            // Map event id → invite-slot JSON for the client script.
+            const eventSlotMap = {};
+            events.forEach(function(e) {
+              if (e.personal_invite_session) eventSlotMap[e.id] = e.personal_invite_session;
+            });
+          %>
           <label class="block text-sm">
             <span class="font-medium text-slate-800">Event <span class="text-slate-400 font-normal">(optional — Gartner stop, CVI dinner, themed wave)</span></span>
-            <select name="event_id" class="w-full border border-slate-300 rounded px-3 py-2 mt-1 text-sm">
+            <select name="event_id" id="event-select" class="w-full border border-slate-300 rounded px-3 py-2 mt-1 text-sm">
               <option value="">— none —</option>
               <% events.forEach(function(e) { %>
-                <option value="<%= e.id %>">
-                  <%= e.name %><% if (e.event_date) { %> · <%= new Date(e.event_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) %><% } %>
+                <option value="<%= e.id %>" data-has-invite="<%= e.personal_invite_session ? '1' : '0' %>">
+                  <%= e.name %><% if (e.event_date) { %> · <%= new Date(e.event_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) %><% } %><% if (e.personal_invite_session) { %> · 🎤 invite slot<% } %>
                 </option>
               <% }); %>
             </select>
           </label>
+
+          <div id="invite-picker" class="hidden bg-violet-50 border border-violet-200 rounded p-3 text-sm">
+            <div class="text-[10px] uppercase tracking-wide font-semibold text-violet-800 mb-1">🎤 Personal invite · limited seating</div>
+            <div id="invite-slot-summary" class="text-xs text-slate-700 mb-2"></div>
+            <div class="text-xs text-slate-600 mb-1">Which contacts on the path should get a seat? (Pick from the contact path above. Scarcity is the hook — don't overcommit.)</div>
+            <div id="invite-contact-list" class="space-y-1 text-xs"></div>
+          </div>
+
+          <script>
+            (function() {
+              const slots = <%- JSON.stringify(eventSlotMap) %>;
+              const sel = document.getElementById('event-select');
+              const picker = document.getElementById('invite-picker');
+              const summary = document.getElementById('invite-slot-summary');
+              const list = document.getElementById('invite-contact-list');
+
+              function refresh() {
+                const slot = slots[sel.value];
+                if (!slot) {
+                  picker.classList.add('hidden');
+                  list.innerHTML = '';
+                  return;
+                }
+                picker.classList.remove('hidden');
+                const bits = [];
+                if (slot.speaker) bits.push('<strong>' + slot.speaker + '</strong>');
+                if (slot.title) bits.push(slot.title);
+                if (slot.session_time) bits.push(slot.session_time);
+                if (slot.seat_cap_note) bits.push('<em>' + slot.seat_cap_note + '</em>');
+                summary.innerHTML = bits.join(' · ');
+
+                // Build from currently CHECKED contact_path — no double-add;
+                // invite can only go to someone the play is threading through.
+                const checked = document.querySelectorAll('input[name="contact_path"]:checked');
+                if (checked.length === 0) {
+                  list.innerHTML = '<div class="text-slate-500 italic">Select one or more contacts in the Contact path above first.</div>';
+                  return;
+                }
+                list.innerHTML = '';
+                checked.forEach(function(cp) {
+                  const label = cp.parentElement.querySelector('span')?.innerText || cp.value;
+                  const id = 'inv-' + cp.value;
+                  const row = document.createElement('label');
+                  row.className = 'flex items-center gap-2';
+                  row.innerHTML = '<input type="checkbox" name="personal_invite_contact_ids" value="' + cp.value + '" id="' + id + '" />' +
+                                  '<span>' + label + '</span>';
+                  list.appendChild(row);
+                });
+              }
+              sel.addEventListener('change', refresh);
+              document.addEventListener('change', function(e) {
+                if (e.target && e.target.name === 'contact_path') refresh();
+              });
+              refresh();
+            })();
+          </script>
         <% } %>
 
         <% if (contacts.length > 0) { %>

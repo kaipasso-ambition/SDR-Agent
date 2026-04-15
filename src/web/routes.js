@@ -76,8 +76,10 @@ import {
   createEvent,
   updateEvent,
   deleteEvent,
+  setResearchStatus,
 } from '../db/play_events.js';
 import { buildPlay } from '../agents/play_builder.js';
+import { runEventResearch } from '../agents/event_researcher.js';
 
 export const webRouter = Router();
 
@@ -1223,6 +1225,13 @@ webRouter.post('/accounts/:id/plays', requireAuth, async (req, res, next) => {
     const contact_path = []
       .concat(req.body?.contact_path || [])
       .filter((v) => typeof v === 'string' && UUID_RE.test(v));
+    // Personal-invite picks. Only contacts that are ALSO on the
+    // contact_path can be invited — the invite is always carried by
+    // someone the play already threads through. We re-validate that
+    // below after fetching the account's contacts.
+    const personal_invite_contact_ids_raw = []
+      .concat(req.body?.personal_invite_contact_ids || [])
+      .filter((v) => typeof v === 'string' && UUID_RE.test(v));
 
     // Create first with no expansion, then fill in — keeps the DB row
     // durable even if the Claude call throws.
@@ -1234,25 +1243,31 @@ webRouter.post('/accounts/:id/plays', requireAuth, async (req, res, next) => {
       author_user_id: req.session.userId,
       instinct,
       contact_path,
+      personal_invite_contact_ids: personal_invite_contact_ids_raw,
       status: 'drafting',
     });
 
     try {
-      const [account, hypothesis, signal, allContacts, priorPlays] = await Promise.all([
+      const [account, hypothesis, signal, allContacts, priorPlays, eventCtx] = await Promise.all([
         (async () => (await getAccountBundle(accountId))?.account)(),
         hypothesis_id ? getHypothesisById(hypothesis_id) : null,
         triggered_by_signal_id ? getSignalById(triggered_by_signal_id) : null,
         listContactsForAccount(accountId),
         listPlaysForAccount(accountId),
+        event_id ? getEventById(event_id) : null,
       ]);
       const byId = new Map(allContacts.map((c) => [c.id, c]));
       const contact_path_resolved = contact_path.map((id) => byId.get(id)).filter(Boolean);
+      const personal_invites_resolved = personal_invite_contact_ids_raw
+        .map((id) => byId.get(id)).filter(Boolean);
       const { expansion } = await buildPlay({
         account,
         instinct,
         hypothesis,
         contact_path_resolved,
         triggering_signal: signal,
+        event: eventCtx,
+        personal_invites: personal_invites_resolved,
         prior_plays: priorPlays
           .filter((p) => p.id !== play.id)
           .map((p) => ({
@@ -1402,20 +1417,53 @@ webRouter.get('/events/:id', requireAuth, async (req, res, next) => {
   }
 });
 
+// Parse a textarea of links (one per line, comma-separated also OK) into
+// a deduped array. Keep it permissive — the AE may paste URLs with
+// trailing commas, parens, or query strings. We only strip whitespace.
+function parseReferenceLinks(raw) {
+  if (!raw || typeof raw !== 'string') return [];
+  const parts = raw.split(/[\n,]+/).map((s) => s.trim()).filter(Boolean);
+  // Dedup while preserving order.
+  const seen = new Set();
+  const out = [];
+  for (const p of parts) {
+    if (!/^https?:\/\//i.test(p)) continue;
+    if (seen.has(p)) continue;
+    seen.add(p);
+    out.push(p);
+  }
+  return out;
+}
+
 webRouter.post('/events', requireAuth, async (req, res, next) => {
   try {
     const name = (req.body?.name || '').trim();
     if (!name) return res.redirect('/events/new');
+    const reference_links = parseReferenceLinks(req.body?.reference_links);
+    const speaking_note = (req.body?.speaking_note || '').trim() || null;
     const event = await createEvent({
       name,
       kind: ['event', 'campaign', 'one_off'].includes(req.body?.kind) ? req.body.kind : 'event',
       event_date: (req.body?.event_date || '').trim() || null,
       location: (req.body?.location || '').trim() || null,
       description: (req.body?.description || '').trim() || null,
+      reference_links,
       status: ['planning', 'active', 'completed', 'cancelled'].includes(req.body?.status)
         ? req.body.status : 'planning',
       created_by_user_id: req.session.userId,
     });
+    // If the AE handed over reference links OR a speaking-slot note,
+    // kick off research in the background. The route returns fast; the
+    // UI will flip from "pending → completed" on the next /events/:id
+    // page load once the agent finishes (~30–60s typical).
+    if (reference_links.length > 0 || speaking_note) {
+      // Flip status to pending IMMEDIATELY so the redirected page shows
+      // a spinner. runEventResearch will overwrite it when done.
+      await setResearchStatus(event.id, 'pending').catch(() => {});
+      runEventResearch(event.id, { speaking_note }).catch((err) => {
+        console.error('[events/create] research kickoff failed:', err.message);
+      });
+    }
     res.redirect(`/events/${event.id}`);
   } catch (err) {
     next(err);
@@ -1434,7 +1482,30 @@ webRouter.post('/events/:id', requireAuth, async (req, res, next) => {
         patch[k] = v === '' ? null : v;
       }
     }
+    if (req.body?.reference_links !== undefined) {
+      patch.reference_links = parseReferenceLinks(req.body.reference_links);
+    }
     await updateEvent(event.id, patch);
+    res.redirect(`/events/${event.id}`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Manually (re-)research an event. Fires the researcher in the
+// background and redirects. Accepts an optional speaking_note so the
+// AE can steer the run ("our CEO is on stage at the 2pm session, very
+// limited seating") without editing the event body.
+webRouter.post('/events/:id/research', requireAuth, async (req, res, next) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.redirect('/events');
+    const event = await getEventById(req.params.id);
+    if (!event) return res.redirect('/events');
+    const speaking_note = (req.body?.speaking_note || '').trim() || null;
+    await setResearchStatus(event.id, 'pending').catch(() => {});
+    runEventResearch(event.id, { speaking_note }).catch((err) => {
+      console.error(`[events/${event.id}/research] kickoff failed:`, err.message);
+    });
     res.redirect(`/events/${event.id}`);
   } catch (err) {
     next(err);

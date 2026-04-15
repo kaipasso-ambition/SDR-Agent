@@ -557,6 +557,32 @@ ALTER TABLE account_plays ADD COLUMN IF NOT EXISTS event_id UUID
 CREATE INDEX IF NOT EXISTS account_plays_event_idx ON account_plays(event_id)
   WHERE event_id IS NOT NULL;
 
+-- Reference material the AE hands in when setting up an event — URLs
+-- (session pages, sponsor lists, invite lists), pasted briefs. The
+-- event_researcher agent walks these + web_search to build the
+-- structured `context` payload above (theme, audience profile,
+-- sessions, suggested angles, sources). research_status lets the
+-- UI tell the AE whether a background research run is in flight.
+ALTER TABLE play_events ADD COLUMN IF NOT EXISTS reference_links TEXT[] DEFAULT '{}';
+ALTER TABLE play_events ADD COLUMN IF NOT EXISTS research_status TEXT DEFAULT 'none'
+  CHECK (research_status IN ('none','pending','completed','failed'));
+ALTER TABLE play_events ADD COLUMN IF NOT EXISTS research_error TEXT;
+ALTER TABLE play_events ADD COLUMN IF NOT EXISTS researched_at TIMESTAMPTZ;
+
+-- Some events have a scarce "personal invite" moment we want to steward —
+-- e.g. Travis is on stage at Gartner and the session has 40 seats, or
+-- the CVI dinner has 12 seats. This column captures that slot so the
+-- play composer can offer a multi-select against each account's
+-- contact_path and the event view can tally "N of 40 seats promised."
+--   shape: { title, speaker, session_time, seat_cap, notes, session_url }
+ALTER TABLE play_events ADD COLUMN IF NOT EXISTS personal_invite_session JSONB;
+
+-- Per-account play can mark which contacts on its path are being given
+-- one of the event's limited-seat invites. Validated against the account's
+-- own contacts in the route handler; we don't FK-constrain it because a
+-- contact may legitimately be deleted later without breaking the play.
+ALTER TABLE account_plays ADD COLUMN IF NOT EXISTS personal_invite_contact_ids UUID[] DEFAULT '{}';
+
 -- Integration credentials (stored after OAuth so users don't edit .env for these)
 CREATE TABLE IF NOT EXISTS integrations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

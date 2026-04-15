@@ -358,6 +358,7 @@ export async function createPlay({
   instinct,
   ai_expansion = null,
   contact_path = [],
+  personal_invite_contact_ids = [],
   status = 'drafting',
   next_action = null,
   next_action_due = null,
@@ -365,13 +366,15 @@ export async function createPlay({
   const { rows } = await query(
     `INSERT INTO account_plays (
        account_id, hypothesis_id, triggered_by_signal_id, event_id, author_user_id,
-       instinct, ai_expansion, contact_path, status, next_action, next_action_due
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::uuid[], $9, $10, $11)
+       instinct, ai_expansion, contact_path, personal_invite_contact_ids,
+       status, next_action, next_action_due
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::uuid[], $9::uuid[], $10, $11, $12)
      RETURNING *`,
     [
       account_id, hypothesis_id, triggered_by_signal_id, event_id, author_user_id,
       instinct, ai_expansion ? JSON.stringify(ai_expansion) : null,
-      contact_path, status, next_action, next_action_due,
+      contact_path, personal_invite_contact_ids,
+      status, next_action, next_action_due,
     ]
   );
   return rows[0];
@@ -382,12 +385,14 @@ export async function updatePlay(id, patch) {
   const values = [];
   let i = 1;
   const editable = [
-    'hypothesis_id', 'event_id', 'instinct', 'contact_path', 'status',
+    'hypothesis_id', 'event_id', 'instinct', 'contact_path',
+    'personal_invite_contact_ids', 'status',
     'next_action', 'next_action_due',
   ];
+  const uuidArrayCols = new Set(['contact_path', 'personal_invite_contact_ids']);
   for (const k of editable) {
     if (patch[k] !== undefined) {
-      fields.push(`${k} = $${++i}${k === 'contact_path' ? '::uuid[]' : ''}`);
+      fields.push(`${k} = $${++i}${uuidArrayCols.has(k) ? '::uuid[]' : ''}`);
       values.push(patch[k]);
     }
   }
