@@ -1,0 +1,145 @@
+<%
+  const riskMeta = {
+    defense_risk:         { label: 'Defense risk',         pill: 'bg-red-100 text-red-800',       border: 'border-red-300',     bar: 'bg-red-500' },
+    offense_opportunity:  { label: 'Offense opportunity',  pill: 'bg-sky-100 text-sky-800',       border: 'border-sky-300',     bar: 'bg-sky-500' },
+    neutral:              { label: 'Context',              pill: 'bg-slate-100 text-slate-700',   border: 'border-slate-200',   bar: 'bg-slate-300' },
+  };
+  const signalTypeLabel = {
+    exec_move: 'Exec move',
+    restructure: 'Restructure',
+    earnings: 'Earnings',
+    product_launch: 'Product launch',
+    layoff: 'Layoff',
+    hiring: 'Hiring',
+    funding: 'Funding',
+    partnership: 'Partnership',
+    consolidation_note: 'Consolidation signal',
+    other: 'Other',
+  };
+%>
+
+<div class="mb-6 flex items-start justify-between gap-4">
+  <div>
+    <h1 class="text-2xl font-semibold">Monday Brief</h1>
+    <p class="text-sm text-slate-500 mt-1 max-w-2xl">
+      The top 5 moves at your book this week. Ranked risk-first (defense &gt; offense &gt; neutral), then severity, then recency.
+      Every signal has a so-what, a recommended move, and a source you can open before you act.
+    </p>
+  </div>
+  <form method="POST" action="/signals/scan" class="shrink-0">
+    <button type="submit"
+            class="text-sm bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded font-medium"
+            <% if (runningJob) { %>disabled<% } %>>
+      <% if (runningJob) { %>Scanning…<% } else { %>Run scan now<% } %>
+    </button>
+  </form>
+</div>
+
+<% if (runningJob) { %>
+  <div class="bg-emerald-50 border border-emerald-200 rounded-lg p-4 mb-6 flex items-center gap-3">
+    <span class="inline-block w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+    <div class="flex-1 text-sm text-emerald-900">
+      Scanning accounts for new signals — <%= activeJob.accounts_scanned || 0 %> scanned, <%= activeJob.signals_detected || 0 %> new.
+      Expect ~30-45s per account.
+    </div>
+  </div>
+  <script>setTimeout(function(){ location.reload(); }, 15000);</script>
+<% } else if (activeJob && activeJob.status === 'completed' && activeJob.finished_at && (Date.now() - new Date(activeJob.finished_at).getTime() < 120000)) { %>
+  <div class="bg-slate-50 border border-slate-200 rounded-lg p-3 mb-6 text-sm text-slate-700">
+    ✓ Last scan finished — <%= activeJob.accounts_scanned %> account<%= activeJob.accounts_scanned === 1 ? '' : 's' %>,
+    <%= activeJob.signals_detected %> new signal<%= activeJob.signals_detected === 1 ? '' : 's' %>,
+    <%= activeJob.signals_skipped_dedup %> deduped.
+  </div>
+<% } %>
+
+<div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+  <div class="bg-white border border-slate-200 rounded-lg p-4">
+    <div class="text-xs uppercase tracking-wide text-slate-500">This week</div>
+    <div class="text-2xl font-semibold mt-1"><%= counts.this_week %></div>
+  </div>
+  <div class="bg-white border border-red-200 rounded-lg p-4">
+    <div class="text-xs uppercase tracking-wide text-red-700">Defense risk</div>
+    <div class="text-2xl font-semibold mt-1 text-red-700"><%= counts.defense %></div>
+  </div>
+  <div class="bg-white border border-sky-200 rounded-lg p-4">
+    <div class="text-xs uppercase tracking-wide text-sky-700">Offense opportunity</div>
+    <div class="text-2xl font-semibold mt-1 text-sky-700"><%= counts.offense %></div>
+  </div>
+</div>
+
+<% if (signals.length === 0) { %>
+  <div class="bg-white border border-slate-200 rounded-lg p-8 text-sm text-slate-500 text-center">
+    <div class="text-base text-slate-700 mb-1">No signals yet.</div>
+    Click <strong>Run scan now</strong> to start a pass over your customer accounts.
+    The first scan takes a few minutes — each account uses 3–6 web searches.
+  </div>
+<% } else { %>
+  <ul class="space-y-4">
+    <% signals.forEach(function(s, idx) {
+      const meta = riskMeta[s.risk_class] || riskMeta.neutral;
+      const typeLabel = signalTypeLabel[s.signal_type] || s.signal_type || '';
+    %>
+      <li class="bg-white border-2 <%= meta.border %> rounded-lg overflow-hidden">
+        <div class="flex">
+          <div class="<%= meta.bar %> w-1 shrink-0"></div>
+          <div class="flex-1 p-5">
+            <div class="flex items-start justify-between gap-4 mb-2">
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="pill <%= meta.pill %>"><%= meta.label %></span>
+                <span class="pill bg-slate-100 text-slate-700">SEV <%= s.severity %></span>
+                <% if (typeLabel) { %><span class="text-xs text-slate-500"><%= typeLabel %></span><% } %>
+                <span class="text-xs text-slate-500">·
+                  <a href="/accounts/<%= s.account_id %>" class="font-medium text-slate-700 hover:underline"><%= s.account_name %></a>
+                </span>
+                <span class="text-xs text-slate-400">· detected <%= new Date(s.detected_at).toLocaleDateString() %></span>
+              </div>
+              <span class="text-xs text-slate-400">#<%= idx + 1 %></span>
+            </div>
+
+            <div class="text-base font-semibold text-slate-900 mb-1"><%= s.title %></div>
+            <% if (s.summary) { %>
+              <div class="text-sm text-slate-600 mb-3"><%= s.summary %></div>
+            <% } %>
+
+            <% if (s.so_what) { %>
+              <div class="text-xs font-semibold uppercase tracking-wide text-slate-500 mt-3 mb-1">So what</div>
+              <div class="text-sm text-slate-800"><%= s.so_what %></div>
+            <% } %>
+
+            <% if (s.recommended_move) { %>
+              <div class="text-xs font-semibold uppercase tracking-wide text-slate-500 mt-3 mb-1">Recommended move</div>
+              <div class="text-sm text-slate-800"><%= s.recommended_move %></div>
+            <% } %>
+
+            <div class="flex items-center justify-between gap-3 mt-4 flex-wrap">
+              <div class="flex items-center gap-2 text-xs">
+                <% if (s.source_url) { %>
+                  <a href="<%= s.source_url %>" target="_blank" rel="noopener"
+                     class="text-slate-600 hover:text-slate-900 underline truncate max-w-xs inline-block align-middle">
+                    Source ↗
+                  </a>
+                <% } %>
+              </div>
+              <div class="flex items-center gap-2">
+                <a href="/signals/<%= s.id %>/stage"
+                   class="text-xs bg-slate-900 hover:bg-slate-800 text-white px-3 py-1.5 rounded font-medium">
+                  Start a play →
+                </a>
+                <form method="POST" action="/signals/<%= s.id %>/ack" class="inline">
+                  <button type="submit" class="text-xs border border-slate-300 text-slate-700 hover:bg-slate-50 px-3 py-1.5 rounded font-medium">
+                    Acknowledge
+                  </button>
+                </form>
+                <form method="POST" action="/signals/<%= s.id %>/dismiss" class="inline">
+                  <button type="submit" class="text-xs text-slate-500 hover:text-slate-900 px-3 py-1.5 rounded">
+                    Dismiss
+                  </button>
+                </form>
+              </div>
+            </div>
+          </div>
+        </div>
+      </li>
+    <% }); %>
+  </ul>
+<% } %>

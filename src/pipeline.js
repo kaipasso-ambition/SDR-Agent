@@ -451,6 +451,57 @@ export async function draftLaunchIntro({
   return { prospect, draft: queued, campaign };
 }
 
+// Draft an outbound sequence off a signal. The signal already carries
+// the interpretation (so_what + recommended_move); we hand both to the
+// writer as a fresh_trigger block so Touch 1 leads with the observation,
+// not a generic intro. No campaign context — this is an ad-hoc move.
+//
+// Called by POST /signals/:id/play? action=draft_outbound. Returns the
+// queued draft row so the route can redirect to /drafts.
+export async function draftFromSignal({ signal, owner_user_id = null }) {
+  if (!signal) throw new Error('signal is required');
+  const account = await getAccountById(signal.account_id);
+  if (!account) throw new Error('account not found');
+
+  // Seed a thin prospect keyed to the account. The operator can flesh it
+  // out (contact name/email) before sending from /drafts. We don't
+  // attempt to guess a specific contact — the signal is account-level;
+  // the AE picks the right contact at approval time.
+  const prospect = await upsertProspect({
+    company: account.account_name,
+    domain: account.domain,
+    contact_name: null,
+    contact_title: null,
+    contact_email: null,
+    industry: account.industry || null,
+    persona: 'revops',  // neutral default; writer reads the fresh_trigger above everything
+    seniority: 'director',
+    fit_score: 75,
+    customer_status: account.status === 'customer' ? 'customer' : 'prospect',
+    timing_signal: signal.title,
+    timing_signal_source: signal.source_url || null,
+    additional_context: `Drafted off signal: ${signal.signal_type || 'signal'} — ${signal.so_what || ''}`,
+    disqualified: false,
+    owner_user_id: owner_user_id || account.owner_user_id,
+  });
+
+  const draft = await generateSequence(prospect, null, {
+    title: signal.title,
+    so_what: signal.so_what,
+    recommended_move: signal.recommended_move,
+    source_url: signal.source_url,
+  });
+
+  const queued = await addToApprovalQueue({
+    prospect,
+    draft,
+    status: 'pending',
+    signal_id: signal.id,
+  });
+
+  return { prospect, draft: queued };
+}
+
 /**
  * Generate campaign-tailored drafts for every prospect on the campaign roster.
  * Skips research (Marketing already did the ICP work) and skips prospects

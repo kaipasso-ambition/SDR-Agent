@@ -22,6 +22,12 @@
           <a href="/prospects" class="text-sm text-slate-600 hover:text-slate-900">Prospects</a>
           <a href="/prospects/import" class="text-sm text-slate-600 hover:text-slate-900">Pilot</a>
           <a href="/accounts" class="text-sm text-slate-600 hover:text-slate-900">Accounts</a>
+          <a href="/brief" class="text-sm text-slate-600 hover:text-slate-900 flex items-center gap-1.5">
+            Brief
+            <% if (typeof signalsUnacked !== 'undefined' && signalsUnacked > 0) { %>
+              <span class="inline-flex items-center justify-center bg-red-600 text-white text-[10px] font-semibold rounded-full min-w-[18px] h-[18px] px-1.5 leading-none"><%= signalsUnacked %></span>
+            <% } %>
+          </a>
           <a href="/presence" class="text-sm text-slate-600 hover:text-slate-900">Presence</a>
           <a href="/discovery" class="text-sm text-slate-600 hover:text-slate-900">Runs</a>
           <a href="/settings" class="text-sm text-slate-600 hover:text-slate-900">Settings</a>

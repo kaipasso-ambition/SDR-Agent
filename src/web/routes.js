@@ -4,7 +4,7 @@ import { Router } from 'express';
 import { verifyLogin, requireAuth } from '../auth.js';
 import { query } from '../db/index.js';
 import { getPendingDrafts, getPendingReplies } from '../queue/approval_queue.js';
-import { researchAndDraft, runDiscoveryCycle, runPilotBatch, draftChampionReconnect, draftLaunchIntro } from '../pipeline.js';
+import { researchAndDraft, runDiscoveryCycle, runPilotBatch, draftChampionReconnect, draftLaunchIntro, draftFromSignal } from '../pipeline.js';
 import { PILOT_BATCH } from '../lib/pilot_batch.js';
 import { parsePastedCsv } from '../lib/paste_csv.js';
 import {
@@ -21,9 +21,20 @@ import {
   getAccountBundle,
   getCoverageByAccount,
   clearAllAccounts,
+  updateAccountNotes,
 } from '../db/accounts_registry.js';
 import { PERSONAS } from '../lib/personas.js';
 import { runChampionCheckCycle } from '../agents/champion_tracker.js';
+import { runSignalScanCycle } from '../agents/signal_analyzer.js';
+import {
+  getSignalsForBrief,
+  getSignalById,
+  acknowledgeSignal,
+  dismissSignal,
+  setSignalPlaying,
+  getSignalCounts,
+  getLastScanForAccount,
+} from '../db/signals.js';
 import {
   getPresenceFeed,
   getPresenceStats,
@@ -81,9 +92,9 @@ webRouter.post('/logout', (req, res) => {
 
 // ---------- Authenticated pages ----------
 
-webRouter.get('/', requireAuth, async (_req, res, next) => {
+webRouter.get('/', requireAuth, async (req, res, next) => {
   try {
-    const counts = await getCounts();
+    const counts = await getCounts(req.session.userId);
     const connections = await getConnectionStatus();
     res.render('dashboard', { title: 'Dashboard', counts, connections });
   } catch (err) {
@@ -771,6 +782,7 @@ webRouter.get('/accounts/:id', requireAuth, async (req, res, next) => {
     res.render('account_detail', {
       title: bundle.account.account_name,
       personas: PERSONAS,
+      rescanStatus: typeof req.query?.rescan === 'string' ? req.query.rescan : null,
       ...bundle,
     });
   } catch (err) {
@@ -807,20 +819,194 @@ webRouter.post('/accounts/:id/draft-launch', requireAuth, async (req, res, next)
   }
 });
 
+// Update the editable notes on an account. The notes feed the signal
+// analyzer's per-account context block so the AE can seed "SDR team uses
+// us, want Ascend AE expansion" without re-typing every scan.
+webRouter.post('/accounts/:id/notes', requireAuth, async (req, res, next) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.redirect('/accounts');
+    const notes = typeof req.body?.notes === 'string' ? req.body.notes.trim() : '';
+    // 4000 char soft cap — anything bigger is going to blow the prompt budget
+    const clipped = notes.slice(0, 4000);
+    await updateAccountNotes(req.params.id, clipped);
+    res.redirect(`/accounts/${req.params.id}`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------- Signals (Sprint 1: Pulse + Monday Brief) ----------
+
+// Monday Brief — top 5 ranked unacked signals for the current user.
+// Ranked risk-first (defense > offense > neutral), severity-weighted,
+// recency as tiebreak. See src/db/signals.js for the exact SQL ordering.
+webRouter.get('/brief', requireAuth, async (req, res, next) => {
+  try {
+    const [signals, counts, activeJobRow] = await Promise.all([
+      getSignalsForBrief(req.session.userId, { limit: 5 }),
+      getSignalCounts(req.session.userId),
+      query(`SELECT * FROM account_signal_jobs ORDER BY started_at DESC LIMIT 1`),
+    ]);
+    const activeJob = activeJobRow.rows[0] || null;
+    const runningJob = activeJob && activeJob.status === 'running';
+    res.render('brief', {
+      title: 'Monday Brief',
+      signals,
+      counts,
+      activeJob,
+      runningJob,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Signal staging page — surfaces the signal summary and three CTAs.
+// Only "Draft outbound" is wired end-to-end in Sprint 1; the other two
+// transition the signal to status='playing' with a "coming soon" hint.
+webRouter.get('/signals/:id/stage', requireAuth, async (req, res, next) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.redirect('/brief');
+    const signal = await getSignalById(req.params.id);
+    if (!signal) return res.redirect('/brief');
+    res.render('signal_staging', {
+      title: 'Start a play',
+      signal,
+      comingSoon: req.query?.coming_soon === '1',
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+webRouter.post('/signals/:id/ack', requireAuth, async (req, res, next) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.redirect('/brief');
+    await acknowledgeSignal(req.params.id);
+    res.redirect(req.body?.back || '/brief');
+  } catch (err) {
+    next(err);
+  }
+});
+
+webRouter.post('/signals/:id/dismiss', requireAuth, async (req, res, next) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.redirect('/brief');
+    await dismissSignal(req.params.id);
+    res.redirect(req.body?.back || '/brief');
+  } catch (err) {
+    next(err);
+  }
+});
+
+// "Play" handler — branches on the action. draft_outbound is the only
+// end-to-end wire; the others are Sprint 3 placeholders that mark the
+// signal as 'playing' so the AE knows they chose a direction.
+webRouter.post('/signals/:id/play', requireAuth, async (req, res, next) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.redirect('/brief');
+    const action = (req.body?.action || '').trim();
+    const signal = await getSignalById(req.params.id);
+    if (!signal) return res.redirect('/brief');
+
+    if (action === 'draft_outbound') {
+      await setSignalPlaying(signal.id);
+      await draftFromSignal({ signal, owner_user_id: req.session.userId });
+      return res.redirect('/drafts');
+    }
+
+    if (action === 'internal_intro' || action === 'meeting_prep') {
+      // Sprint 3 stub: mark playing + redirect back with a flash note.
+      await setSignalPlaying(signal.id);
+      return res.redirect(`/signals/${signal.id}/stage?coming_soon=1`);
+    }
+
+    res.redirect(`/signals/${signal.id}/stage`);
+  } catch (err) {
+    console.error('[signals/play]', err);
+    next(err);
+  }
+});
+
+// Manual full-book scan trigger — dev + end-to-end smoke before the cron
+// goes live. Accepts optional ?account=<id> to scope to a single
+// account (same path the Pulse "Rescan" button uses).
+webRouter.post('/signals/scan', requireAuth, async (req, res, next) => {
+  try {
+    const account_ids = req.body?.account_id
+      ? [req.body.account_id]
+      : (req.query?.account_id ? [req.query.account_id] : null);
+
+    const { rows } = await query(
+      `INSERT INTO account_signal_jobs (user_id, status) VALUES ($1, 'running') RETURNING id`,
+      [req.session.userId]
+    );
+    const jobId = rows[0].id;
+
+    // Fire-and-forget — don't await. The /brief page renders the
+    // active-job banner by polling the latest row.
+    runSignalScanCycle({
+      user_id: req.session.userId,
+      account_ids,
+      job_id: jobId,
+    }).catch((err) => console.error('[signals/scan] background failed:', err));
+
+    res.redirect(account_ids ? `/accounts/${account_ids[0]}` : '/brief');
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Per-account rescan from the Pulse partial. Rate limit: once per 24h
+// per account to bound web_search cost. Returns to the account page.
+webRouter.post('/accounts/:id/signals/rescan', requireAuth, async (req, res, next) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.redirect('/accounts');
+    const lastAt = await getLastScanForAccount(req.params.id);
+    const ONE_DAY = 24 * 60 * 60 * 1000;
+    if (lastAt && Date.now() - new Date(lastAt).getTime() < ONE_DAY) {
+      // Already scanned in the last 24h — skip silently rather than
+      // double-charge. The UI can flash a note if we want later.
+      return res.redirect(`/accounts/${req.params.id}?rescan=throttled`);
+    }
+
+    const { rows } = await query(
+      `INSERT INTO account_signal_jobs (user_id, status) VALUES ($1, 'running') RETURNING id`,
+      [req.session.userId]
+    );
+    const jobId = rows[0].id;
+
+    runSignalScanCycle({
+      user_id: req.session.userId,
+      account_ids: [req.params.id],
+      job_id: jobId,
+    }).catch((err) => console.error('[accounts/rescan]', err));
+
+    res.redirect(`/accounts/${req.params.id}?rescan=started`);
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ---------- Helpers ----------
 
-async function getCounts() {
-  const [drafts, replies, researched, sent] = await Promise.all([
+async function getCounts(userId = null) {
+  const [drafts, replies, researched, sent, sigCounts] = await Promise.all([
     query(`SELECT COUNT(*)::int AS n FROM approval_queue WHERE status = 'pending';`),
     query(`SELECT COUNT(*)::int AS n FROM reply_queue WHERE status = 'pending';`),
     query(`SELECT COUNT(*)::int AS n FROM prospects WHERE researched_at >= date_trunc('day', NOW());`),
     query(`SELECT COUNT(*)::int AS n FROM sent_messages WHERE sent_at >= date_trunc('week', NOW());`),
+    userId ? getSignalCounts(userId) : Promise.resolve({ this_week: 0, defense: 0, offense: 0, unacked_total: 0 }),
   ]);
   return {
     pendingDrafts: drafts.rows[0].n,
     pendingReplies: replies.rows[0].n,
     researchedToday: researched.rows[0].n,
     sentThisWeek: sent.rows[0].n,
+    signalsThisWeek: sigCounts.this_week,
+    signalsDefense: sigCounts.defense,
+    signalsOffense: sigCounts.offense,
+    signalsUnacked: sigCounts.unacked_total,
   };
 }
 

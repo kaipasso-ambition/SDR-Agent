@@ -1,0 +1,80 @@
+<%
+  // Expects: signals (array), signalArchiveCount (int), account (obj), rescanStatus (string|null)
+  const riskMeta = {
+    defense_risk:        { label: 'Defense',   pill: 'bg-red-100 text-red-800',     dot: 'bg-red-500' },
+    offense_opportunity: { label: 'Offense',   pill: 'bg-sky-100 text-sky-800',     dot: 'bg-sky-500' },
+    neutral:             { label: 'Context',   pill: 'bg-slate-100 text-slate-700', dot: 'bg-slate-400' },
+  };
+%>
+
+<div class="bg-white border border-slate-200 rounded-lg mb-6 overflow-hidden">
+  <div class="px-4 py-3 border-b border-slate-200 flex items-center justify-between gap-3 flex-wrap">
+    <div>
+      <h2 class="font-semibold">Pulse</h2>
+      <div class="text-xs text-slate-500 mt-0.5">
+        What moved at <%= account.account_name %> recently. Risk-first ranked.
+      </div>
+    </div>
+    <div class="flex items-center gap-2">
+      <% if (signalArchiveCount > 0) { %>
+        <span class="text-xs text-slate-500"><%= signalArchiveCount %> dismissed</span>
+      <% } %>
+      <form method="POST" action="/accounts/<%= account.id %>/signals/rescan">
+        <button type="submit" class="text-xs border border-slate-300 text-slate-700 hover:bg-slate-50 px-3 py-1.5 rounded font-medium">
+          Rescan
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <% if (rescanStatus === 'started') { %>
+    <div class="px-4 py-2 bg-emerald-50 text-xs text-emerald-800 border-b border-emerald-200">
+      Scan started — expect ~30-45s. Refresh in a minute to see new signals.
+    </div>
+  <% } else if (rescanStatus === 'throttled') { %>
+    <div class="px-4 py-2 bg-amber-50 text-xs text-amber-900 border-b border-amber-200">
+      This account was scanned in the last 24 hours — rescan throttled to keep web_search cost bounded.
+    </div>
+  <% } %>
+
+  <% if (!signals || signals.length === 0) { %>
+    <div class="p-5 text-sm text-slate-500">
+      No recent signals. Click <strong>Rescan</strong> to check for exec moves, earnings notes, or restructures at
+      <%= account.domain || account.account_name %>.
+    </div>
+  <% } else { %>
+    <ul class="divide-y divide-slate-100">
+      <% signals.forEach(function(s) {
+        const meta = riskMeta[s.risk_class] || riskMeta.neutral;
+      %>
+        <li class="p-4 hover:bg-slate-50">
+          <div class="flex items-start gap-3">
+            <span class="inline-block w-2 h-2 rounded-full mt-2 <%= meta.dot %>"></span>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2 mb-1 flex-wrap">
+                <span class="pill <%= meta.pill %>"><%= meta.label %></span>
+                <span class="text-xs text-slate-500">SEV <%= s.severity %></span>
+                <span class="text-xs text-slate-400">· <%= new Date(s.detected_at).toLocaleDateString() %></span>
+                <% if (s.status === 'playing') { %>
+                  <span class="pill bg-violet-100 text-violet-800">in play</span>
+                <% } else if (s.status === 'acknowledged') { %>
+                  <span class="pill bg-slate-100 text-slate-600">acked</span>
+                <% } %>
+              </div>
+              <div class="text-sm font-medium text-slate-900"><%= s.title %></div>
+              <% if (s.so_what) { %>
+                <div class="text-xs text-slate-600 mt-1"><%= s.so_what %></div>
+              <% } %>
+              <div class="flex items-center gap-3 mt-2 text-xs">
+                <a href="/signals/<%= s.id %>/stage" class="text-slate-700 hover:text-slate-900 underline">Start a play →</a>
+                <% if (s.source_url) { %>
+                  <a href="<%= s.source_url %>" target="_blank" rel="noopener" class="text-slate-500 hover:text-slate-900 underline">Source ↗</a>
+                <% } %>
+              </div>
+            </div>
+          </div>
+        </li>
+      <% }); %>
+    </ul>
+  <% } %>
+</div>

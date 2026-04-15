@@ -306,7 +306,30 @@ export async function getAccountBundle(id) {
     ? await getAccountCoverage(id)
     : null;
 
-  return { account, prospects, drafts, sent, championCounts, coverage };
+  // Signal Pulse — recent account_signals for this account, risk-first
+  // ranked. Imported lazily to avoid a circular import with the signals
+  // module (signals.js imports nothing from here, but belt + braces).
+  const { getSignalsForAccount, getSignalArchiveCount } = await import('./signals.js');
+  const signals = await getSignalsForAccount(id, { limit: 5 });
+  const signalArchiveCount = await getSignalArchiveCount(id);
+
+  return {
+    account, prospects, drafts, sent, championCounts, coverage,
+    signals, signalArchiveCount,
+  };
+}
+
+// Set the AE's editable notes field on an account. Feeds the signal
+// analyzer's account block so the scan knows "SDR team uses Ambition,
+// want Ascend AE expansion" without the operator re-typing it each run.
+export async function updateAccountNotes(id, notes) {
+  const { rowCount } = await query(
+    `UPDATE accounts_registry
+        SET notes = $2, updated_at = NOW()
+      WHERE id = $1`,
+    [id, notes || null]
+  );
+  return rowCount > 0;
 }
 
 // Nuke the entire accounts book. Used by the "Clear all accounts" button

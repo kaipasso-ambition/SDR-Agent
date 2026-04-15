@@ -26,7 +26,22 @@ export async function runWriterCycle() {
   }
 }
 
-export async function generateSequence(prospect, campaign = null) {
+export async function generateSequence(prospect, campaign = null, freshTrigger = null) {
+  // freshTrigger is an optional signal context block produced by the
+  // "Draft outbound" CTA on /signals/:id/stage. We inject it before the
+  // prospect payload so the writer leads Touch 1 with the fresh trigger
+  // and the Ambition 2.0 lexicon from the system prompt.
+  const freshTriggerBlock = freshTrigger
+    ? `FRESH TRIGGER — the AE is reaching out BECAUSE of this specific signal. Touch 1 must reference the trigger in its first or second sentence. Do not quote it verbatim — summarize the observation in one clause, then drop into the GTM-problem framing.
+
+Title: ${freshTrigger.title || ''}
+Why this matters (so_what): ${freshTrigger.so_what || ''}
+Recommended move the AE is acting on: ${freshTrigger.recommended_move || ''}
+Source: ${freshTrigger.source_url || '(none)'}
+
+`
+    : '';
+
   let userContent;
   if (campaign) {
     const includeInvite = !!campaign.special_invite_for_this_prospect;
@@ -52,7 +67,11 @@ NO special invite for this prospect. Do NOT mention the CEO talk, dinner, or any
 PROSPECT:
 ${JSON.stringify(prospect, null, 2)}`;
   } else {
-    userContent = `Generate a 3-touch outreach sequence for this prospect:\n\n${JSON.stringify(prospect, null, 2)}`;
+    userContent = `${freshTriggerBlock}Generate a 3-touch outreach sequence for this prospect:\n\n${JSON.stringify(prospect, null, 2)}`;
+  }
+
+  if (campaign && freshTriggerBlock) {
+    userContent = freshTriggerBlock + userContent;
   }
 
   const response = await client.messages.create({

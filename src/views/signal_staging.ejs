@@ -1,0 +1,101 @@
+<%
+  const riskMeta = {
+    defense_risk:        { label: 'Defense risk',        pill: 'bg-red-100 text-red-800',     border: 'border-red-300' },
+    offense_opportunity: { label: 'Offense opportunity', pill: 'bg-sky-100 text-sky-800',     border: 'border-sky-300' },
+    neutral:             { label: 'Context',             pill: 'bg-slate-100 text-slate-700', border: 'border-slate-200' },
+  };
+  const meta = riskMeta[signal.risk_class] || riskMeta.neutral;
+%>
+
+<div class="mb-4">
+  <a href="/brief" class="text-xs text-slate-500 hover:text-slate-900">← Back to Brief</a>
+</div>
+
+<h1 class="text-2xl font-semibold mb-1">Start a play</h1>
+<div class="text-sm text-slate-500 mb-6">
+  Choose how to act on this signal. You can always come back — acting here marks the signal as in-play
+  but doesn't remove it from the Brief until you dismiss it.
+</div>
+
+<div class="bg-white border-2 <%= meta.border %> rounded-lg p-5 mb-6">
+  <div class="flex items-center gap-2 mb-2 flex-wrap">
+    <span class="pill <%= meta.pill %>"><%= meta.label %></span>
+    <span class="pill bg-slate-100 text-slate-700">SEV <%= signal.severity %></span>
+    <span class="text-xs text-slate-500">
+      <a href="/accounts/<%= signal.account_id %>" class="font-medium text-slate-700 hover:underline"><%= signal.account_name %></a>
+      · detected <%= new Date(signal.detected_at).toLocaleDateString() %>
+    </span>
+  </div>
+  <div class="text-lg font-semibold mb-2"><%= signal.title %></div>
+  <% if (signal.summary) { %>
+    <div class="text-sm text-slate-600 mb-3"><%= signal.summary %></div>
+  <% } %>
+  <% if (signal.so_what) { %>
+    <div class="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">So what</div>
+    <div class="text-sm text-slate-800 mb-3"><%= signal.so_what %></div>
+  <% } %>
+  <% if (signal.recommended_move) { %>
+    <div class="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">Recommended move</div>
+    <div class="text-sm text-slate-800 mb-3"><%= signal.recommended_move %></div>
+  <% } %>
+  <% if (signal.source_url) { %>
+    <a href="<%= signal.source_url %>" target="_blank" rel="noopener" class="text-xs text-slate-600 hover:text-slate-900 underline">Source ↗</a>
+  <% } %>
+</div>
+
+<% if (comingSoon) { %>
+  <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-6 text-sm text-amber-900">
+    That action is scheduled for a later sprint. Signal has been marked as in-play.
+  </div>
+<% } %>
+
+<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+  <form method="POST" action="/signals/<%= signal.id %>/play" class="bg-white border border-slate-200 rounded-lg p-5 flex flex-col">
+    <input type="hidden" name="action" value="draft_outbound" />
+    <div class="text-sm font-semibold mb-1">Draft outbound</div>
+    <div class="text-xs text-slate-500 mb-4 flex-1">
+      Generate a 3-touch sequence that leads Touch 1 with this signal as the fresh trigger. Uses the Ambition 2.0 lexicon. Goes to your Drafts queue.
+    </div>
+    <button type="submit" class="bg-slate-900 hover:bg-slate-800 text-white text-sm px-4 py-2 rounded font-medium">
+      Draft now →
+    </button>
+  </form>
+
+  <form method="POST" action="/signals/<%= signal.id %>/play" class="bg-white border border-slate-200 rounded-lg p-5 flex flex-col opacity-80">
+    <input type="hidden" name="action" value="internal_intro" />
+    <div class="text-sm font-semibold mb-1">Draft internal intro
+      <span class="pill bg-slate-100 text-slate-600 ml-1" style="text-transform: none; letter-spacing: 0;">soon</span>
+    </div>
+    <div class="text-xs text-slate-500 mb-4 flex-1">
+      Warm intro path via a champion or CS — walks the graph for the fastest human path into the signal's audience. Coming in Sprint 3.
+    </div>
+    <button type="submit" class="border border-slate-300 text-slate-700 hover:bg-slate-50 text-sm px-4 py-2 rounded font-medium">
+      Mark as playing
+    </button>
+  </form>
+
+  <form method="POST" action="/signals/<%= signal.id %>/play" class="bg-white border border-slate-200 rounded-lg p-5 flex flex-col opacity-80">
+    <input type="hidden" name="action" value="meeting_prep" />
+    <div class="text-sm font-semibold mb-1">Add to meeting prep
+      <span class="pill bg-slate-100 text-slate-600 ml-1" style="text-transform: none; letter-spacing: 0;">soon</span>
+    </div>
+    <div class="text-xs text-slate-500 mb-4 flex-1">
+      Park this signal in a pre-read for the next meeting on this account. Coming in Sprint 3.
+    </div>
+    <button type="submit" class="border border-slate-300 text-slate-700 hover:bg-slate-50 text-sm px-4 py-2 rounded font-medium">
+      Mark as playing
+    </button>
+  </form>
+</div>
+
+<div class="mt-8 flex items-center gap-3 text-sm">
+  <form method="POST" action="/signals/<%= signal.id %>/ack" class="inline">
+    <input type="hidden" name="back" value="/brief" />
+    <button type="submit" class="text-slate-600 hover:text-slate-900 underline">Acknowledge only</button>
+  </form>
+  <span class="text-slate-300">·</span>
+  <form method="POST" action="/signals/<%= signal.id %>/dismiss" class="inline">
+    <input type="hidden" name="back" value="/brief" />
+    <button type="submit" class="text-slate-500 hover:text-slate-900 underline">Dismiss</button>
+  </form>
+</div>

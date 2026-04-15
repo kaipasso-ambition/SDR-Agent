@@ -322,6 +322,67 @@ CREATE TABLE IF NOT EXISTS champion_check_jobs (
 );
 CREATE INDEX IF NOT EXISTS champion_check_jobs_started_idx ON champion_check_jobs(started_at DESC);
 
+-- ---------------------------------------------------------------------------
+-- Account signal intelligence (Sprint 1: Pulse + Monday Brief)
+-- ---------------------------------------------------------------------------
+-- Weekly Claude+web_search scan per customer account. Each finding is
+-- classified as defense_risk / offense_opportunity / neutral with severity
+-- 1–5, deduped per account via dedup_key (so a reposted headline the next
+-- week doesn't create a second row), and ranked by composite score
+-- (risk_weight*10 + severity) then detected_at DESC in the /brief view.
+--
+-- Positioning guardrail: title + summary stay factual; so_what +
+-- recommended_move use the Ambition 2.0 lexicon (see src/lib/positioning.js).
+
+CREATE TABLE IF NOT EXISTS account_signal_jobs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  status TEXT NOT NULL DEFAULT 'running',  -- running | completed | failed
+  accounts_scanned INTEGER DEFAULT 0,
+  signals_detected INTEGER DEFAULT 0,
+  signals_skipped_dedup INTEGER DEFAULT 0,
+  errors INTEGER DEFAULT 0,
+  error TEXT,
+  started_at TIMESTAMPTZ DEFAULT NOW(),
+  finished_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS account_signal_jobs_started_idx ON account_signal_jobs(started_at DESC);
+
+CREATE TABLE IF NOT EXISTS account_signals (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id UUID NOT NULL REFERENCES accounts_registry(id) ON DELETE CASCADE,
+  job_id UUID REFERENCES account_signal_jobs(id) ON DELETE SET NULL,
+  detected_at TIMESTAMPTZ DEFAULT NOW(),
+  source TEXT,                            -- 'web_search' | 'manual' | 'ingest'
+  signal_type TEXT,                       -- exec_move | restructure | earnings | product_launch | layoff | hiring | funding | partnership | consolidation_note | other
+  risk_class TEXT NOT NULL CHECK (risk_class IN ('defense_risk', 'offense_opportunity', 'neutral')),
+  severity INTEGER NOT NULL CHECK (severity BETWEEN 1 AND 5),
+  title TEXT NOT NULL,                    -- factual headline; NO positioning language
+  summary TEXT,                           -- factual 1–2 sentences; NO positioning language
+  so_what TEXT,                           -- interpretation — USES Ambition 2.0 lexicon
+  recommended_move TEXT,                  -- one concrete next step — USES lexicon
+  source_url TEXT,
+  source_excerpt TEXT,
+  dedup_key TEXT NOT NULL,                -- stable hash of (signal_type + canonical subject)
+  status TEXT NOT NULL DEFAULT 'new',     -- new | acknowledged | playing | dismissed
+  acknowledged_at TIMESTAMPTZ,
+  raw_model_output JSONB,
+  UNIQUE (account_id, dedup_key)
+);
+CREATE INDEX IF NOT EXISTS account_signals_account_detected_idx
+  ON account_signals(account_id, detected_at DESC);
+CREATE INDEX IF NOT EXISTS account_signals_rank_idx
+  ON account_signals(status, risk_class, severity DESC, detected_at DESC);
+CREATE INDEX IF NOT EXISTS account_signals_new_recent_idx
+  ON account_signals(detected_at DESC) WHERE status = 'new';
+
+-- Link a draft row back to the signal that prompted it, so the staging
+-- page's "Draft outbound" CTA can be traced end-to-end and we can
+-- transition the signal to status='playing' when the draft is produced.
+ALTER TABLE approval_queue ADD COLUMN IF NOT EXISTS signal_id UUID
+  REFERENCES account_signals(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS approval_queue_signal_idx ON approval_queue(signal_id);
+
 -- Integration credentials (stored after OAuth so users don't edit .env for these)
 CREATE TABLE IF NOT EXISTS integrations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

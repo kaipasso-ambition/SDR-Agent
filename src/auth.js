@@ -75,9 +75,27 @@ export async function attachUser(req, res, next) {
       [req.session.userId]
     );
     res.locals.activeJob = rows[0] || null;
+    // Unacked signal count for the nav /brief badge. Scoped to signals
+    // owned-by-user OR unowned (same rule as getSignalsForBrief).
+    try {
+      const { rows: sigRows } = await query(
+        `SELECT COUNT(*)::int AS n
+           FROM account_signals s
+           JOIN accounts_registry a ON a.id = s.account_id
+          WHERE s.status = 'new'
+            AND (a.owner_user_id = $1 OR a.owner_user_id IS NULL)`,
+        [req.session.userId]
+      );
+      res.locals.signalsUnacked = sigRows[0]?.n || 0;
+    } catch {
+      // account_signals table may not exist on a fresh DB until the
+      // schema applies on first boot; fall back to 0 silently.
+      res.locals.signalsUnacked = 0;
+    }
   } else {
     res.locals.user = null;
     res.locals.activeJob = null;
+    res.locals.signalsUnacked = 0;
   }
   next();
 }

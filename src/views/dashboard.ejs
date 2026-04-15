@@ -1,5 +1,26 @@
 <h1 class="text-2xl font-semibold mb-6">Dashboard</h1>
 
+<% if ((counts.signalsThisWeek || 0) > 0 || (counts.signalsUnacked || 0) > 0) { %>
+  <a href="/brief" class="block mb-4 bg-white border-2 border-slate-900 rounded-lg p-4 hover:bg-slate-50">
+    <div class="flex items-center justify-between gap-4">
+      <div>
+        <div class="text-xs uppercase tracking-wide text-slate-500">Monday Brief</div>
+        <div class="text-lg font-semibold mt-1">
+          <%= counts.signalsThisWeek %> signal<%= counts.signalsThisWeek === 1 ? '' : 's' %> this week
+          <span class="text-sm text-slate-500 font-normal">
+            (<span class="text-red-700 font-medium"><%= counts.signalsDefense %></span> defense ·
+             <span class="text-sky-700 font-medium"><%= counts.signalsOffense %></span> offense)
+          </span>
+        </div>
+        <div class="text-xs text-slate-500 mt-0.5">
+          Ranked risk-first. Top 5 moves to make this week at your book.
+        </div>
+      </div>
+      <span class="text-sm bg-slate-900 text-white px-4 py-2 rounded font-medium">Open Brief →</span>
+    </div>
+  </a>
+<% } %>
+
 <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
   <div class="bg-white border border-slate-200 rounded-lg p-5">
     <div class="text-xs uppercase tracking-wide text-slate-500">Drafts pending</div>

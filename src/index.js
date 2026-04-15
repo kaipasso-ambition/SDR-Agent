@@ -11,6 +11,7 @@ import { sendApprovedMessages } from './sender.js';
 import { pollPresenceInbox } from './integrations/gmail_imap.js';
 import { runRankerCycle } from './lib/presence_ranker.js';
 import { runChampionCheckCycle } from './agents/champion_tracker.js';
+import { runSignalScanCycle } from './agents/signal_analyzer.js';
 import { startServer } from './api/server.js';
 import { query, pool } from './db/index.js';
 
@@ -79,6 +80,22 @@ import { query, pool } from './db/index.js';
     if (rowCount > 0) console.log(`[boot] recovered ${rowCount} orphaned champion check job(s)`);
   } catch (err) {
     console.warn('[boot] champion orphan recovery skipped:', err.message);
+  }
+})();
+
+// Orphan recovery for account_signal_jobs — the Monday Brief scan.
+(async () => {
+  try {
+    const { rowCount } = await query(
+      `UPDATE account_signal_jobs
+          SET status = 'failed',
+              error = COALESCE(error, 'interrupted — server restarted during scan'),
+              finished_at = NOW()
+        WHERE status = 'running'`
+    );
+    if (rowCount > 0) console.log(`[boot] recovered ${rowCount} orphaned signal scan job(s)`);
+  } catch (err) {
+    console.warn('[boot] signal scan orphan recovery skipped:', err.message);
   }
 })();
 
@@ -201,6 +218,33 @@ cron.schedule(
   },
   { timezone: tz }
 );
+
+// Signal scan: walk customer accounts once a week, web_search each, and
+// insert fresh signals. Monday 6am so the Brief is populated by the time
+// the AE opens the app. Gated behind SIGNAL_SCAN_ENABLED until we've
+// validated the prompt against TriNet/DocuSign/Procore via the manual
+// POST /signals/scan route. Flip the env var once we're happy.
+if (process.env.SIGNAL_SCAN_ENABLED === 'true') {
+  cron.schedule(
+    '0 6 * * 1',
+    async () => {
+      console.log('[scheduler] Starting weekly signal scan');
+      try {
+        const { rows } = await query(
+          `INSERT INTO account_signal_jobs (status) VALUES ('running') RETURNING id`
+        );
+        const jobId = rows[0].id;
+        await runSignalScanCycle({ job_id: jobId });
+      } catch (err) {
+        console.error('[scheduler] signal scan failed:', err);
+      }
+    },
+    { timezone: tz }
+  );
+  console.log('[scheduler] signal scan cron registered (Mon 6am)');
+} else {
+  console.log('[scheduler] signal scan cron DISABLED (set SIGNAL_SCAN_ENABLED=true to enable)');
+}
 
 startServer();
 console.log(`Ambition SDR Agent running. Scheduler active (${tz}).`);

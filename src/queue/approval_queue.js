@@ -1,12 +1,18 @@
 import { query } from '../db/index.js';
 
-export async function addToApprovalQueue({ prospect, draft, status = 'pending', campaign_id = null }) {
+export async function addToApprovalQueue({
+  prospect,
+  draft,
+  status = 'pending',
+  campaign_id = null,
+  signal_id = null,
+}) {
   const sql = `
-    INSERT INTO approval_queue (prospect_id, draft, status, campaign_id)
-    VALUES ($1, $2, $3, $4)
+    INSERT INTO approval_queue (prospect_id, draft, status, campaign_id, signal_id)
+    VALUES ($1, $2, $3, $4, $5)
     RETURNING *;
   `;
-  const { rows } = await query(sql, [prospect.id, draft, status, campaign_id]);
+  const { rows } = await query(sql, [prospect.id, draft, status, campaign_id, signal_id]);
   return rows[0];
 }
 

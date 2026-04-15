@@ -51,9 +51,24 @@
           </span>
         <% } %>
       </div>
-      <% if (account.notes) { %>
-        <p class="text-sm text-slate-600 mt-3 max-w-2xl"><%= account.notes %></p>
-      <% } %>
+      <details class="mt-3 max-w-2xl" <% if (!account.notes) { %>open<% } %>>
+        <summary class="text-xs text-slate-500 hover:text-slate-900 cursor-pointer select-none">
+          <% if (account.notes) { %>Notes (click to edit)<% } else { %>Add notes — feeds the weekly signal scan<% } %>
+        </summary>
+        <% if (account.notes) { %>
+          <p class="text-sm text-slate-600 mt-2 whitespace-pre-wrap"><%= account.notes %></p>
+        <% } %>
+        <form method="POST" action="/accounts/<%= account.id %>/notes" class="mt-2">
+          <textarea name="notes" rows="3" maxlength="4000"
+            placeholder="e.g. SDR team uses Ambition; Ascend AE team is our Q2 expansion target. New CRO started in Feb — background in stack consolidation."
+            class="w-full border border-slate-300 rounded px-3 py-2 text-sm focus:ring-1 focus:ring-slate-500 focus:outline-none"><%= account.notes || '' %></textarea>
+          <div class="flex justify-end mt-1">
+            <button type="submit" class="text-xs bg-slate-900 hover:bg-slate-800 text-white px-3 py-1.5 rounded font-medium">
+              Save notes
+            </button>
+          </div>
+        </form>
+      </details>
     </div>
   </div>
 </div>
@@ -83,6 +98,8 @@
     <% } %>
   </div>
 </div>
+
+<%- include('partials/pulse', { signals: signals, signalArchiveCount: signalArchiveCount, account: account, rescanStatus: typeof rescanStatus !== 'undefined' ? rescanStatus : null }) %>
 
 <% if (account.status === 'customer' && coverage) { %>
   <%
