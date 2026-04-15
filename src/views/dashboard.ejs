@@ -22,7 +22,7 @@
 <% } %>
 
 <% if ((counts.playsActive || 0) > 0) { %>
-  <div class="block mb-4 bg-white border border-slate-200 rounded-lg p-4">
+  <a href="/plays" class="block mb-4 bg-white border border-slate-200 rounded-lg p-4 hover:bg-slate-50">
     <div class="flex items-center justify-between gap-4 flex-wrap">
       <div>
         <div class="text-xs uppercase tracking-wide text-slate-500">Active plays</div>
@@ -33,11 +33,12 @@
           <% } %>
         </div>
         <div class="text-xs text-slate-500 mt-0.5">
-          Named plays in flight on your accounts. Open any account → Game Plan.
+          Named plays in flight on your book. Grouped by account.
         </div>
       </div>
+      <span class="text-sm text-slate-500">Open →</span>
     </div>
-  </div>
+  </a>
 <% } %>
 
 <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">

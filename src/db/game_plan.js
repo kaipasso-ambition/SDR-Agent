@@ -282,6 +282,48 @@ export async function listPlaysForAccount(accountId) {
   return rows;
 }
 
+// Cross-account index for the /plays page. Scoped to the user's book
+// (owner_user_id = user OR unassigned) so the AE sees their own plays;
+// status is optional, defaulting to "everything still on the board"
+// (drafting + active + paused) so a play created and then left-behind
+// surfaces without the AE having to guess a filter.
+export async function listPlaysForUser(userId, { status = null } = {}) {
+  const statusClause = status
+    ? `AND p.status = $2`
+    : `AND p.status IN ('drafting', 'active', 'paused')`;
+  const params = status ? [userId, status] : [userId];
+  const { rows } = await query(
+    `SELECT p.*,
+            a.account_name,
+            a.status    AS account_status,
+            a.industry  AS account_industry,
+            h.use_case  AS hypothesis_use_case,
+            h.narrative_hook AS hypothesis_hook,
+            s.title     AS trigger_signal_title,
+            u.name      AS author_name
+       FROM account_plays p
+       JOIN accounts_registry a ON a.id = p.account_id
+       LEFT JOIN account_hypotheses h ON h.id = p.hypothesis_id
+       LEFT JOIN account_signals s    ON s.id = p.triggered_by_signal_id
+       LEFT JOIN users u              ON u.id = p.author_user_id
+      WHERE (a.owner_user_id = $1 OR a.owner_user_id IS NULL)
+      ${statusClause}
+      ORDER BY
+        CASE p.status
+          WHEN 'active'   THEN 1
+          WHEN 'drafting' THEN 2
+          WHEN 'paused'   THEN 3
+          WHEN 'won'      THEN 4
+          WHEN 'lost'     THEN 5
+          ELSE 6
+        END,
+        COALESCE(p.next_action_due, p.updated_at) ASC,
+        p.updated_at DESC`,
+    params
+  );
+  return rows;
+}
+
 export async function getPlayById(id) {
   const { rows } = await query(
     `SELECT p.*,

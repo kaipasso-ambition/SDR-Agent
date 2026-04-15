@@ -1,0 +1,137 @@
+<%
+  const playStatusMeta = {
+    drafting:   { label: 'Drafting',  cls: 'bg-amber-100 text-amber-800' },
+    active:     { label: 'Active',    cls: 'bg-emerald-100 text-emerald-800' },
+    paused:     { label: 'Paused',    cls: 'bg-slate-100 text-slate-700' },
+    won:        { label: 'Won',       cls: 'bg-violet-100 text-violet-800' },
+    lost:       { label: 'Lost',      cls: 'bg-slate-100 text-slate-500' },
+    abandoned:  { label: 'Abandoned', cls: 'bg-slate-100 text-slate-500' },
+  };
+  const accountStatusMeta = {
+    customer:     { label: 'Customer',     cls: 'bg-emerald-50 text-emerald-800 border-emerald-200' },
+    prospect:     { label: 'Prospect',     cls: 'bg-sky-50 text-sky-800 border-sky-200' },
+    churned:      { label: 'Churned',      cls: 'bg-amber-50 text-amber-800 border-amber-200' },
+    disqualified: { label: 'Disqualified', cls: 'bg-slate-50 text-slate-500 border-slate-200' },
+  };
+
+  // Group by account so a single account's plays stay together — that's
+  // how the AE thinks about them ("where's that Dialpad play?").
+  const byAccount = new Map();
+  plays.forEach(function(p) {
+    const key = p.account_id;
+    if (!byAccount.has(key)) {
+      byAccount.set(key, {
+        account_id: p.account_id,
+        account_name: p.account_name,
+        account_status: p.account_status,
+        account_industry: p.account_industry,
+        plays: [],
+      });
+    }
+    byAccount.get(key).plays.push(p);
+  });
+  const groups = Array.from(byAccount.values());
+
+  function shortDate(d) {
+    if (!d) return '';
+    const dt = new Date(d);
+    return dt.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  }
+%>
+
+<div class="mb-6 flex items-start justify-between gap-4 flex-wrap">
+  <div>
+    <h1 class="text-2xl font-semibold">Plays</h1>
+    <p class="text-sm text-slate-500 mt-1 max-w-3xl">
+      Every play on your book, grouped by account. Click an account to jump to its Game Plan.
+      Default view shows everything still on the board — drafting, active, and paused.
+    </p>
+  </div>
+  <div class="flex items-center gap-1 text-xs">
+    <a href="/plays" class="px-2.5 py-1 rounded <%= !filter ? 'bg-slate-900 text-white' : 'bg-white border border-slate-300 text-slate-700 hover:border-slate-500' %>">On the board</a>
+    <a href="/plays?status=active" class="px-2.5 py-1 rounded <%= filter === 'active' ? 'bg-emerald-600 text-white' : 'bg-white border border-slate-300 text-slate-700 hover:border-slate-500' %>">Active</a>
+    <a href="/plays?status=drafting" class="px-2.5 py-1 rounded <%= filter === 'drafting' ? 'bg-amber-600 text-white' : 'bg-white border border-slate-300 text-slate-700 hover:border-slate-500' %>">Drafting</a>
+    <a href="/plays?status=paused" class="px-2.5 py-1 rounded <%= filter === 'paused' ? 'bg-slate-700 text-white' : 'bg-white border border-slate-300 text-slate-700 hover:border-slate-500' %>">Paused</a>
+    <a href="/plays?status=won" class="px-2.5 py-1 rounded <%= filter === 'won' ? 'bg-violet-600 text-white' : 'bg-white border border-slate-300 text-slate-700 hover:border-slate-500' %>">Won</a>
+    <a href="/plays?status=lost" class="px-2.5 py-1 rounded <%= filter === 'lost' ? 'bg-slate-700 text-white' : 'bg-white border border-slate-300 text-slate-700 hover:border-slate-500' %>">Lost</a>
+  </div>
+</div>
+
+<% if (groups.length === 0) { %>
+  <div class="bg-white border border-slate-200 rounded-lg p-8 text-center">
+    <div class="text-slate-500 text-sm">
+      <% if (filter) { %>
+        No <%= filter %> plays on your book. <a href="/plays" class="underline">Show everything on the board →</a>
+      <% } else { %>
+        No plays yet. Open an account and start one from its Game Plan.
+        <br/><a href="/accounts" class="underline mt-2 inline-block">Browse accounts →</a>
+      <% } %>
+    </div>
+  </div>
+<% } else { %>
+  <div class="space-y-4">
+    <% groups.forEach(function(g) { %>
+      <section class="bg-white border border-slate-200 rounded-lg overflow-hidden">
+        <header class="px-4 py-3 border-b border-slate-200 bg-slate-50 flex items-center justify-between gap-3 flex-wrap">
+          <div class="flex items-center gap-3 flex-wrap">
+            <a href="/accounts/<%= g.account_id %>/plan" class="font-semibold text-slate-900 hover:text-emerald-700">
+              <%= g.account_name %>
+            </a>
+            <% if (g.account_status && accountStatusMeta[g.account_status]) { %>
+              <span class="text-[10px] uppercase tracking-wide font-semibold border rounded px-1.5 py-0.5 <%= accountStatusMeta[g.account_status].cls %>">
+                <%= accountStatusMeta[g.account_status].label %>
+              </span>
+            <% } %>
+            <% if (g.account_industry) { %>
+              <span class="text-xs text-slate-500"><%= g.account_industry %></span>
+            <% } %>
+          </div>
+          <a href="/accounts/<%= g.account_id %>/plan" class="text-xs text-slate-500 hover:text-slate-900">Game Plan →</a>
+        </header>
+
+        <ul class="divide-y divide-slate-100">
+          <% g.plays.forEach(function(p) {
+            const exp = p.ai_expansion || {};
+            const sm  = playStatusMeta[p.status] || playStatusMeta.drafting;
+          %>
+            <li class="px-4 py-3">
+              <div class="flex items-start justify-between gap-3">
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-2 flex-wrap">
+                    <a href="/accounts/<%= p.account_id %>/plan#play-<%= p.id %>" class="font-medium text-slate-900 hover:text-emerald-700">
+                      <%= exp.named_play || '(no expansion yet — click to rebuild)' %>
+                    </a>
+                    <span class="pill <%= sm.cls %>"><%= sm.label %></span>
+                  </div>
+                  <div class="text-sm text-slate-600 mt-1 line-clamp-2">
+                    <span class="text-xs text-slate-500 uppercase tracking-wide font-semibold">Instinct ·</span>
+                    <%= p.instinct %>
+                  </div>
+                  <div class="text-xs text-slate-500 mt-1 flex items-center gap-2 flex-wrap">
+                    <% if (p.next_action) { %>
+                      <span><strong class="text-slate-700">Next:</strong> <%= p.next_action %><% if (p.next_action_due) { %> <span class="text-amber-700">· due <%= shortDate(p.next_action_due) %></span><% } %></span>
+                      <span>·</span>
+                    <% } %>
+                    <span>by <%= p.author_name || 'unknown' %></span>
+                    <span>·</span>
+                    <span>updated <%= shortDate(p.updated_at) %></span>
+                    <% if (p.trigger_signal_title) { %>
+                      <span>·</span>
+                      <span class="italic">from "<%= p.trigger_signal_title %>"</span>
+                    <% } %>
+                  </div>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                  <% if (exp.named_play) { %>
+                    <a href="/plays/<%= p.id %>/export.pptx" title="Export .pptx (Google Slides)" class="text-xs text-slate-500 hover:text-emerald-700">📊</a>
+                  <% } %>
+                  <a href="/accounts/<%= p.account_id %>/plan#play-<%= p.id %>" class="text-xs text-slate-600 hover:text-slate-900 whitespace-nowrap">Open →</a>
+                </div>
+              </div>
+            </li>
+          <% }); %>
+        </ul>
+      </section>
+    <% }); %>
+  </div>
+<% } %>

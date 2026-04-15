@@ -61,6 +61,7 @@ import {
   updateHypothesis,
   deleteHypothesis,
   listPlaysForAccount,
+  listPlaysForUser,
   getPlayById,
   createPlay,
   updatePlay,
@@ -1316,6 +1317,25 @@ webRouter.post('/plays/:id/delete', requireAuth, async (req, res, next) => {
     if (!play) return res.redirect('/accounts');
     await deletePlay(play.id);
     res.redirect(`/accounts/${play.account_id}/plan`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Cross-account plays index — the answer to "where did that Dialpad
+// play go?" Defaults to showing everything still on the board
+// (drafting + active + paused); ?status=<x> pins it. Account name
+// links back to the plan page with a hash-anchor onto the play card.
+webRouter.get('/plays', requireAuth, async (req, res, next) => {
+  try {
+    const status = ['drafting', 'active', 'paused', 'won', 'lost', 'abandoned'].includes(req.query.status)
+      ? req.query.status : null;
+    const plays = await listPlaysForUser(req.session.userId, { status });
+    res.render('plays', {
+      title: 'Plays',
+      plays,
+      filter: status,
+    });
   } catch (err) {
     next(err);
   }
