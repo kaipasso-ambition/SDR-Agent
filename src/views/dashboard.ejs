@@ -1,6 +1,6 @@
 <h1 class="text-2xl font-semibold mb-6">Dashboard</h1>
 
-<div class="grid grid-cols-1 md:grid-cols-5 gap-4 mb-8">
+<div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
   <div class="bg-white border border-slate-200 rounded-lg p-5">
     <div class="text-xs uppercase tracking-wide text-slate-500">Drafts pending</div>
     <div class="text-3xl font-semibold mt-2"><%= counts.pendingDrafts %></div>
@@ -10,11 +10,6 @@
     <div class="text-xs uppercase tracking-wide text-slate-500">Replies pending</div>
     <div class="text-3xl font-semibold mt-2"><%= counts.pendingReplies %></div>
     <a href="/replies" class="text-xs text-slate-500 hover:text-slate-900 mt-2 inline-block">Review →</a>
-  </div>
-  <div class="bg-white border border-slate-200 rounded-lg p-5 <%= counts.championMoves > 0 ? 'border-amber-300' : '' %>">
-    <div class="text-xs uppercase tracking-wide text-slate-500">Champion moves</div>
-    <div class="text-3xl font-semibold mt-2 <%= counts.championMoves > 0 ? 'text-amber-600' : '' %>"><%= counts.championMoves %></div>
-    <a href="/champions" class="text-xs text-slate-500 hover:text-slate-900 mt-2 inline-block">Open →</a>
   </div>
   <div class="bg-white border border-slate-200 rounded-lg p-5">
     <div class="text-xs uppercase tracking-wide text-slate-500">Researched today</div>

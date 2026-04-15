@@ -18,6 +18,7 @@ import {
   ingestAccountCsv,
   listAccounts,
   getAccountStatusCounts,
+  getAccountBundle,
 } from '../db/accounts_registry.js';
 import { runChampionCheckCycle } from '../agents/champion_tracker.js';
 import {
@@ -545,7 +546,15 @@ function popImport(req, key) {
   return v;
 }
 
+// /champions is gated behind an ?unlock= query param while the security
+// review for PII handling is in flight. The tables, routes, cron, and agent
+// all exist — we just don't surface the UI until access control, log
+// scrubbing, and an explicit delete/DNC flow are in place. Anyone hitting
+// the bare URL gets the placeholder; testing is possible via ?unlock=1.
 webRouter.get('/champions', requireAuth, async (req, res, next) => {
+  if (req.query.unlock !== '1') {
+    return res.render('champions_placeholder', { title: 'Champions' });
+  }
   try {
     const ownerId = req.session.userId;
     const [champions, pendingMoves, newMoveCount, activeJobRow] = await Promise.all([
@@ -699,22 +708,36 @@ webRouter.post('/accounts/import', requireAuth, async (req, res, next) => {
   }
 });
 
+// Account detail page — the Strategic-AE's home base for one company. Pulls
+// the registry row + every prospect we've researched with that domain + the
+// drafts + sent messages against those prospects + a champion-count summary
+// (no PII at the account level, just "3 customer_champion, 1 FoA").
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+webRouter.get('/accounts/:id', requireAuth, async (req, res, next) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.redirect('/accounts');
+    const bundle = await getAccountBundle(req.params.id);
+    if (!bundle) return res.redirect('/accounts');
+    res.render('account_detail', { title: bundle.account.account_name, ...bundle });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ---------- Helpers ----------
 
 async function getCounts() {
-  const [drafts, replies, researched, sent, champMoves] = await Promise.all([
+  const [drafts, replies, researched, sent] = await Promise.all([
     query(`SELECT COUNT(*)::int AS n FROM approval_queue WHERE status = 'pending';`),
     query(`SELECT COUNT(*)::int AS n FROM reply_queue WHERE status = 'pending';`),
     query(`SELECT COUNT(*)::int AS n FROM prospects WHERE researched_at >= date_trunc('day', NOW());`),
     query(`SELECT COUNT(*)::int AS n FROM sent_messages WHERE sent_at >= date_trunc('week', NOW());`),
-    query(`SELECT COUNT(*)::int AS n FROM champion_moves WHERE status = 'new';`),
   ]);
   return {
     pendingDrafts: drafts.rows[0].n,
     pendingReplies: replies.rows[0].n,
     researchedToday: researched.rows[0].n,
     sentThisWeek: sent.rows[0].n,
-    championMoves: champMoves.rows[0].n,
   };
 }
 

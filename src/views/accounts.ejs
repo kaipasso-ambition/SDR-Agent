@@ -51,13 +51,15 @@
 <div class="bg-white border border-slate-200 rounded-lg mb-8">
   <div class="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
     <h2 class="font-semibold">Add accounts (paste CSV)</h2>
-    <span class="text-xs text-slate-500">Headers: account_name, domain, status, owner, owner_role, industry, notes</span>
+    <span class="text-xs text-slate-500">Works with HubSpot / Salesforce exports — headers are auto-mapped</span>
   </div>
   <form method="POST" action="/accounts/import" class="p-4">
-    <textarea name="csv" rows="8" placeholder="account_name,domain,status,owner,owner_role,industry,notes&#10;Acme Logistics,acme.com,customer,kai,ae,logistics,Renewal Q3&#10;Bravo Tech,bravotech.io,churned,colin,ae,saas,Left in 2024 over pricing"
+    <textarea name="csv" rows="8" placeholder="Paste directly from HubSpot, Salesforce, or Google Sheets — include the header row.&#10;&#10;Recognized columns (any of these work):&#10;  name · Account Name · Company → account_name&#10;  website · Website · Domain     → domain&#10;  type · Account Type · Status   → status  (Customer/Prospect/Churned/Disqualified)&#10;  owner · Account Owner          → owner (email or name)&#10;  industry · vertical · segment  → industry&#10;&#10;Example:&#10;Account Name,Website,Type,Owner,Industry&#10;Acme Logistics,acme.com,Customer,kai@ambition.com,Logistics&#10;Bravo Tech,https://www.bravotech.io,Churned,colin@ambition.com,SaaS"
       class="w-full border border-slate-300 rounded px-3 py-2 text-sm font-mono focus:ring-1 focus:ring-slate-500 focus:outline-none"></textarea>
     <div class="flex items-center justify-between mt-3">
-      <span class="text-xs text-slate-500">status must be one of: customer, prospect, churned, disqualified. Dedups by domain or account_name.</span>
+      <span class="text-xs text-slate-500">
+        Tab- or comma-separated. Domains are normalized (https://, www., paths all stripped). Dedups by domain, then by account_name. Unknown status values map to "prospect" with a warning.
+      </span>
       <button type="submit" class="bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded text-sm font-medium">Import</button>
     </div>
   </form>
@@ -66,10 +68,10 @@
       <div class="text-xs font-semibold text-slate-700 uppercase tracking-wide mb-2">Last import</div>
       <ul class="text-xs space-y-1">
         <% importResults.slice(0, 20).forEach(function(r) { %>
-          <li class="<%= r.ok ? 'text-slate-600' : 'text-red-700' %>">
+          <li class="<%= r.ok ? (r.warnings ? 'text-amber-700' : 'text-slate-600') : 'text-red-700' %>">
             row <%= r.index + 1 %>:
             <% if (r.ok) { %>
-              <%= r.inserted ? 'added' : 'updated' %> — <%= r.name %> (<%= r.status %>)
+              <%= r.inserted ? 'added' : 'updated' %> — <%= r.name %> (<%= r.status %>)<% if (r.warnings) { %> · <%= r.warnings.join('; ') %><% } %>
             <% } else { %>
               error — <%= (r.errors || []).join('; ') %>
             <% } %>
@@ -107,9 +109,9 @@
       </thead>
       <tbody class="divide-y divide-slate-100">
         <% accounts.forEach(function(a) { %>
-          <tr>
+          <tr class="hover:bg-slate-50">
             <td class="px-4 py-3">
-              <div class="font-medium"><%= a.account_name %></div>
+              <a href="/accounts/<%= a.id %>" class="font-medium hover:underline"><%= a.account_name %></a>
               <% if (a.notes) { %><div class="text-xs text-slate-500 truncate max-w-md"><%= a.notes %></div><% } %>
             </td>
             <td class="px-4 py-3 text-xs text-slate-500"><%= a.domain || '—' %></td>

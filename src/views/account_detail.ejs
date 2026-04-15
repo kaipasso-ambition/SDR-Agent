@@ -1,0 +1,208 @@
+<%
+  function pill(color, text) {
+    const cls = {
+      emerald: 'bg-emerald-100 text-emerald-800',
+      amber:   'bg-amber-100 text-amber-800',
+      slate:   'bg-slate-100 text-slate-700',
+      red:     'bg-red-100 text-red-800',
+      sky:     'bg-sky-100 text-sky-800',
+      violet:  'bg-violet-100 text-violet-800',
+    }[color] || 'bg-slate-100 text-slate-700';
+    return `<span class="pill ${cls}">${text}</span>`;
+  }
+  const statusColor = {
+    customer: 'emerald',
+    prospect: 'sky',
+    churned: 'amber',
+    disqualified: 'slate',
+  };
+  const draftStatusColor = {
+    pending: 'amber',
+    approved: 'emerald',
+    rejected: 'slate',
+    sent: 'sky',
+  };
+  const sourceLabel = {
+    customer_champion: 'Customer champion',
+    foa: 'Friend of Ambition',
+    churned_customer_contact: 'Ex-customer contact',
+  };
+  const totalChampions = Object.values(championCounts || {}).reduce(function(a,b){return a+b;}, 0);
+%>
+
+<div class="mb-6">
+  <a href="/accounts" class="text-xs text-slate-500 hover:text-slate-900">← All accounts</a>
+  <div class="flex items-start justify-between gap-4 mt-2">
+    <div>
+      <h1 class="text-2xl font-semibold flex items-center gap-3">
+        <%= account.account_name %>
+        <%- pill(statusColor[account.status] || 'slate', account.status) %>
+      </h1>
+      <div class="text-sm text-slate-500 mt-1 flex items-center gap-4 flex-wrap">
+        <% if (account.domain) { %>
+          <a href="https://<%= account.domain %>" target="_blank" rel="noopener" class="hover:text-slate-900 hover:underline"><%= account.domain %></a>
+        <% } %>
+        <% if (account.industry) { %><span>· <%= account.industry %></span><% } %>
+        <% if (account.owner_name_resolved || account.owner_email_resolved) { %>
+          <span>·
+            Owner:
+            <span class="text-slate-700 font-medium"><%= account.owner_name_resolved || account.owner_email_resolved %></span>
+            <% if (account.owner_role) { %><span class="text-slate-500">(<%= account.owner_role %>)</span><% } %>
+          </span>
+        <% } %>
+      </div>
+      <% if (account.notes) { %>
+        <p class="text-sm text-slate-600 mt-3 max-w-2xl"><%= account.notes %></p>
+      <% } %>
+    </div>
+  </div>
+</div>
+
+<div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+  <div class="bg-white border border-slate-200 rounded-lg p-4">
+    <div class="text-xs uppercase tracking-wide text-slate-500">Prospects researched</div>
+    <div class="text-2xl font-semibold mt-1"><%= prospects.length %></div>
+  </div>
+  <div class="bg-white border border-slate-200 rounded-lg p-4">
+    <div class="text-xs uppercase tracking-wide text-slate-500">Drafts (all states)</div>
+    <div class="text-2xl font-semibold mt-1"><%= drafts.length %></div>
+  </div>
+  <div class="bg-white border border-slate-200 rounded-lg p-4">
+    <div class="text-xs uppercase tracking-wide text-slate-500">Messages sent</div>
+    <div class="text-2xl font-semibold mt-1"><%= sent.length %></div>
+    <% const replied = sent.filter(function(s){return s.reply_received;}).length; %>
+    <% if (replied > 0) { %><div class="text-xs text-emerald-700 mt-1"><%= replied %> replies</div><% } %>
+  </div>
+  <div class="bg-white border border-slate-200 rounded-lg p-4">
+    <div class="text-xs uppercase tracking-wide text-slate-500">Champions tracked</div>
+    <div class="text-2xl font-semibold mt-1"><%= totalChampions %></div>
+    <% if (totalChampions > 0) { %>
+      <div class="text-xs text-slate-500 mt-1">
+        <% if (championCounts.customer_champion) { %><%= championCounts.customer_champion %> champ<% } %><% if (championCounts.foa) { %><% if (championCounts.customer_champion) { %> · <% } %><%= championCounts.foa %> FoA<% } %><% if (championCounts.churned_customer_contact) { %> · <%= championCounts.churned_customer_contact %> ex<% } %>
+      </div>
+    <% } %>
+  </div>
+</div>
+
+<div class="bg-white border border-slate-200 rounded-lg mb-6 overflow-hidden">
+  <div class="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+    <h2 class="font-semibold">Prospects on this account</h2>
+    <span class="text-xs text-slate-500">Matched by domain</span>
+  </div>
+  <% if (prospects.length === 0) { %>
+    <div class="p-6 text-sm text-slate-500">
+      No prospects researched under this domain yet.
+      <% if (account.domain) { %>
+        Any prospect added with domain <code class="bg-slate-100 px-1 rounded"><%= account.domain %></code> will show up here.
+      <% } else { %>
+        Add a domain to this account so the outbound pipeline can match prospects to it.
+      <% } %>
+    </div>
+  <% } else { %>
+    <table class="w-full text-sm">
+      <thead class="text-slate-500 uppercase tracking-wider text-xs bg-slate-50">
+        <tr>
+          <th class="text-left px-4 py-2">Contact</th>
+          <th class="text-left px-4 py-2">Persona</th>
+          <th class="text-left px-4 py-2">Fit</th>
+          <th class="text-left px-4 py-2">Signal</th>
+          <th class="text-right px-4 py-2">Researched</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-100">
+        <% prospects.forEach(function(p) { %>
+          <tr>
+            <td class="px-4 py-3">
+              <div class="font-medium"><%= p.contact_name || '—' %></div>
+              <% if (p.contact_title) { %><div class="text-xs text-slate-500"><%= p.contact_title %></div><% } %>
+            </td>
+            <td class="px-4 py-3 text-xs text-slate-600">
+              <% if (p.persona) { %><%= p.persona %><% } else { %>—<% } %>
+              <% if (p.seniority) { %><span class="text-slate-400"> · <%= p.seniority %></span><% } %>
+            </td>
+            <td class="px-4 py-3">
+              <% if (p.disqualified) { %>
+                <span class="pill bg-slate-100 text-slate-700">DQ</span>
+              <% } else if (p.fit_score != null) { %>
+                <span class="font-medium <%= p.fit_score >= 80 ? 'text-emerald-700' : p.fit_score >= 60 ? 'text-slate-800' : 'text-slate-500' %>"><%= p.fit_score %></span>
+              <% } else { %>—<% } %>
+            </td>
+            <td class="px-4 py-3 text-xs text-slate-600 max-w-md truncate">
+              <%= p.disqualified ? p.disqualify_reason : (p.timing_signal || '—') %>
+            </td>
+            <td class="px-4 py-3 text-right text-xs text-slate-500">
+              <%= p.researched_at ? new Date(p.researched_at).toLocaleDateString() : '—' %>
+            </td>
+          </tr>
+        <% }); %>
+      </tbody>
+    </table>
+  <% } %>
+</div>
+
+<% if (drafts.length > 0) { %>
+  <div class="bg-white border border-slate-200 rounded-lg mb-6 overflow-hidden">
+    <div class="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+      <h2 class="font-semibold">Drafts</h2>
+      <a href="/drafts" class="text-xs text-slate-500 hover:text-slate-900 underline">All drafts →</a>
+    </div>
+    <table class="w-full text-sm">
+      <thead class="text-slate-500 uppercase tracking-wider text-xs bg-slate-50">
+        <tr>
+          <th class="text-left px-4 py-2">Contact</th>
+          <th class="text-left px-4 py-2">Campaign</th>
+          <th class="text-left px-4 py-2">Status</th>
+          <th class="text-right px-4 py-2">Queued</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-100">
+        <% drafts.forEach(function(d) { %>
+          <tr>
+            <td class="px-4 py-3"><%= d.contact_name || '—' %></td>
+            <td class="px-4 py-3 text-xs text-slate-600"><%= d.campaign_name || '<em class="text-slate-400">generic</em>' %></td>
+            <td class="px-4 py-3"><%- pill(draftStatusColor[d.status] || 'slate', d.status) %></td>
+            <td class="px-4 py-3 text-right text-xs text-slate-500"><%= new Date(d.queued_at).toLocaleDateString() %></td>
+          </tr>
+        <% }); %>
+      </tbody>
+    </table>
+  </div>
+<% } %>
+
+<% if (sent.length > 0) { %>
+  <div class="bg-white border border-slate-200 rounded-lg mb-6 overflow-hidden">
+    <div class="px-4 py-3 border-b border-slate-200">
+      <h2 class="font-semibold">Sent messages</h2>
+    </div>
+    <table class="w-full text-sm">
+      <thead class="text-slate-500 uppercase tracking-wider text-xs bg-slate-50">
+        <tr>
+          <th class="text-left px-4 py-2">Contact</th>
+          <th class="text-left px-4 py-2">Touch</th>
+          <th class="text-left px-4 py-2">Subject</th>
+          <th class="text-left px-4 py-2">Reply?</th>
+          <th class="text-right px-4 py-2">Sent</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-100">
+        <% sent.forEach(function(s) { %>
+          <tr>
+            <td class="px-4 py-3"><%= s.contact_name || '—' %></td>
+            <td class="px-4 py-3 text-xs text-slate-600">
+              <%= s.touch ? ('T' + s.touch) : '—' %><% if (s.channel) { %> · <%= s.channel %><% } %>
+            </td>
+            <td class="px-4 py-3 text-xs text-slate-700 max-w-md truncate"><%= s.subject || '—' %></td>
+            <td class="px-4 py-3">
+              <% if (s.reply_received) { %>
+                <span class="pill bg-emerald-100 text-emerald-800">replied</span>
+              <% } else { %>
+                <span class="text-slate-400 text-xs">no</span>
+              <% } %>
+            </td>
+            <td class="px-4 py-3 text-right text-xs text-slate-500"><%= new Date(s.sent_at).toLocaleDateString() %></td>
+          </tr>
+        <% }); %>
+      </tbody>
+    </table>
+  </div>
+<% } %>
