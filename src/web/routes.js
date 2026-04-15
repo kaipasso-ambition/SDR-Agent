@@ -971,6 +971,26 @@ webRouter.post('/signals/:id/play', requireAuth, async (req, res, next) => {
 // but access checks only gate by account visibility.
 // ============================================================================
 
+// Extract the three-beat narrative (current_state / future_state / bridge)
+// from a form body. Returns:
+//   undefined — no narrative fields were submitted at all (don't touch column)
+//   null      — all three beats were submitted empty (clear the column)
+//   object    — at least one beat has content (persist as JSONB)
+// Kept out of the route body so create and update share the exact rules.
+function pickNarrative(body) {
+  if (!body) return undefined;
+  const hasAny =
+    body.narrative_current_state !== undefined ||
+    body.narrative_future_state !== undefined ||
+    body.narrative_bridge !== undefined;
+  if (!hasAny) return undefined;
+  const current_state = (body.narrative_current_state || '').trim();
+  const future_state = (body.narrative_future_state || '').trim();
+  const bridge = (body.narrative_bridge || '').trim();
+  if (!current_state && !future_state && !bridge) return null;
+  return { current_state, future_state, bridge };
+}
+
 // Plan view — the chess board (org chart), hypotheses, and plays for one
 // account. Pre-fills the play composer when called with
 // ?new_play=1&signal=<id> from the /brief Start-a-play button.
@@ -1091,11 +1111,17 @@ webRouter.post('/accounts/:id/hypotheses', requireAuth, async (req, res, next) =
     const evidence_signal_ids = []
       .concat(req.body?.evidence_signal_ids || [])
       .filter((v) => typeof v === 'string' && UUID_RE.test(v));
+    // Three-beat narrative (Nasralla): current_state / future_state / bridge.
+    // All three beats are optional individually; we only persist the object
+    // if at least one beat has content so the hypothesis card knows whether
+    // to render the narrative block.
+    const narrative = pickNarrative(req.body);
     await createHypothesis({
       account_id: req.params.id,
       use_case,
       target_persona_id,
       narrative_hook,
+      narrative,
       evidence_signal_ids,
       confidence: parseInt(req.body?.confidence, 10) || 3,
       status: req.body?.status || 'theory',
@@ -1120,6 +1146,8 @@ webRouter.post('/hypotheses/:id', requireAuth, async (req, res, next) => {
       const n = parseInt(req.body.confidence, 10);
       if (n >= 1 && n <= 5) patch.confidence = n;
     }
+    const narrative = pickNarrative(req.body);
+    if (narrative !== undefined) patch.narrative = narrative;
     await updateHypothesis(h.id, patch);
     res.redirect(`/accounts/${h.account_id}/plan`);
   } catch (err) {

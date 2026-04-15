@@ -31,6 +31,14 @@
     lost:       { label: 'Lost',       cls: 'bg-slate-100 text-slate-500' },
     abandoned:  { label: 'Abandoned', cls: 'bg-slate-100 text-slate-500' },
   };
+  // Sports/coaching vernacular on the play card — matches Ambition's own
+  // gamification voice. CHAMPION is the starter carrying the ball;
+  // AE is the coach equipping them; internal is the assistant coach.
+  const actorMeta = {
+    champion:          { label: '🏈 Champion carries', cls: 'bg-emerald-100 text-emerald-900 border-emerald-300' },
+    ae:                { label: '🎯 You (coach)',       cls: 'bg-slate-100 text-slate-800 border-slate-300' },
+    internal_colleague:{ label: '🤝 Internal assist',   cls: 'bg-sky-100 text-sky-900 border-sky-300' },
+  };
 
   // Build the reports_to tree then flatten into a depth-annotated list so
   // the template can render without a recursive EJS function (EJS scriptlet
@@ -56,8 +64,10 @@
     <div>
       <h1 class="text-2xl font-semibold"><%= account.account_name %> — Game Plan</h1>
       <p class="text-sm text-slate-500 mt-1 max-w-3xl">
-        The chess board (who's on it), the theory of the case (what we're playing for),
-        and the plays (our moves). Your instincts are the spine; Claude scaffolds around them.
+        Scouting report (who's on the roster), theory of the case (what we're playing for),
+        and the playbook (our called moves). Your instincts are the spine; Claude scaffolds
+        around them. Default ball-carrier on any move inside the buyer's org: the champion.
+        Your job is to equip the starter, not to run the play yourself.
       </p>
     </div>
   </div>
@@ -204,11 +214,41 @@
               <% } %>
             </div>
             <p class="text-sm text-slate-800"><%= h.narrative_hook %></p>
-            <div class="text-xs text-slate-500 mt-1"><%= h.evidence_count || 0 %> evidence signal<%= h.evidence_count === 1 ? '' : 's' %></div>
+
+            <% if (h.narrative && (h.narrative.current_state || h.narrative.future_state || h.narrative.bridge)) { %>
+              <div class="mt-3 space-y-2 text-xs">
+                <% if (h.narrative.current_state) { %>
+                  <div class="bg-slate-50 border-l-2 border-slate-300 rounded px-3 py-2">
+                    <div class="uppercase tracking-wide text-[10px] text-slate-500 font-semibold mb-0.5">Today</div>
+                    <div class="text-slate-800"><%= h.narrative.current_state %></div>
+                  </div>
+                <% } %>
+                <% if (h.narrative.future_state) { %>
+                  <div class="bg-emerald-50 border-l-2 border-emerald-400 rounded px-3 py-2">
+                    <div class="uppercase tracking-wide text-[10px] text-emerald-700 font-semibold mb-0.5">What would be different</div>
+                    <div class="text-slate-800"><%= h.narrative.future_state %></div>
+                  </div>
+                <% } %>
+                <% if (h.narrative.bridge) { %>
+                  <div class="bg-violet-50 border-l-2 border-violet-400 rounded px-3 py-2">
+                    <div class="uppercase tracking-wide text-[10px] text-violet-700 font-semibold mb-0.5">Bridge</div>
+                    <div class="text-slate-800"><%= h.narrative.bridge %></div>
+                  </div>
+                <% } %>
+              </div>
+            <% } %>
+
+            <div class="text-xs text-slate-500 mt-2"><%= h.evidence_count || 0 %> evidence signal<%= h.evidence_count === 1 ? '' : 's' %></div>
             <details class="mt-2">
               <summary class="text-xs text-slate-500 hover:text-slate-900 cursor-pointer">Edit</summary>
               <form method="POST" action="/hypotheses/<%= h.id %>" class="mt-2 space-y-2 text-xs">
                 <textarea name="narrative_hook" rows="2" class="w-full border border-slate-300 rounded px-2 py-1"><%= h.narrative_hook %></textarea>
+                <div class="space-y-1">
+                  <div class="uppercase tracking-wide text-[10px] text-slate-500 font-semibold">Three-beat narrative (champion voice — optional)</div>
+                  <textarea name="narrative_current_state" rows="2" placeholder="Today — what's the status quo?" class="w-full border border-slate-300 rounded px-2 py-1"><%= (h.narrative && h.narrative.current_state) || '' %></textarea>
+                  <textarea name="narrative_future_state" rows="2" placeholder="What would be different?" class="w-full border border-slate-300 rounded px-2 py-1"><%= (h.narrative && h.narrative.future_state) || '' %></textarea>
+                  <textarea name="narrative_bridge" rows="2" placeholder="Bridge — what we're asking for" class="w-full border border-slate-300 rounded px-2 py-1"><%= (h.narrative && h.narrative.bridge) || '' %></textarea>
+                </div>
                 <div class="grid grid-cols-3 gap-2">
                   <select name="status" class="border border-slate-300 rounded px-2 py-1">
                     <option value="theory"     <%= h.status === 'theory' ? 'selected' : '' %>>Theory</option>
@@ -246,6 +286,15 @@
           </select>
         </div>
         <textarea name="narrative_hook" rows="2" required placeholder="Narrative hook — one line. &quot;Earnings call flagged tooling rationalization; pitch one Performance Graph across SDR + AE.&quot;" class="w-full border border-slate-300 rounded px-2 py-1"></textarea>
+
+        <details>
+          <summary class="cursor-pointer text-slate-500 text-xs">+ Three-beat narrative (champion voice — optional, Nasralla arc)</summary>
+          <div class="mt-2 space-y-1">
+            <textarea name="narrative_current_state" rows="2" placeholder="Today. What the champion sees inside the org today — status quo, pain, workaround." class="w-full border border-slate-300 rounded px-2 py-1"></textarea>
+            <textarea name="narrative_future_state" rows="2" placeholder="What would be different. What the champion is telling their peers life looks like on the other side." class="w-full border border-slate-300 rounded px-2 py-1"></textarea>
+            <textarea name="narrative_bridge" rows="2" placeholder="Bridge. The specific ask — 20 minutes, a meeting, a one-pager input — in the champion's voice." class="w-full border border-slate-300 rounded px-2 py-1"></textarea>
+          </div>
+        </details>
         <div class="grid grid-cols-2 gap-2">
           <label class="flex items-center gap-1"><span class="text-slate-500">confidence</span>
             <input type="number" min="1" max="5" name="confidence" value="3" class="w-14 border border-slate-300 rounded px-2 py-1" />
@@ -336,7 +385,11 @@
         <button type="submit" class="bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded font-medium text-sm">
           Build the play →
         </button>
-        <p class="text-xs text-slate-500">Claude expands your instinct into a named play with 2–4 moves. Takes ~10s.</p>
+        <p class="text-xs text-slate-500">
+          Claude expands your instinct into 2–5 sequenced moves. When a champion is on the path,
+          the champion carries the ball on internal moves and you carry the artifact that
+          equips them. Takes ~10s.
+        </p>
       </form>
     </details>
 
@@ -369,18 +422,62 @@
             </div>
 
             <% if (exp.moves && exp.moves.length > 0) { %>
-              <ol class="space-y-2 mb-3">
-                <% exp.moves.forEach(function(m) { %>
+              <ol class="space-y-3 mb-3">
+                <% exp.moves.forEach(function(m) {
+                  const am = actorMeta[m.actor_type] || actorMeta.ae;
+                  const hasArtifact = m.artifact && m.artifact.content && String(m.artifact.content).trim();
+                %>
                   <li class="text-sm flex gap-3">
                     <span class="shrink-0 w-6 h-6 rounded-full bg-slate-900 text-white text-xs flex items-center justify-center font-semibold"><%= m.step %></span>
-                    <div class="flex-1">
-                      <div class="font-medium text-slate-900"><%= m.actor %> <span class="text-xs text-slate-500 font-normal">· <%= m.channel %> · day <%= m.days_from_now %></span></div>
-                      <div class="text-slate-700"><%= m.ask %></div>
+                    <div class="flex-1 min-w-0">
+                      <div class="flex items-center gap-2 flex-wrap">
+                        <span class="inline-flex items-center text-[10px] font-semibold uppercase tracking-wide border rounded px-1.5 py-0.5 <%= am.cls %>"><%= am.label %></span>
+                        <span class="font-medium text-slate-900"><%= m.actor %></span>
+                        <span class="text-xs text-slate-500">· <%= m.channel %> · day <%= m.days_from_now %></span>
+                      </div>
+                      <div class="text-slate-700 mt-1"><%= m.ask %></div>
                       <% if (m.rationale) { %><div class="text-xs text-slate-500 italic mt-0.5"><%= m.rationale %></div><% } %>
+                      <% if (hasArtifact) { %>
+                        <%
+                          const artifactId = 'artifact-' + p.id + '-' + m.step;
+                          const artifactTypeLabel = {
+                            slack_forward: 'Slack forward',
+                            exec_talking_points: 'Exec talking points',
+                            one_pager: 'One-pager',
+                            question_to_raise: 'Question to raise',
+                            meeting_pre_read: 'Meeting pre-read',
+                          }[m.artifact.type] || 'Artifact';
+                          const forChampion = m.artifact.for_actor === 'champion';
+                        %>
+                        <details class="mt-2 bg-emerald-50/50 border border-emerald-200 rounded">
+                          <summary class="cursor-pointer px-3 py-2 text-xs font-semibold text-emerald-900 flex items-center justify-between gap-2">
+                            <span>📋 <%= artifactTypeLabel %><% if (forChampion) { %> — for the champion to paste<% } else { %> — for you<% } %></span>
+                            <span class="text-emerald-600 font-normal">open</span>
+                          </summary>
+                          <div class="px-3 pb-3">
+                            <pre id="<%= artifactId %>" class="whitespace-pre-wrap text-xs text-slate-800 bg-white border border-emerald-200 rounded p-2 font-sans"><%= m.artifact.content %></pre>
+                            <button type="button" class="mt-2 text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-2 py-1 rounded"
+                                    onclick="(function(btn){var el=document.getElementById('<%= artifactId %>');navigator.clipboard.writeText(el.innerText).then(function(){var o=btn.textContent;btn.textContent='Copied ✓';setTimeout(function(){btn.textContent=o;},1500);});})(this)">
+                              Copy to clipboard
+                            </button>
+                          </div>
+                        </details>
+                      <% } %>
                     </div>
                   </li>
                 <% }); %>
               </ol>
+
+              <% if (exp.stakeholder_narratives && Object.keys(exp.stakeholder_narratives).length > 0) { %>
+                <div class="mb-3 border border-slate-200 rounded p-3 bg-white">
+                  <div class="uppercase tracking-wide text-[10px] text-slate-500 font-semibold mb-2">Stakeholder narratives <span class="font-normal normal-case">— what each person needs to believe (in champion voice)</span></div>
+                  <ul class="space-y-1.5 text-xs">
+                    <% Object.keys(exp.stakeholder_narratives).forEach(function(name) { %>
+                      <li><span class="font-semibold text-slate-900"><%= name %>:</span> <span class="text-slate-700"><%= exp.stakeholder_narratives[name] %></span></li>
+                    <% }); %>
+                  </ul>
+                </div>
+              <% } %>
             <% } else { %>
               <div class="bg-amber-50 border border-amber-200 rounded p-3 text-xs text-amber-900 mb-3">
                 Expansion missing — Claude may have failed to parse.

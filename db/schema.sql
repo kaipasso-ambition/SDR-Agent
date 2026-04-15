@@ -469,6 +469,13 @@ CREATE INDEX IF NOT EXISTS account_hypotheses_account_idx
 CREATE INDEX IF NOT EXISTS account_hypotheses_status_idx
   ON account_hypotheses(status);
 
+-- Three-beat narrative arc (Nasralla / Fluint): the story the champion
+-- forwards internally — status quo pain, what "better" looks like, and
+-- why us as the bridge. narrative_hook stays as the one-line headline;
+-- this JSONB carries the structured arc. Nullable so existing hypotheses
+-- don't need backfill.
+ALTER TABLE account_hypotheses ADD COLUMN IF NOT EXISTS narrative JSONB;
+
 -- The play artifact. Instinct + AI expansion + contact path. Status
 -- lifecycle: drafting -> active -> (paused?) -> won|lost|abandoned.
 -- triggered_by_signal_id and hypothesis_id are nullable so a play can

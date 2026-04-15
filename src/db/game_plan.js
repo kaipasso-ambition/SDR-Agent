@@ -200,6 +200,7 @@ export async function createHypothesis({
   use_case,
   target_persona_id,
   narrative_hook,
+  narrative = null,   // {current_state, future_state, bridge} — the Nasralla three-beat
   evidence_signal_ids = [],
   confidence = 3,
   status = 'theory',
@@ -207,12 +208,13 @@ export async function createHypothesis({
 }) {
   const { rows } = await query(
     `INSERT INTO account_hypotheses (
-       account_id, use_case, target_persona_id, narrative_hook,
+       account_id, use_case, target_persona_id, narrative_hook, narrative,
        evidence_signal_ids, confidence, status, created_by_user_id
-     ) VALUES ($1, $2, $3, $4, $5::uuid[], $6, $7, $8)
+     ) VALUES ($1, $2, $3, $4, $5, $6::uuid[], $7, $8, $9)
      RETURNING *`,
     [
       account_id, use_case, target_persona_id, narrative_hook,
+      narrative ? JSON.stringify(narrative) : null,
       evidence_signal_ids, confidence, status, created_by_user_id,
     ]
   );
@@ -232,6 +234,10 @@ export async function updateHypothesis(id, patch) {
       fields.push(`${k} = $${++i}${k === 'evidence_signal_ids' ? '::uuid[]' : ''}`);
       values.push(patch[k]);
     }
+  }
+  if (patch.narrative !== undefined) {
+    fields.push(`narrative = $${++i}`);
+    values.push(patch.narrative ? JSON.stringify(patch.narrative) : null);
   }
   if (fields.length === 0) return getHypothesisById(id);
   fields.push(`updated_at = NOW()`);

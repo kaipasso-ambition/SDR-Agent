@@ -7,7 +7,8 @@
 // surfaces a "rebuild" button on any play with a missing expansion.
 
 import Anthropic from '@anthropic-ai/sdk';
-import { PLAY_BUILDER_PROMPT } from '../prompts/play_builder.js';
+import { buildPlayBuilderPrompt } from '../prompts/play_builder.js';
+import { matchIndustryLexicon } from '../lib/industry_lexicon.js';
 
 const client = new Anthropic();
 
@@ -23,11 +24,24 @@ export async function buildPlay({
     return { expansion: null, model: null, error: 'empty instinct' };
   }
 
+  // Resolve the champion on the path (first contact with deal_role=champion
+  // and a non-cold stance). Prompt uses this to decide ball-carrier for
+  // middle moves — champion-led is the default per Nasralla when one exists.
+  const champion = contact_path_resolved.find(
+    (c) => c.deal_role === 'champion' && c.stance !== 'cold' && c.stance !== 'hostile'
+  ) || null;
+
+  // Resolve industry lexicon once so we can both (a) build the prompt and
+  // (b) echo it into the payload metadata so the model can refer back.
+  const lexicon = matchIndustryLexicon(account?.industry);
+
   const payload = {
     account: {
       name: account?.account_name,
       domain: account?.domain,
       status: account?.status,
+      industry: account?.industry || null,
+      industry_lexicon_key: lexicon.key,
       notes: account?.notes || null,
     },
     instinct: instinct.trim(),
@@ -36,6 +50,7 @@ export async function buildPlay({
           use_case: hypothesis.use_case,
           target_persona: hypothesis.target_persona_id,
           narrative_hook: hypothesis.narrative_hook,
+          narrative: hypothesis.narrative || null,
         }
       : null,
     contact_path: contact_path_resolved.map((c) => ({
@@ -44,6 +59,9 @@ export async function buildPlay({
       deal_role: c.deal_role,
       stance: c.stance,
     })),
+    champion_resolved: champion
+      ? { name: champion.name, title: champion.title, stance: champion.stance }
+      : null,
     triggering_signal: triggering_signal
       ? {
           title: triggering_signal.title,
@@ -58,11 +76,11 @@ export async function buildPlay({
   const response = await client.messages.create(
     {
       model,
-      max_tokens: 2000,
-      system: PLAY_BUILDER_PROMPT,
+      max_tokens: 3000,
+      system: buildPlayBuilderPrompt({ industry: account?.industry }),
       messages: [{ role: 'user', content: JSON.stringify(payload, null, 2) }],
     },
-    { timeout: 90 * 1000 }
+    { timeout: 120 * 1000 }
   );
 
   const text = response.content
@@ -78,7 +96,14 @@ export async function buildPlay({
 
   try {
     const parsed = JSON.parse(jsonText);
-    return { expansion: { ...parsed, ai_model_version: model }, model };
+    return {
+      expansion: {
+        ...parsed,
+        ai_model_version: model,
+        industry_lexicon_key: lexicon.key,
+      },
+      model,
+    };
   } catch (err) {
     console.error('[play_builder] JSON parse failed:', text.slice(0, 200));
     return { expansion: null, model, error: 'parse failure' };
