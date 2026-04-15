@@ -4,8 +4,22 @@ import { Router } from 'express';
 import { verifyLogin, requireAuth } from '../auth.js';
 import { query } from '../db/index.js';
 import { getPendingDrafts, getPendingReplies } from '../queue/approval_queue.js';
-import { researchAndDraft, runDiscoveryCycle, runPilotBatch } from '../pipeline.js';
+import { researchAndDraft, runDiscoveryCycle, runPilotBatch, draftChampionReconnect } from '../pipeline.js';
 import { PILOT_BATCH } from '../lib/pilot_batch.js';
+import { parsePastedCsv } from '../lib/paste_csv.js';
+import {
+  ingestChampionCsv,
+  listChampions,
+  listPendingMoves,
+  countPendingMoves,
+  setMoveStatus,
+} from '../db/champions.js';
+import {
+  ingestAccountCsv,
+  listAccounts,
+  getAccountStatusCounts,
+} from '../db/accounts_registry.js';
+import { runChampionCheckCycle } from '../agents/champion_tracker.js';
 import {
   getPresenceFeed,
   getPresenceStats,
@@ -517,20 +531,190 @@ webRouter.post('/presence/:id/thumbs', requireAuth, async (req, res, next) => {
   }
 });
 
+// ---------- Champions + Accounts (Strategic-AE track) ----------
+
+// Stash import results on the session so the next GET can render per-row
+// feedback. Cleared after one render so it doesn't stick around.
+function flashImport(req, key, results) {
+  req.session = req.session || {};
+  req.session[key] = results;
+}
+function popImport(req, key) {
+  const v = req.session?.[key] || null;
+  if (req.session) delete req.session[key];
+  return v;
+}
+
+webRouter.get('/champions', requireAuth, async (req, res, next) => {
+  try {
+    const ownerId = req.session.userId;
+    const [champions, pendingMoves, newMoveCount, activeJobRow] = await Promise.all([
+      listChampions({ ownerUserId: ownerId }),
+      listPendingMoves({ ownerUserId: ownerId }),
+      countPendingMoves(ownerId),
+      query(`SELECT * FROM champion_check_jobs ORDER BY started_at DESC LIMIT 1`),
+    ]);
+
+    const activeJob = activeJobRow.rows[0] || null;
+    const runningJob = activeJob && activeJob.status === 'running';
+
+    const drafted = pendingMoves.filter((m) => m.status === 'drafted').length;
+    const tracking = champions.filter((c) => c.status === 'tracking').length;
+    const lastChecks = champions.map((c) => c.last_checked_at).filter(Boolean);
+    const lastCheck = lastChecks.length ? new Date(Math.max(...lastChecks.map((d) => new Date(d).getTime()))) : null;
+
+    res.render('champions', {
+      title: 'Champions',
+      champions,
+      pendingMoves,
+      runningJob,
+      activeJob,
+      counts: {
+        tracking,
+        newMoves: newMoveCount,
+        drafted,
+        lastCheckLabel: lastCheck ? lastCheck.toLocaleString() : 'never — click "Check for moves now"',
+      },
+      importResults: popImport(req, 'championsImport'),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+webRouter.post('/champions/import', requireAuth, async (req, res, next) => {
+  try {
+    const { rows } = parsePastedCsv(req.body?.csv || '');
+    if (rows.length === 0) {
+      flashImport(req, 'championsImport', [{ index: 0, ok: false, errors: ['nothing to import — paste a header row + at least one data row'] }]);
+      return res.redirect('/champions');
+    }
+    const results = await ingestChampionCsv(rows);
+    flashImport(req, 'championsImport', results);
+    res.redirect('/champions');
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Trigger an on-demand champion check. Fires in the background; the banner
+// on /champions polls via page reload.
+webRouter.post('/champions/check-now', requireAuth, async (req, res, next) => {
+  try {
+    const existing = await query(
+      `SELECT id FROM champion_check_jobs WHERE status = 'running' LIMIT 1`
+    );
+    if (existing.rows[0]) return res.redirect('/champions');
+
+    const { rows } = await query(
+      `INSERT INTO champion_check_jobs (user_id, status) VALUES ($1, 'running') RETURNING id`,
+      [req.session.userId]
+    );
+    const jobId = rows[0].id;
+
+    runChampionCheckCycle({ limit: 25, job_id: jobId })
+      .then((r) => console.log('[champions/check-now] finished:', r))
+      .catch((err) => {
+        console.error('[champions/check-now] failed:', err);
+        query(
+          `UPDATE champion_check_jobs SET status = 'failed', error = $2, finished_at = NOW() WHERE id = $1`,
+          [jobId, err.message || 'unknown']
+        ).catch(() => {});
+      });
+
+    res.redirect('/champions');
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Act on a single detected move: generate the reconnect draft and queue it.
+webRouter.post('/champions/moves/:id/draft', requireAuth, async (req, res, next) => {
+  try {
+    const { rows } = await query(
+      `SELECT m.*, c.full_name, c.email, c.linkedin_url, c.source, c.tier,
+              c.one_line_context
+         FROM champion_moves m
+         JOIN champions c ON c.id = m.champion_id
+        WHERE m.id = $1 LIMIT 1`,
+      [req.params.id]
+    );
+    const move = rows[0];
+    if (!move) return res.redirect('/champions');
+
+    const result = await draftChampionReconnect(move);
+    if (result.draft) {
+      console.log(`[champions] drafted reconnect for ${move.full_name} → ${move.to_company}`);
+      return res.redirect('/drafts');
+    }
+    console.log(`[champions] skipped draft for move ${move.id}: ${result.skipped}`);
+    res.redirect('/champions');
+  } catch (err) {
+    console.error('[champions/moves/draft]', err);
+    res.redirect('/champions');
+  }
+});
+
+webRouter.post('/champions/moves/:id/dismiss', requireAuth, async (req, res, next) => {
+  try {
+    await setMoveStatus(req.params.id, 'dismissed');
+    res.redirect('/champions');
+  } catch (err) {
+    next(err);
+  }
+});
+
+webRouter.get('/accounts', requireAuth, async (req, res, next) => {
+  try {
+    const filter = ['customer', 'prospect', 'churned', 'disqualified'].includes(req.query.status)
+      ? req.query.status : null;
+    const [accounts, counts] = await Promise.all([
+      listAccounts({ status: filter }),
+      getAccountStatusCounts(),
+    ]);
+    res.render('accounts', {
+      title: 'Accounts',
+      accounts,
+      counts,
+      filter,
+      importResults: popImport(req, 'accountsImport'),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+webRouter.post('/accounts/import', requireAuth, async (req, res, next) => {
+  try {
+    const { rows } = parsePastedCsv(req.body?.csv || '');
+    if (rows.length === 0) {
+      flashImport(req, 'accountsImport', [{ index: 0, ok: false, errors: ['nothing to import'] }]);
+      return res.redirect('/accounts');
+    }
+    const results = await ingestAccountCsv(rows);
+    flashImport(req, 'accountsImport', results);
+    res.redirect('/accounts');
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ---------- Helpers ----------
 
 async function getCounts() {
-  const [drafts, replies, researched, sent] = await Promise.all([
+  const [drafts, replies, researched, sent, champMoves] = await Promise.all([
     query(`SELECT COUNT(*)::int AS n FROM approval_queue WHERE status = 'pending';`),
     query(`SELECT COUNT(*)::int AS n FROM reply_queue WHERE status = 'pending';`),
     query(`SELECT COUNT(*)::int AS n FROM prospects WHERE researched_at >= date_trunc('day', NOW());`),
     query(`SELECT COUNT(*)::int AS n FROM sent_messages WHERE sent_at >= date_trunc('week', NOW());`),
+    query(`SELECT COUNT(*)::int AS n FROM champion_moves WHERE status = 'new';`),
   ]);
   return {
     pendingDrafts: drafts.rows[0].n,
     pendingReplies: replies.rows[0].n,
     researchedToday: researched.rows[0].n,
     sentThisWeek: sent.rows[0].n,
+    championMoves: champMoves.rows[0].n,
   };
 }
 

@@ -16,6 +16,7 @@ import { getIntentSignals } from './integrations/commonroom.js';
 import { upsertProspect } from './db/prospects.js';
 import { addToApprovalQueue } from './queue/approval_queue.js';
 import { getCampaignRoster } from './db/campaigns.js';
+import { setMoveStatus } from './db/champions.js';
 import { query } from './db/index.js';
 import { PILOT_BATCH } from './lib/pilot_batch.js';
 
@@ -308,6 +309,68 @@ export async function runPilotBatch({ job_id = null, limit = null, indices = nul
   });
 
   return { total: activeBatch.length, drafted, skipped, errored, results };
+}
+
+/**
+ * Draft a champion-reconnect sequence for a detected job move. Skips the
+ * research agent entirely — we already know who the person is and where
+ * they've landed. We synthesize a minimal prospect record, upsert it,
+ * generate the sequence with customer_status='champion_reconnect', queue
+ * the draft, and flip the move row to 'drafted'.
+ *
+ * `move` is a row from champion_moves joined with its champion. Returns the
+ * approval_queue row on success, or { skipped: reason } when we decline.
+ */
+export async function draftChampionReconnect(move) {
+  if (move.routing === 'skip' || move.routing === 'internal_customer') {
+    return { skipped: `routing=${move.routing}` };
+  }
+  if (!move.to_company) {
+    return { skipped: 'no to_company on move row' };
+  }
+
+  // Pull the champion's relationship_owner as the draft owner so the
+  // reconnect draft lands in the right person's queue.
+  const { rows: champRows } = await query(
+    `SELECT relationship_owner_user_id FROM champions WHERE id = $1`,
+    [move.champion_id]
+  );
+  const owner_user_id = champRows[0]?.relationship_owner_user_id || null;
+
+  const customer_status = move.routing === 'winback' ? 'winback' : 'champion_reconnect';
+
+  // Synthesize a prospect record. fit_score is not researched here — we set
+  // it to 75 ('warm, signal-verified by definition') so the drafts page
+  // renders it alongside outbound drafts without re-scoring.
+  const prospectSeed = {
+    company: move.to_company,
+    domain: move.to_domain || null,
+    contact_name: move.full_name,
+    contact_title: move.to_title || null,
+    contact_email: move.email || null,
+    industry: null,
+    persona: null,
+    seniority: null,
+    fit_score: 75,
+    timing_signal: `Champion moved: ${move.from_company || 'prior role'} → ${move.to_company}${move.to_title ? ' as ' + move.to_title : ''}`,
+    timing_signal_source: move.source_url || null,
+    customer_status,
+    additional_context: move.one_line_context
+      ? `Prior relationship with Ambition via ${move.from_company || 'previous role'}: ${move.one_line_context}`
+      : `Prior relationship with Ambition via ${move.from_company || 'previous role'}.`,
+    disqualified: false,
+    owner_user_id,
+  };
+
+  const prospect = await upsertProspect(prospectSeed);
+  const draft = await generateSequence(prospect);
+  const queued = await addToApprovalQueue({ prospect, draft, status: 'pending' });
+
+  // Link the move row to the spawned prospect and flip it to 'drafted' so
+  // the /champions UI stops showing it as "new — needs action".
+  await setMoveStatus(move.id, 'drafted', prospect.id);
+
+  return { prospect, draft: queued, routing: move.routing };
 }
 
 /**

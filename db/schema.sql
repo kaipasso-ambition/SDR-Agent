@@ -229,6 +229,99 @@ CREATE TABLE IF NOT EXISTS presence_refresh_jobs (
 );
 CREATE INDEX IF NOT EXISTS presence_refresh_jobs_started_idx ON presence_refresh_jobs(started_at DESC);
 
+-- ---------------------------------------------------------------------------
+-- Champion tracker + account registry
+-- ---------------------------------------------------------------------------
+-- The Strategic-AE track: Ambition wants to follow champions across companies
+-- (highest-converting warm-outbound signal per UserGems/Champify research —
+-- job-change conversions run 3–5x cold). Sourced from three populations:
+--   1. customer_champion — active champions at current Ambition customers
+--   2. foa ("Friends of Ambition") — curated alumni / advocates list
+--   3. churned_customer_contact — contacts at churned accounts (boomerang play)
+--
+-- accounts_registry gives us a lightweight account book so we can route
+-- moves correctly: a champion landing at a live customer → internal note;
+-- landing at a non-customer → warm outbound; churned contact re-signaling
+-- at a churned account → win-back play.
+
+CREATE TABLE IF NOT EXISTS accounts_registry (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_name TEXT NOT NULL,
+  domain TEXT,
+  status TEXT NOT NULL DEFAULT 'prospect',  -- customer | prospect | churned | disqualified
+  owner_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  owner_role TEXT,                          -- 'ae' | 'csm' | null
+  industry TEXT,
+  notes TEXT,
+  last_signal_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS accounts_registry_domain_unique
+  ON accounts_registry(LOWER(domain)) WHERE domain IS NOT NULL;
+CREATE INDEX IF NOT EXISTS accounts_registry_status_idx ON accounts_registry(status);
+
+CREATE TABLE IF NOT EXISTS champions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  full_name TEXT NOT NULL,
+  email TEXT,
+  linkedin_url TEXT,
+  current_company TEXT,
+  current_title TEXT,
+  associated_account_domain TEXT,  -- loose FK to accounts_registry.domain (customer they came from)
+  source TEXT DEFAULT 'customer_champion',  -- customer_champion | foa | churned_customer_contact
+  tier TEXT,                       -- hot | warm | casual
+  one_line_context TEXT,           -- e.g. "sponsored the 2024 SDR rollout"
+  last_touch_date DATE,
+  do_not_contact BOOLEAN DEFAULT FALSE,
+  relationship_owner_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  status TEXT DEFAULT 'tracking',  -- tracking | moved | acted | dormant
+  last_checked_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS champions_status_idx ON champions(status);
+CREATE INDEX IF NOT EXISTS champions_last_checked_idx ON champions(last_checked_at NULLS FIRST);
+CREATE UNIQUE INDEX IF NOT EXISTS champions_linkedin_unique
+  ON champions(LOWER(linkedin_url)) WHERE linkedin_url IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS champions_email_unique
+  ON champions(LOWER(email)) WHERE email IS NOT NULL;
+
+-- One row per detected job change. Lets us show "3 new moves this week" and
+-- tracks which ones we've already acted on (drafted a reconnect) vs dismissed.
+CREATE TABLE IF NOT EXISTS champion_moves (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  champion_id UUID REFERENCES champions(id) ON DELETE CASCADE,
+  from_company TEXT,
+  to_company TEXT,
+  to_title TEXT,
+  to_domain TEXT,
+  source_url TEXT,
+  confidence TEXT,                 -- high | medium | low
+  detected_at TIMESTAMPTZ DEFAULT NOW(),
+  status TEXT DEFAULT 'new',       -- new | drafted | dismissed | acted
+  prospect_id UUID REFERENCES prospects(id) ON DELETE SET NULL,
+  routing TEXT,                    -- warm_outbound | internal_customer | winback | skip
+  notes TEXT
+);
+CREATE INDEX IF NOT EXISTS champion_moves_status_idx ON champion_moves(status);
+CREATE INDEX IF NOT EXISTS champion_moves_champion_idx ON champion_moves(champion_id);
+
+-- Champion-tracker job tracker — mirrors discovery_jobs so the UI can show a
+-- "Checking N champions…" banner while the weekly (or manual) run is in flight.
+CREATE TABLE IF NOT EXISTS champion_check_jobs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  status TEXT NOT NULL DEFAULT 'running',
+  checked_count INTEGER DEFAULT 0,
+  moves_detected INTEGER DEFAULT 0,
+  drafts_created INTEGER DEFAULT 0,
+  error TEXT,
+  started_at TIMESTAMPTZ DEFAULT NOW(),
+  finished_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS champion_check_jobs_started_idx ON champion_check_jobs(started_at DESC);
+
 -- Integration credentials (stored after OAuth so users don't edit .env for these)
 CREATE TABLE IF NOT EXISTS integrations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

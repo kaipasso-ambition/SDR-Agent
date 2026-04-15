@@ -10,6 +10,7 @@ import { runDiscoveryCycle } from './pipeline.js';
 import { sendApprovedMessages } from './sender.js';
 import { pollPresenceInbox } from './integrations/gmail_imap.js';
 import { runRankerCycle } from './lib/presence_ranker.js';
+import { runChampionCheckCycle } from './agents/champion_tracker.js';
 import { startServer } from './api/server.js';
 import { query, pool } from './db/index.js';
 
@@ -62,6 +63,22 @@ import { query, pool } from './db/index.js';
     if (rowCount > 0) console.log(`[boot] recovered ${rowCount} orphaned presence refresh job(s)`);
   } catch (err) {
     console.warn('[boot] presence orphan recovery skipped:', err.message);
+  }
+})();
+
+// Orphan recovery for champion_check_jobs — same deal as above.
+(async () => {
+  try {
+    const { rowCount } = await query(
+      `UPDATE champion_check_jobs
+          SET status = 'failed',
+              error = COALESCE(error, 'interrupted — server restarted during check'),
+              finished_at = NOW()
+        WHERE status = 'running'`
+    );
+    if (rowCount > 0) console.log(`[boot] recovered ${rowCount} orphaned champion check job(s)`);
+  } catch (err) {
+    console.warn('[boot] champion orphan recovery skipped:', err.message);
   }
 })();
 
@@ -158,6 +175,28 @@ cron.schedule(
       console.log('[scheduler] presence rank:', rankResult);
     } catch (err) {
       console.error('[scheduler] presence cycle failed:', err);
+    }
+  },
+  { timezone: tz }
+);
+
+// Champion tracker: walk the champions table once a week, web_search each
+// one, and record any job changes. Runs Monday at 8am after the discovery
+// cycle. Caps per-run volume at 25 champions so a large list doesn't blow
+// through LLM budget on one day — successive runs pick up the rest since
+// we sort by last_checked_at NULLS FIRST.
+cron.schedule(
+  '0 8 * * 1',
+  async () => {
+    console.log('[scheduler] Starting weekly champion check');
+    try {
+      const { rows } = await query(
+        `INSERT INTO champion_check_jobs (status) VALUES ('running') RETURNING id`
+      );
+      const jobId = rows[0].id;
+      await runChampionCheckCycle({ limit: 25, job_id: jobId });
+    } catch (err) {
+      console.error('[scheduler] champion check failed:', err);
     }
   },
   { timezone: tz }

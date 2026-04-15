@@ -1,0 +1,131 @@
+<%
+  function pill(color, text) {
+    const cls = {
+      emerald: 'bg-emerald-100 text-emerald-800',
+      amber:   'bg-amber-100 text-amber-800',
+      slate:   'bg-slate-100 text-slate-700',
+      red:     'bg-red-100 text-red-800',
+      sky:     'bg-sky-100 text-sky-800',
+      violet:  'bg-violet-100 text-violet-800',
+    }[color] || 'bg-slate-100 text-slate-700';
+    return `<span class="pill ${cls}">${text}</span>`;
+  }
+  const statusColor = {
+    customer: 'emerald',
+    prospect: 'sky',
+    churned: 'amber',
+    disqualified: 'slate',
+  };
+%>
+
+<div class="mb-6 flex items-start justify-between gap-4">
+  <div>
+    <h1 class="text-2xl font-semibold">Accounts</h1>
+    <p class="text-sm text-slate-500 mt-1 max-w-2xl">
+      Ambition's account book — current customers, churned accounts, active prospects, and DQs.
+      Used by the champion tracker to route a detected move: landing at a live customer → internal
+      note; landing at a churned account → win-back play; anywhere else → warm outbound.
+    </p>
+  </div>
+</div>
+
+<div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+  <a href="/accounts?status=customer" class="bg-white border border-slate-200 rounded-lg p-4 hover:border-emerald-300">
+    <div class="text-xs uppercase tracking-wide text-slate-500">Customers</div>
+    <div class="text-2xl font-semibold mt-1 text-emerald-700"><%= counts.customer %></div>
+  </a>
+  <a href="/accounts?status=churned" class="bg-white border border-slate-200 rounded-lg p-4 hover:border-amber-300">
+    <div class="text-xs uppercase tracking-wide text-slate-500">Churned · win-back list</div>
+    <div class="text-2xl font-semibold mt-1 text-amber-700"><%= counts.churned %></div>
+  </a>
+  <a href="/accounts?status=prospect" class="bg-white border border-slate-200 rounded-lg p-4 hover:border-sky-300">
+    <div class="text-xs uppercase tracking-wide text-slate-500">Prospects</div>
+    <div class="text-2xl font-semibold mt-1 text-sky-700"><%= counts.prospect %></div>
+  </a>
+  <a href="/accounts?status=disqualified" class="bg-white border border-slate-200 rounded-lg p-4">
+    <div class="text-xs uppercase tracking-wide text-slate-500">Disqualified</div>
+    <div class="text-2xl font-semibold mt-1 text-slate-600"><%= counts.disqualified %></div>
+  </a>
+</div>
+
+<div class="bg-white border border-slate-200 rounded-lg mb-8">
+  <div class="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+    <h2 class="font-semibold">Add accounts (paste CSV)</h2>
+    <span class="text-xs text-slate-500">Headers: account_name, domain, status, owner, owner_role, industry, notes</span>
+  </div>
+  <form method="POST" action="/accounts/import" class="p-4">
+    <textarea name="csv" rows="8" placeholder="account_name,domain,status,owner,owner_role,industry,notes&#10;Acme Logistics,acme.com,customer,kai,ae,logistics,Renewal Q3&#10;Bravo Tech,bravotech.io,churned,colin,ae,saas,Left in 2024 over pricing"
+      class="w-full border border-slate-300 rounded px-3 py-2 text-sm font-mono focus:ring-1 focus:ring-slate-500 focus:outline-none"></textarea>
+    <div class="flex items-center justify-between mt-3">
+      <span class="text-xs text-slate-500">status must be one of: customer, prospect, churned, disqualified. Dedups by domain or account_name.</span>
+      <button type="submit" class="bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded text-sm font-medium">Import</button>
+    </div>
+  </form>
+  <% if (importResults && importResults.length > 0) { %>
+    <div class="px-4 pb-4">
+      <div class="text-xs font-semibold text-slate-700 uppercase tracking-wide mb-2">Last import</div>
+      <ul class="text-xs space-y-1">
+        <% importResults.slice(0, 20).forEach(function(r) { %>
+          <li class="<%= r.ok ? 'text-slate-600' : 'text-red-700' %>">
+            row <%= r.index + 1 %>:
+            <% if (r.ok) { %>
+              <%= r.inserted ? 'added' : 'updated' %> — <%= r.name %> (<%= r.status %>)
+            <% } else { %>
+              error — <%= (r.errors || []).join('; ') %>
+            <% } %>
+          </li>
+        <% }); %>
+      </ul>
+    </div>
+  <% } %>
+</div>
+
+<div class="bg-white border border-slate-200 rounded-lg overflow-hidden">
+  <div class="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+    <h2 class="font-semibold">
+      <% if (filter) { %>
+        <%= filter.charAt(0).toUpperCase() + filter.slice(1) %> accounts
+        <a href="/accounts" class="text-xs text-slate-500 hover:text-slate-900 font-normal ml-2 underline">Clear filter</a>
+      <% } else { %>
+        All accounts
+      <% } %>
+      <span class="text-slate-400 font-normal">(<%= accounts.length %>)</span>
+    </h2>
+  </div>
+  <% if (accounts.length === 0) { %>
+    <div class="p-6 text-sm text-slate-500">No accounts yet. Paste a CSV above to seed the book.</div>
+  <% } else { %>
+    <table class="w-full text-sm">
+      <thead class="text-slate-500 uppercase tracking-wider text-xs bg-slate-50">
+        <tr>
+          <th class="text-left px-4 py-2">Account</th>
+          <th class="text-left px-4 py-2">Domain</th>
+          <th class="text-left px-4 py-2">Status</th>
+          <th class="text-left px-4 py-2">Owner</th>
+          <th class="text-left px-4 py-2">Industry</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-100">
+        <% accounts.forEach(function(a) { %>
+          <tr>
+            <td class="px-4 py-3">
+              <div class="font-medium"><%= a.account_name %></div>
+              <% if (a.notes) { %><div class="text-xs text-slate-500 truncate max-w-md"><%= a.notes %></div><% } %>
+            </td>
+            <td class="px-4 py-3 text-xs text-slate-500"><%= a.domain || '—' %></td>
+            <td class="px-4 py-3"><%- pill(statusColor[a.status] || 'slate', a.status) %></td>
+            <td class="px-4 py-3 text-xs">
+              <% if (a.owner_name || a.owner_email) { %>
+                <%= a.owner_name || a.owner_email %>
+                <% if (a.owner_role) { %><span class="text-slate-400">· <%= a.owner_role %></span><% } %>
+              <% } else { %>
+                <span class="text-slate-400">—</span>
+              <% } %>
+            </td>
+            <td class="px-4 py-3 text-xs text-slate-600"><%= a.industry || '—' %></td>
+          </tr>
+        <% }); %>
+      </tbody>
+    </table>
+  <% } %>
+</div>
