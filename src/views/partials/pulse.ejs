@@ -1,5 +1,6 @@
 <%
-  // Expects: signals (array), signalArchiveCount (int), account (obj), rescanStatus (string|null)
+  // Expects: signals, archivedSignals (array, may be []), signalArchiveCount (int),
+  // archiveOpen (bool), account (obj), rescanStatus (string|null)
   const riskMeta = {
     defense_risk:        { label: 'Defense',   pill: 'bg-red-100 text-red-800',     dot: 'bg-red-500' },
     offense_opportunity: { label: 'Offense',   pill: 'bg-sky-100 text-sky-800',     dot: 'bg-sky-500' },
@@ -17,7 +18,10 @@
     </div>
     <div class="flex items-center gap-2">
       <% if (signalArchiveCount > 0) { %>
-        <span class="text-xs text-slate-500"><%= signalArchiveCount %> dismissed</span>
+        <a href="?archive=<%= archiveOpen ? '0' : '1' %>#archive"
+           class="text-xs text-slate-500 hover:text-slate-800 underline">
+          <%= archiveOpen ? 'Hide' : 'View' %> <%= signalArchiveCount %> archived
+        </a>
       <% } %>
       <form method="POST" action="/accounts/<%= account.id %>/signals/rescan">
         <button type="submit" class="text-xs border border-slate-300 text-slate-700 hover:bg-slate-50 px-3 py-1.5 rounded font-medium">
@@ -76,5 +80,46 @@
         </li>
       <% }); %>
     </ul>
+  <% } %>
+
+  <% if (archiveOpen && archivedSignals && archivedSignals.length > 0) { %>
+    <div id="archive" class="border-t border-slate-200 bg-slate-50">
+      <div class="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+        Archive · <%= archivedSignals.length %> dismissed
+      </div>
+      <ul class="divide-y divide-slate-200">
+        <% archivedSignals.forEach(function(s) {
+          const meta = riskMeta[s.risk_class] || riskMeta.neutral;
+        %>
+          <li class="px-4 py-3 hover:bg-white">
+            <div class="flex items-start gap-3">
+              <span class="inline-block w-2 h-2 rounded-full mt-2 <%= meta.dot %> opacity-50"></span>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 mb-1 flex-wrap">
+                  <span class="pill <%= meta.pill %> opacity-70"><%= meta.label %></span>
+                  <span class="text-xs text-slate-500">SEV <%= s.severity %></span>
+                  <span class="text-xs text-slate-400">· <%= new Date(s.detected_at).toLocaleDateString() %></span>
+                </div>
+                <div class="text-sm text-slate-700"><%= s.title %></div>
+                <% if (s.so_what) { %>
+                  <div class="text-xs text-slate-500 mt-1"><%= s.so_what %></div>
+                <% } %>
+                <div class="flex items-center gap-3 mt-2 text-xs">
+                  <form method="POST" action="/signals/<%= s.id %>/restore" class="inline">
+                    <input type="hidden" name="back" value="/accounts/<%= account.id %>?archive=1#archive">
+                    <button type="submit" class="text-slate-600 hover:text-slate-900 underline">
+                      Restore to Pulse
+                    </button>
+                  </form>
+                  <% if (s.source_url) { %>
+                    <a href="<%= s.source_url %>" target="_blank" rel="noopener" class="text-slate-500 hover:text-slate-900 underline">Source ↗</a>
+                  <% } %>
+                </div>
+              </div>
+            </div>
+          </li>
+        <% }); %>
+      </ul>
+    </div>
   <% } %>
 </div>

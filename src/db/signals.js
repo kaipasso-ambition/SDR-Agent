@@ -142,6 +142,21 @@ export async function getSignalsForAccount(
   return rows;
 }
 
+// Archived (dismissed) signals for an account, newest first. Shown in the
+// collapsible archive section under Pulse so the AE can build a picture
+// over time — re-open one via POST /signals/:id/restore when a newer
+// related signal lands.
+export async function getArchivedSignalsForAccount(accountId, { limit = 50 } = {}) {
+  const { rows } = await query(
+    `SELECT * FROM account_signals
+      WHERE account_id = $1 AND status = 'dismissed'
+      ORDER BY detected_at DESC
+      LIMIT $2`,
+    [accountId, limit]
+  );
+  return rows;
+}
+
 export async function getSignalArchiveCount(accountId) {
   const { rows } = await query(
     `SELECT COUNT(*)::int AS n FROM account_signals

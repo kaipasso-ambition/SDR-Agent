@@ -778,12 +778,14 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 webRouter.get('/accounts/:id', requireAuth, async (req, res, next) => {
   try {
     if (!UUID_RE.test(req.params.id)) return res.redirect('/accounts');
-    const bundle = await getAccountBundle(req.params.id);
+    const includeArchive = req.query?.archive === '1';
+    const bundle = await getAccountBundle(req.params.id, { includeArchive });
     if (!bundle) return res.redirect('/accounts');
     res.render('account_detail', {
       title: bundle.account.account_name,
       personas: PERSONAS,
       rescanStatus: typeof req.query?.rescan === 'string' ? req.query.rescan : null,
+      archiveOpen: includeArchive,
       ...bundle,
     });
   } catch (err) {

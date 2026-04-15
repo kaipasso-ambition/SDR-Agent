@@ -99,7 +99,14 @@
   </div>
 </div>
 
-<%- include('partials/pulse', { signals: signals, signalArchiveCount: signalArchiveCount, account: account, rescanStatus: typeof rescanStatus !== 'undefined' ? rescanStatus : null }) %>
+<%- include('partials/pulse', {
+  signals: signals,
+  archivedSignals: typeof archivedSignals !== 'undefined' ? archivedSignals : [],
+  signalArchiveCount: signalArchiveCount,
+  archiveOpen: typeof archiveOpen !== 'undefined' ? archiveOpen : false,
+  account: account,
+  rescanStatus: typeof rescanStatus !== 'undefined' ? rescanStatus : null,
+}) %>
 
 <% if (account.status === 'customer' && coverage) { %>
   <%

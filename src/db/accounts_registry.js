@@ -238,7 +238,7 @@ export async function getAccountById(id) {
 // Pull everything an AE would want on the account home page: the registry
 // row + related prospects (matched by domain) + recent drafts/sent messages
 // for any of those prospects + any champions associated with this account.
-export async function getAccountBundle(id) {
+export async function getAccountBundle(id, { includeArchive = false } = {}) {
   const account = await getAccountById(id);
   if (!account) return null;
 
@@ -309,13 +309,20 @@ export async function getAccountBundle(id) {
   // Signal Pulse — recent account_signals for this account, risk-first
   // ranked. Imported lazily to avoid a circular import with the signals
   // module (signals.js imports nothing from here, but belt + braces).
-  const { getSignalsForAccount, getSignalArchiveCount } = await import('./signals.js');
-  const signals = await getSignalsForAccount(id, { limit: 5 });
+  const { getSignalsForAccount, getSignalArchiveCount, getArchivedSignalsForAccount } =
+    await import('./signals.js');
+  const signals = await getSignalsForAccount(id, { limit: 20 });
   const signalArchiveCount = await getSignalArchiveCount(id);
+  // Only hydrate the full archive when the caller asks for it — avoids a
+  // needless query on every Pulse render. The account page passes through
+  // ?archive=1 to flip this on.
+  const archivedSignals = includeArchive
+    ? await getArchivedSignalsForAccount(id, { limit: 50 })
+    : [];
 
   return {
     account, prospects, drafts, sent, championCounts, coverage,
-    signals, signalArchiveCount,
+    signals, signalArchiveCount, archivedSignals,
   };
 }
 
