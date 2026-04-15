@@ -261,11 +261,14 @@ export async function listPlaysForAccount(accountId) {
             h.narrative_hook AS hypothesis_hook,
             s.title AS trigger_signal_title,
             s.risk_class AS trigger_signal_risk_class,
-            u.name AS author_name
+            u.name AS author_name,
+            e.name AS event_name,
+            e.kind AS event_kind
        FROM account_plays p
        LEFT JOIN account_hypotheses h ON h.id = p.hypothesis_id
        LEFT JOIN account_signals s   ON s.id = p.triggered_by_signal_id
        LEFT JOIN users u             ON u.id = p.author_user_id
+       LEFT JOIN play_events e       ON e.id = p.event_id
       WHERE p.account_id = $1
       ORDER BY
         CASE p.status
@@ -300,12 +303,15 @@ export async function listPlaysForUser(userId, { status = null } = {}) {
             h.use_case  AS hypothesis_use_case,
             h.narrative_hook AS hypothesis_hook,
             s.title     AS trigger_signal_title,
-            u.name      AS author_name
+            u.name      AS author_name,
+            e.name      AS event_name,
+            e.kind      AS event_kind
        FROM account_plays p
        JOIN accounts_registry a ON a.id = p.account_id
        LEFT JOIN account_hypotheses h ON h.id = p.hypothesis_id
        LEFT JOIN account_signals s    ON s.id = p.triggered_by_signal_id
        LEFT JOIN users u              ON u.id = p.author_user_id
+       LEFT JOIN play_events e        ON e.id = p.event_id
       WHERE (a.owner_user_id = $1 OR a.owner_user_id IS NULL)
       ${statusClause}
       ORDER BY
@@ -347,6 +353,7 @@ export async function createPlay({
   account_id,
   hypothesis_id = null,
   triggered_by_signal_id = null,
+  event_id = null,
   author_user_id = null,
   instinct,
   ai_expansion = null,
@@ -357,12 +364,12 @@ export async function createPlay({
 }) {
   const { rows } = await query(
     `INSERT INTO account_plays (
-       account_id, hypothesis_id, triggered_by_signal_id, author_user_id,
+       account_id, hypothesis_id, triggered_by_signal_id, event_id, author_user_id,
        instinct, ai_expansion, contact_path, status, next_action, next_action_due
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7::uuid[], $8, $9, $10)
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::uuid[], $9, $10, $11)
      RETURNING *`,
     [
-      account_id, hypothesis_id, triggered_by_signal_id, author_user_id,
+      account_id, hypothesis_id, triggered_by_signal_id, event_id, author_user_id,
       instinct, ai_expansion ? JSON.stringify(ai_expansion) : null,
       contact_path, status, next_action, next_action_due,
     ]
@@ -375,7 +382,7 @@ export async function updatePlay(id, patch) {
   const values = [];
   let i = 1;
   const editable = [
-    'hypothesis_id', 'instinct', 'contact_path', 'status',
+    'hypothesis_id', 'event_id', 'instinct', 'contact_path', 'status',
     'next_action', 'next_action_due',
   ];
   for (const k of editable) {

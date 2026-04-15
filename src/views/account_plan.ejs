@@ -363,6 +363,20 @@
           </label>
         <% } %>
 
+        <% if (typeof events !== 'undefined' && events && events.length > 0) { %>
+          <label class="block text-sm">
+            <span class="font-medium text-slate-800">Event <span class="text-slate-400 font-normal">(optional — Gartner stop, CVI dinner, themed wave)</span></span>
+            <select name="event_id" class="w-full border border-slate-300 rounded px-3 py-2 mt-1 text-sm">
+              <option value="">— none —</option>
+              <% events.forEach(function(e) { %>
+                <option value="<%= e.id %>">
+                  <%= e.name %><% if (e.event_date) { %> · <%= new Date(e.event_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) %><% } %>
+                </option>
+              <% }); %>
+            </select>
+          </label>
+        <% } %>
+
         <% if (contacts.length > 0) { %>
           <div class="text-sm">
             <div class="font-medium text-slate-800 mb-1">Contact path <span class="text-slate-400 font-normal">(order matters — first move lands on the first pick)</span></div>
@@ -459,6 +473,9 @@
                     <%= useCaseLabel[p.hypothesis_use_case] || p.hypothesis_use_case %> ·
                   <% } %>
                   by <%= p.author_name || 'unknown' %> · <%= new Date(p.created_at).toLocaleDateString() %>
+                  <% if (p.event_name) { %>
+                    · <a href="/events/<%= p.event_id %>" class="inline-flex items-center gap-1 text-violet-700 hover:text-violet-900">🎯 <%= p.event_name %></a>
+                  <% } %>
                 </div>
               </div>
               <div class="flex items-center gap-2">

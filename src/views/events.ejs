@@ -1,0 +1,75 @@
+<%
+  const statusMeta = {
+    planning:  { label: 'Planning',  cls: 'bg-amber-100 text-amber-900 border-amber-200' },
+    active:    { label: 'Active',    cls: 'bg-emerald-100 text-emerald-900 border-emerald-200' },
+    completed: { label: 'Completed', cls: 'bg-slate-100 text-slate-700 border-slate-200' },
+    cancelled: { label: 'Cancelled', cls: 'bg-slate-100 text-slate-500 border-slate-200' },
+  };
+  const kindLabel = { event: 'Event', campaign: 'Campaign', one_off: 'One-off' };
+  function shortDate(d) {
+    if (!d) return '—';
+    return new Date(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  }
+%>
+
+<div class="mb-6 flex items-start justify-between gap-4 flex-wrap">
+  <div>
+    <h1 class="text-2xl font-semibold">Events &amp; one-offs</h1>
+    <p class="text-sm text-slate-500 mt-1 max-w-3xl">
+      The moments where a play spans many accounts — Gartner, a CVI dinner, a themed campaign.
+      Each event gathers account-level plays under one coordinating artifact.
+    </p>
+  </div>
+  <div class="flex items-center gap-2">
+    <% if (!showAll) { %>
+      <a href="/events?all=1" class="text-xs text-slate-500 hover:text-slate-900 underline">Show completed</a>
+    <% } else { %>
+      <a href="/events" class="text-xs text-slate-500 hover:text-slate-900 underline">Hide completed</a>
+    <% } %>
+    <a href="/events/new" class="bg-slate-900 hover:bg-slate-800 text-white px-3 py-1.5 rounded text-sm font-medium">
+      + New event
+    </a>
+  </div>
+</div>
+
+<% if (events.length === 0) { %>
+  <div class="bg-white border border-slate-200 rounded-lg p-8 text-center">
+    <div class="text-slate-500 text-sm">
+      No events on the board yet. <a href="/events/new" class="underline">Create one →</a><br/>
+      Use these for Gartner stops, partner dinners, or a themed outbound wave.
+    </div>
+  </div>
+<% } else { %>
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <% events.forEach(function(e) {
+      const s = statusMeta[e.status] || statusMeta.planning;
+    %>
+      <a href="/events/<%= e.id %>" class="block bg-white border border-slate-200 rounded-lg p-4 hover:border-slate-400">
+        <div class="flex items-start justify-between gap-3 mb-2">
+          <div class="min-w-0">
+            <div class="font-semibold text-slate-900 truncate"><%= e.name %></div>
+            <div class="text-xs text-slate-500 mt-0.5">
+              <%= kindLabel[e.kind] || 'Event' %>
+              <% if (e.event_date) { %> · <%= shortDate(e.event_date) %><% } %>
+              <% if (e.location) { %> · <%= e.location %><% } %>
+            </div>
+          </div>
+          <span class="text-[10px] uppercase tracking-wide font-semibold border rounded px-1.5 py-0.5 <%= s.cls %>">
+            <%= s.label %>
+          </span>
+        </div>
+
+        <% if (e.description) { %>
+          <div class="text-xs text-slate-600 line-clamp-2 mb-3"><%= e.description %></div>
+        <% } %>
+
+        <div class="flex items-center gap-4 text-xs text-slate-500 pt-2 border-t border-slate-100">
+          <span><strong class="text-slate-900"><%= e.play_count || 0 %></strong> total play<%= e.play_count === 1 ? '' : 's' %></span>
+          <% if ((e.open_play_count || 0) > 0) { %>
+            <span class="text-emerald-700"><strong><%= e.open_play_count %></strong> in flight</span>
+          <% } %>
+        </div>
+      </a>
+    <% }); %>
+  </div>
+<% } %>

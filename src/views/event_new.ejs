@@ -1,0 +1,60 @@
+<div class="max-w-2xl mx-auto">
+  <a href="/events" class="text-xs text-slate-500 hover:text-slate-900">← Events</a>
+  <h1 class="text-2xl font-semibold mt-2 mb-1">New event</h1>
+  <p class="text-sm text-slate-500 mb-6">
+    Set up a Gartner stop, a CVI dinner, or a themed campaign. Add account-level plays to it
+    from each account's Game Plan, or from the event page itself.
+  </p>
+
+  <form method="POST" action="/events" class="bg-white border border-slate-200 rounded-lg p-5 space-y-4">
+    <label class="block text-sm">
+      <span class="font-medium text-slate-800">Name *</span>
+      <input name="name" required
+             placeholder="e.g. Gartner CSO Summit 2026, CVI dinner — NYC Apr 28"
+             class="w-full border border-slate-300 rounded px-3 py-2 mt-1" />
+    </label>
+
+    <div class="grid grid-cols-2 gap-3">
+      <label class="block text-sm">
+        <span class="font-medium text-slate-800">Kind</span>
+        <select name="kind" class="w-full border border-slate-300 rounded px-3 py-2 mt-1">
+          <option value="event">Event (conference, dinner)</option>
+          <option value="campaign">Campaign (themed wave)</option>
+          <option value="one_off">One-off</option>
+        </select>
+      </label>
+      <label class="block text-sm">
+        <span class="font-medium text-slate-800">Date</span>
+        <input type="date" name="event_date" class="w-full border border-slate-300 rounded px-3 py-2 mt-1" />
+      </label>
+    </div>
+
+    <label class="block text-sm">
+      <span class="font-medium text-slate-800">Location</span>
+      <input name="location" placeholder="Orlando · NYC · virtual"
+             class="w-full border border-slate-300 rounded px-3 py-2 mt-1" />
+    </label>
+
+    <label class="block text-sm">
+      <span class="font-medium text-slate-800">Context</span>
+      <textarea name="description" rows="4"
+                placeholder="Theme, sponsors, who we want to meet, why this moment matters. This feeds the play builder when you add plays under the event."
+                class="w-full border border-slate-300 rounded px-3 py-2 mt-1"></textarea>
+    </label>
+
+    <label class="block text-sm">
+      <span class="font-medium text-slate-800">Status</span>
+      <select name="status" class="w-full border border-slate-300 rounded px-3 py-2 mt-1">
+        <option value="planning">Planning</option>
+        <option value="active">Active</option>
+      </select>
+    </label>
+
+    <div class="flex items-center justify-between gap-3 pt-2">
+      <a href="/events" class="text-sm text-slate-500 hover:text-slate-900">Cancel</a>
+      <button type="submit" class="bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded font-medium text-sm">
+        Create event
+      </button>
+    </div>
+  </form>
+</div>

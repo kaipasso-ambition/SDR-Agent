@@ -1,0 +1,177 @@
+<%
+  // Accounts with zero active plays AND a fresh offense-opportunity
+  // signal are the most addressable — something material moved and
+  // nobody's working it yet. The server query already sorts those to
+  // the top; this classifier is just for the visual pill.
+  function winbackTier(r) {
+    const noPlay = (r.active_play_count || 0) === 0;
+    const hasOffense = (r.offense_signal_count || 0) > 0;
+    if (noPlay && hasOffense) return { tier: 'hot',   label: '🔥 Re-opening',  cls: 'bg-red-100 text-red-900 border-red-300' };
+    if (noPlay)               return { tier: 'open',  label: 'Needs a play',   cls: 'bg-amber-100 text-amber-900 border-amber-300' };
+    return { tier: 'in_play', label: 'Play in flight', cls: 'bg-emerald-100 text-emerald-900 border-emerald-300' };
+  }
+  const playStatusMeta = {
+    drafting: { label: 'Drafting', cls: 'bg-amber-100 text-amber-800' },
+    active:   { label: 'Active',   cls: 'bg-emerald-100 text-emerald-800' },
+    paused:   { label: 'Paused',   cls: 'bg-slate-100 text-slate-700' },
+  };
+  function daysSince(d) {
+    if (!d) return null;
+    const ms = Date.now() - new Date(d).getTime();
+    const days = Math.floor(ms / (1000 * 60 * 60 * 24));
+    return days;
+  }
+%>
+
+<div class="mb-6 flex items-start justify-between gap-4 flex-wrap">
+  <div>
+    <h1 class="text-2xl font-semibold">Churned — win-back</h1>
+    <p class="text-sm text-slate-500 mt-1 max-w-3xl">
+      The goal on every churned account: find the best play to re-open the door, and identify the
+      next champion. Accounts with a fresh offense-opportunity signal and no active play surface
+      at the top — those are the ones something just moved on.
+    </p>
+  </div>
+  <div class="flex items-center gap-2">
+    <a href="/accounts" class="text-xs text-slate-500 hover:text-slate-900 underline">All accounts</a>
+    <a href="/accounts?status=customer" class="text-xs text-slate-500 hover:text-slate-900 underline">Customers (<%= counts.customer %>)</a>
+    <a href="/accounts?status=prospect" class="text-xs text-slate-500 hover:text-slate-900 underline">Prospects (<%= counts.prospect %>)</a>
+  </div>
+</div>
+
+<% if (rows.length === 0) { %>
+  <div class="bg-white border border-slate-200 rounded-lg p-8 text-center text-sm text-slate-500">
+    No churned accounts in the book. Good problem to have.
+  </div>
+<% } else { %>
+  <%
+    const hot   = rows.filter(r => (r.active_play_count || 0) === 0 && (r.offense_signal_count || 0) > 0);
+    const open  = rows.filter(r => (r.active_play_count || 0) === 0 && (r.offense_signal_count || 0) === 0);
+    const inPlay = rows.filter(r => (r.active_play_count || 0) > 0);
+  %>
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
+    <div class="bg-white border border-red-200 rounded-lg p-4">
+      <div class="text-xs uppercase tracking-wide text-slate-500">🔥 Re-opening</div>
+      <div class="text-2xl font-semibold mt-1 text-red-700"><%= hot.length %></div>
+      <div class="text-xs text-slate-500 mt-0.5">Fresh signal, no play yet.</div>
+    </div>
+    <div class="bg-white border border-amber-200 rounded-lg p-4">
+      <div class="text-xs uppercase tracking-wide text-slate-500">Needs a play</div>
+      <div class="text-2xl font-semibold mt-1 text-amber-700"><%= open.length %></div>
+      <div class="text-xs text-slate-500 mt-0.5">Churned, no play on the board.</div>
+    </div>
+    <div class="bg-white border border-emerald-200 rounded-lg p-4">
+      <div class="text-xs uppercase tracking-wide text-slate-500">In flight</div>
+      <div class="text-2xl font-semibold mt-1 text-emerald-700"><%= inPlay.length %></div>
+      <div class="text-xs text-slate-500 mt-0.5">Win-back play already running.</div>
+    </div>
+  </div>
+
+  <div class="space-y-3">
+    <% rows.forEach(function(r) {
+      const tier = winbackTier(r);
+      const daysSinceSignal = daysSince(r.last_signal_at);
+      const playStatus = r.latest_play_status ? playStatusMeta[r.latest_play_status] : null;
+    %>
+      <section class="bg-white border border-slate-200 rounded-lg overflow-hidden">
+        <div class="px-4 py-3 flex items-start justify-between gap-3 flex-wrap">
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 flex-wrap">
+              <a href="/accounts/<%= r.id %>" class="font-semibold text-slate-900 hover:text-emerald-700">
+                <%= r.account_name %>
+              </a>
+              <span class="text-[10px] uppercase tracking-wide font-semibold border rounded px-1.5 py-0.5 <%= tier.cls %>">
+                <%= tier.label %>
+              </span>
+              <% if (r.domain) { %><span class="text-xs text-slate-500"><%= r.domain %></span><% } %>
+              <% if (r.industry) { %><span class="text-xs text-slate-500">· <%= r.industry %></span><% } %>
+            </div>
+            <% if (r.notes) { %>
+              <div class="text-xs text-slate-500 mt-1 line-clamp-1 max-w-2xl"><%= r.notes %></div>
+            <% } %>
+          </div>
+          <div class="flex items-center gap-2 shrink-0">
+            <a href="/accounts/<%= r.id %>/plan"
+               class="text-xs border border-slate-300 hover:border-slate-500 text-slate-700 px-2.5 py-1 rounded font-medium">
+              Game Plan →
+            </a>
+            <% if ((r.active_play_count || 0) === 0) { %>
+              <a href="/accounts/<%= r.id %>/plan?new_play=1#play-composer"
+                 class="text-xs bg-slate-900 hover:bg-slate-800 text-white px-2.5 py-1 rounded font-medium">
+                Build a win-back play →
+              </a>
+            <% } %>
+          </div>
+        </div>
+
+        <div class="border-t border-slate-100 px-4 py-3 grid grid-cols-1 md:grid-cols-4 gap-4 bg-slate-50">
+          <!-- Active play -->
+          <div>
+            <div class="text-[10px] uppercase tracking-wide text-slate-500 font-semibold mb-1">Active play</div>
+            <% if (r.latest_play_id) { %>
+              <a href="/accounts/<%= r.id %>/plan#play-<%= r.latest_play_id %>"
+                 class="text-sm text-slate-900 hover:text-emerald-700 block truncate" title="<%= r.latest_play_name || '(no expansion)' %>">
+                <%= r.latest_play_name || '(unnamed play)' %>
+              </a>
+              <% if (playStatus) { %>
+                <span class="pill <%= playStatus.cls %> mt-1"><%= playStatus.label %></span>
+              <% } %>
+              <% if ((r.active_play_count || 0) > 1) { %>
+                <span class="text-xs text-slate-500 ml-1">+<%= r.active_play_count - 1 %> more</span>
+              <% } %>
+            <% } else { %>
+              <div class="text-xs text-slate-500 italic">No play yet.</div>
+            <% } %>
+          </div>
+
+          <!-- Champions on file -->
+          <div>
+            <div class="text-[10px] uppercase tracking-wide text-slate-500 font-semibold mb-1">Champions on file</div>
+            <% if ((r.champion_count || 0) > 0) { %>
+              <div class="text-sm text-slate-900"><%= r.champion_count %> champion<%= r.champion_count === 1 ? '' : 's' %></div>
+              <div class="text-xs text-slate-500">of <%= r.contact_count %> contact<%= r.contact_count === 1 ? '' : 's' %> on the chess board</div>
+            <% } else if ((r.contact_count || 0) > 0) { %>
+              <div class="text-sm text-slate-900"><%= r.contact_count %> contact<%= r.contact_count === 1 ? '' : 's' %></div>
+              <div class="text-xs text-amber-700">No champion identified yet.</div>
+            <% } else { %>
+              <div class="text-xs text-slate-500 italic">No contacts on file.</div>
+              <a href="/accounts/<%= r.id %>/plan" class="text-xs text-slate-500 hover:text-slate-900 underline">Build the chess board →</a>
+            <% } %>
+          </div>
+
+          <!-- Prospects at the domain (candidates for new champion) -->
+          <div>
+            <div class="text-[10px] uppercase tracking-wide text-slate-500 font-semibold mb-1">Prospects at domain</div>
+            <% if ((r.prospect_count || 0) > 0) { %>
+              <div class="text-sm text-slate-900"><%= r.prospect_count %> researched</div>
+              <a href="/accounts/<%= r.id %>" class="text-xs text-slate-500 hover:text-slate-900 underline">Candidates for new champion →</a>
+            <% } else { %>
+              <div class="text-xs text-slate-500 italic">None researched yet.</div>
+              <a href="/accounts/<%= r.id %>" class="text-xs text-slate-500 hover:text-slate-900 underline">Find prospects →</a>
+            <% } %>
+          </div>
+
+          <!-- Signals -->
+          <div>
+            <div class="text-[10px] uppercase tracking-wide text-slate-500 font-semibold mb-1">Reason to re-open</div>
+            <% if ((r.offense_signal_count || 0) > 0) { %>
+              <div class="text-sm text-red-700 font-medium"><%= r.offense_signal_count %> offense signal<%= r.offense_signal_count === 1 ? '' : 's' %></div>
+              <div class="text-xs text-slate-500">
+                <% if (daysSinceSignal !== null) { %>latest <%= daysSinceSignal %>d ago<% } %>
+              </div>
+              <a href="/accounts/<%= r.id %>" class="text-xs text-slate-600 hover:text-slate-900 underline">See the Pulse →</a>
+            <% } else if ((r.open_signal_count || 0) > 0) { %>
+              <div class="text-sm text-slate-700"><%= r.open_signal_count %> open signal<%= r.open_signal_count === 1 ? '' : 's' %></div>
+              <div class="text-xs text-slate-500">No offense opportunities yet.</div>
+            <% } else { %>
+              <div class="text-xs text-slate-500 italic">No signals. A Pulse rescan may turn one up.</div>
+              <form method="POST" action="/accounts/<%= r.id %>/signals/rescan" class="inline">
+                <button class="text-xs text-slate-600 hover:text-slate-900 underline">Rescan →</button>
+              </form>
+            <% } %>
+          </div>
+        </div>
+      </section>
+    <% }); %>
+  </div>
+<% } %>

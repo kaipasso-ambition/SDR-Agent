@@ -102,6 +102,11 @@
                       <%= exp.named_play || '(no expansion yet — click to rebuild)' %>
                     </a>
                     <span class="pill <%= sm.cls %>"><%= sm.label %></span>
+                    <% if (p.event_name) { %>
+                      <a href="/events/<%= p.event_id %>" class="inline-flex items-center gap-1 text-[11px] text-violet-700 hover:text-violet-900 border border-violet-200 bg-violet-50 rounded px-1.5 py-0.5">
+                        🎯 <%= p.event_name %>
+                      </a>
+                    <% } %>
                   </div>
                   <div class="text-sm text-slate-600 mt-1 line-clamp-2">
                     <span class="text-xs text-slate-500 uppercase tracking-wide font-semibold">Instinct ·</span>

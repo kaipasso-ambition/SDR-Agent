@@ -17,6 +17,7 @@ import {
 import {
   ingestAccountCsv,
   listAccounts,
+  listChurnedWithWinbackContext,
   getAccountStatusCounts,
   getAccountBundle,
   getCoverageByAccount,
@@ -68,6 +69,14 @@ import {
   deletePlay,
   countActivePlays,
 } from '../db/game_plan.js';
+import {
+  listEvents,
+  getEventById,
+  listPlaysForEvent,
+  createEvent,
+  updateEvent,
+  deleteEvent,
+} from '../db/play_events.js';
 import { buildPlay } from '../agents/play_builder.js';
 
 export const webRouter = Router();
@@ -712,6 +721,25 @@ webRouter.get('/accounts', requireAuth, async (req, res, next) => {
   try {
     const filter = ['customer', 'prospect', 'churned', 'disqualified'].includes(req.query.status)
       ? req.query.status : null;
+
+    // Churned accounts get their own focused view: the goal there is
+    // always "what's the best play to run, and which prospects or
+    // champions can we resurface?" — a generic list column doesn't
+    // capture that. We render accounts_churned.ejs with an enriched
+    // per-account context bundle (active play, champion count,
+    // prospect count at the domain, recent offense signal count).
+    if (filter === 'churned') {
+      const [rows, counts] = await Promise.all([
+        listChurnedWithWinbackContext(),
+        getAccountStatusCounts(),
+      ]);
+      return res.render('accounts_churned', {
+        title: 'Churned — win-back',
+        rows,
+        counts,
+      });
+    }
+
     // readiness=not_ready surfaces only customers missing persona coverage
     // for the May 15 launch. Implicitly forces the status filter to customer.
     const readinessFilter = req.query.readiness === 'not_ready' ? 'not_ready' : null;
@@ -1002,10 +1030,11 @@ webRouter.get('/accounts/:id/plan', requireAuth, async (req, res, next) => {
     const bundle = await getAccountBundle(accountId);
     if (!bundle) return res.redirect('/accounts');
 
-    const [contacts, hypotheses, plays] = await Promise.all([
+    const [contacts, hypotheses, plays, events] = await Promise.all([
       listContactsForAccount(accountId),
       listHypothesesForAccount(accountId),
       listPlaysForAccount(accountId),
+      listEvents({ includeCompleted: false }),
     ]);
 
     // If the Start-a-play button handed us a signal_id, hydrate it so
@@ -1021,6 +1050,7 @@ webRouter.get('/accounts/:id/plan', requireAuth, async (req, res, next) => {
       contacts,
       hypotheses,
       plays,
+      events,
       pulseSignals: bundle.signals,
       triggerSignal,
       composerOpen: req.query?.new_play === '1',
@@ -1187,6 +1217,9 @@ webRouter.post('/accounts/:id/plays', requireAuth, async (req, res, next) => {
     const triggered_by_signal_id = req.body?.triggered_by_signal_id && UUID_RE.test(req.body.triggered_by_signal_id)
       ? req.body.triggered_by_signal_id
       : null;
+    const event_id = req.body?.event_id && UUID_RE.test(req.body.event_id)
+      ? req.body.event_id
+      : null;
     const contact_path = []
       .concat(req.body?.contact_path || [])
       .filter((v) => typeof v === 'string' && UUID_RE.test(v));
@@ -1197,6 +1230,7 @@ webRouter.post('/accounts/:id/plays', requireAuth, async (req, res, next) => {
       account_id: accountId,
       hypothesis_id,
       triggered_by_signal_id,
+      event_id,
       author_user_id: req.session.userId,
       instinct,
       contact_path,
@@ -1261,6 +1295,10 @@ webRouter.post('/plays/:id', requireAuth, async (req, res, next) => {
       const v = req.body.hypothesis_id;
       patch.hypothesis_id = v && UUID_RE.test(v) ? v : null;
     }
+    if (req.body?.event_id !== undefined) {
+      const v = req.body.event_id;
+      patch.event_id = v && UUID_RE.test(v) ? v : null;
+    }
     await updatePlay(play.id, patch);
     res.redirect(`/accounts/${play.account_id}/plan#play-${play.id}`);
   } catch (err) {
@@ -1322,6 +1360,97 @@ webRouter.post('/plays/:id/delete', requireAuth, async (req, res, next) => {
   }
 });
 
+// ---------- Events / one-offs (Gartner, CVI dinner, launch campaigns) ----------
+//
+// Events are coordinating artifacts for plays that span many accounts
+// — the Gartner CSO Summit, a CVI dinner, a themed outreach wave.
+// Each account still gets its own account_plays row; event_id groups
+// them. /events is the index, /events/:id is the roll-up.
+
+webRouter.get('/events', requireAuth, async (req, res, next) => {
+  try {
+    const events = await listEvents({ includeCompleted: req.query.all === '1' });
+    res.render('events', {
+      title: 'Events',
+      events,
+      showAll: req.query.all === '1',
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+webRouter.get('/events/new', requireAuth, (_req, res) => {
+  res.render('event_new', { title: 'New event' });
+});
+
+webRouter.get('/events/:id', requireAuth, async (req, res, next) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.redirect('/events');
+    const [event, plays] = await Promise.all([
+      getEventById(req.params.id),
+      listPlaysForEvent(req.params.id),
+    ]);
+    if (!event) return res.redirect('/events');
+    res.render('event_detail', {
+      title: event.name,
+      event,
+      plays,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+webRouter.post('/events', requireAuth, async (req, res, next) => {
+  try {
+    const name = (req.body?.name || '').trim();
+    if (!name) return res.redirect('/events/new');
+    const event = await createEvent({
+      name,
+      kind: ['event', 'campaign', 'one_off'].includes(req.body?.kind) ? req.body.kind : 'event',
+      event_date: (req.body?.event_date || '').trim() || null,
+      location: (req.body?.location || '').trim() || null,
+      description: (req.body?.description || '').trim() || null,
+      status: ['planning', 'active', 'completed', 'cancelled'].includes(req.body?.status)
+        ? req.body.status : 'planning',
+      created_by_user_id: req.session.userId,
+    });
+    res.redirect(`/events/${event.id}`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+webRouter.post('/events/:id', requireAuth, async (req, res, next) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.redirect('/events');
+    const event = await getEventById(req.params.id);
+    if (!event) return res.redirect('/events');
+    const patch = {};
+    for (const k of ['name', 'kind', 'event_date', 'location', 'description', 'status']) {
+      if (req.body?.[k] !== undefined) {
+        const v = typeof req.body[k] === 'string' ? req.body[k].trim() : req.body[k];
+        patch[k] = v === '' ? null : v;
+      }
+    }
+    await updateEvent(event.id, patch);
+    res.redirect(`/events/${event.id}`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+webRouter.post('/events/:id/delete', requireAuth, async (req, res, next) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.redirect('/events');
+    await deleteEvent(req.params.id);
+    res.redirect('/events');
+  } catch (err) {
+    next(err);
+  }
+});
+
 // Cross-account plays index — the answer to "where did that Dialpad
 // play go?" Defaults to showing everything still on the board
 // (drafting + active + paused); ?status=<x> pins it. Account name
@@ -1330,10 +1459,14 @@ webRouter.get('/plays', requireAuth, async (req, res, next) => {
   try {
     const status = ['drafting', 'active', 'paused', 'won', 'lost', 'abandoned'].includes(req.query.status)
       ? req.query.status : null;
-    const plays = await listPlaysForUser(req.session.userId, { status });
+    const [plays, events] = await Promise.all([
+      listPlaysForUser(req.session.userId, { status }),
+      listEvents({ includeCompleted: false }),
+    ]);
     res.render('plays', {
       title: 'Plays',
       plays,
+      events,
       filter: status,
     });
   } catch (err) {

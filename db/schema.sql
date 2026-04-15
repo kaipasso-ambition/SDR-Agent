@@ -517,6 +517,46 @@ CREATE INDEX IF NOT EXISTS account_plays_next_due_idx
   ON account_plays(next_action_due)
   WHERE status = 'active' AND next_action_due IS NOT NULL;
 
+-- One-off events / campaigns the AE orchestrates across many accounts
+-- at once — Gartner CSO Summit, a CVI dinner, a roadshow stop. These
+-- are the moments where "the play" isn't scoped to one account at all;
+-- it's a coordinating artifact with many account-level plays hanging
+-- off it. Nullable event_id on account_plays lets a play belong to
+-- an event OR stand alone.
+CREATE TABLE IF NOT EXISTS play_events (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,                  -- "Gartner CSO Summit 2026" | "CVI dinner — NYC, Apr 28"
+  kind TEXT DEFAULT 'event' CHECK (kind IN (
+    'event',       -- conference, dinner, roadshow stop
+    'campaign',    -- themed outreach wave (e.g. May 15 launch)
+    'one_off'      -- catch-all for the weird stuff
+  )),
+  event_date DATE,                     -- the date the event lands on (nullable for open-ended campaigns)
+  location TEXT,                       -- "Orlando" | "NYC"
+  description TEXT,                    -- free-form context for the prompt + the AE
+  context JSONB,                       -- structured: {theme, sponsors, invite_list, ...}
+  status TEXT DEFAULT 'planning' CHECK (status IN (
+    'planning',    -- being set up
+    'active',      -- in-flight, outreach going out
+    'completed',   -- post-event
+    'cancelled'
+  )),
+  created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS play_events_status_idx ON play_events(status);
+CREATE INDEX IF NOT EXISTS play_events_date_idx   ON play_events(event_date);
+
+-- Attach a play to an event so /events can show all plays running for
+-- Gartner / CVI-dinner / etc. as a single coordinated view. NULL =
+-- account-play (default) — preserves existing semantics for all plays
+-- already in the table.
+ALTER TABLE account_plays ADD COLUMN IF NOT EXISTS event_id UUID
+  REFERENCES play_events(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS account_plays_event_idx ON account_plays(event_id)
+  WHERE event_id IS NOT NULL;
+
 -- Integration credentials (stored after OAuth so users don't edit .env for these)
 CREATE TABLE IF NOT EXISTS integrations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

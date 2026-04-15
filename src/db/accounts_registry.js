@@ -215,6 +215,74 @@ export async function listAccounts({ status = null } = {}) {
   return rows;
 }
 
+// Win-back view. Churned accounts with the context the AE actually
+// uses to decide "is there a play here and who carries it?" — active
+// play count, champion-role contacts, prospect coverage at the domain,
+// and a ticker for recent offense-opportunity signals (funding, new
+// CRO, product launch — the stuff that reopens a churned door).
+//
+// Correlated subqueries rather than JOIN-then-GROUP-BY because each
+// metric comes from a different table and we want counts per account,
+// not fan-out. Churned lists are typically <50 accounts, so the cost
+// is fine; if the list ever grows past a few hundred we can swap to
+// CTEs.
+export async function listChurnedWithWinbackContext() {
+  const { rows } = await query(
+    `SELECT a.*,
+            u.name  AS owner_name,
+            u.email AS owner_email,
+            -- any play still on the board (drafting/active/paused)
+            (SELECT COUNT(*)::int FROM account_plays p
+              WHERE p.account_id = a.id
+                AND p.status IN ('drafting','active','paused')) AS active_play_count,
+            (SELECT p.id FROM account_plays p
+              WHERE p.account_id = a.id
+                AND p.status IN ('drafting','active','paused')
+              ORDER BY p.updated_at DESC LIMIT 1) AS latest_play_id,
+            (SELECT p.ai_expansion->>'named_play' FROM account_plays p
+              WHERE p.account_id = a.id
+                AND p.status IN ('drafting','active','paused')
+              ORDER BY p.updated_at DESC LIMIT 1) AS latest_play_name,
+            (SELECT p.status FROM account_plays p
+              WHERE p.account_id = a.id
+                AND p.status IN ('drafting','active','paused')
+              ORDER BY p.updated_at DESC LIMIT 1) AS latest_play_status,
+            -- contacts on the chess board already
+            (SELECT COUNT(*)::int FROM account_contacts c
+              WHERE c.account_id = a.id
+                AND c.deal_role = 'champion') AS champion_count,
+            (SELECT COUNT(*)::int FROM account_contacts c
+              WHERE c.account_id = a.id) AS contact_count,
+            -- prospects researched against this domain (potential new champions)
+            (SELECT COUNT(*)::int FROM prospects pr
+              WHERE a.domain IS NOT NULL
+                AND LOWER(pr.domain) = LOWER(a.domain)) AS prospect_count,
+            -- recent offense-opportunity signals are the reason to re-open
+            (SELECT COUNT(*)::int FROM account_signals s
+              WHERE s.account_id = a.id
+                AND s.status IN ('new','acknowledged')) AS open_signal_count,
+            (SELECT COUNT(*)::int FROM account_signals s
+              WHERE s.account_id = a.id
+                AND s.risk_class = 'offense_opportunity'
+                AND s.status IN ('new','acknowledged')) AS offense_signal_count,
+            (SELECT MAX(s.detected_at) FROM account_signals s
+              WHERE s.account_id = a.id) AS last_signal_at
+       FROM accounts_registry a
+       LEFT JOIN users u ON u.id = a.owner_user_id
+      WHERE a.status = 'churned'
+      ORDER BY
+        -- surface accounts with fresh offense signals and no play yet first
+        (CASE WHEN (SELECT COUNT(*) FROM account_plays p
+                     WHERE p.account_id = a.id
+                       AND p.status IN ('drafting','active','paused')) = 0
+              THEN 0 ELSE 1 END),
+        (SELECT MAX(s.detected_at) FROM account_signals s WHERE s.account_id = a.id) DESC NULLS LAST,
+        a.account_name ASC
+      LIMIT 500`
+  );
+  return rows;
+}
+
 export async function getAccountByDomain(domain) {
   if (!domain) return null;
   const { rows } = await query(
