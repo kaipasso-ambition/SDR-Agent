@@ -4,7 +4,7 @@ import { Router } from 'express';
 import { verifyLogin, requireAuth } from '../auth.js';
 import { query } from '../db/index.js';
 import { getPendingDrafts, getPendingReplies } from '../queue/approval_queue.js';
-import { researchAndDraft, runDiscoveryCycle, runPilotBatch, draftChampionReconnect } from '../pipeline.js';
+import { researchAndDraft, runDiscoveryCycle, runPilotBatch, draftChampionReconnect, draftLaunchIntro } from '../pipeline.js';
 import { PILOT_BATCH } from '../lib/pilot_batch.js';
 import { parsePastedCsv } from '../lib/paste_csv.js';
 import {
@@ -19,8 +19,10 @@ import {
   listAccounts,
   getAccountStatusCounts,
   getAccountBundle,
+  getCoverageByAccount,
   clearAllAccounts,
 } from '../db/accounts_registry.js';
+import { PERSONAS } from '../lib/personas.js';
 import { runChampionCheckCycle } from '../agents/champion_tracker.js';
 import {
   getPresenceFeed,
@@ -678,15 +680,45 @@ webRouter.get('/accounts', requireAuth, async (req, res, next) => {
   try {
     const filter = ['customer', 'prospect', 'churned', 'disqualified'].includes(req.query.status)
       ? req.query.status : null;
-    const [accounts, counts] = await Promise.all([
-      listAccounts({ status: filter }),
+    // readiness=not_ready surfaces only customers missing persona coverage
+    // for the May 15 launch. Implicitly forces the status filter to customer.
+    const readinessFilter = req.query.readiness === 'not_ready' ? 'not_ready' : null;
+    const effectiveStatus = readinessFilter ? 'customer' : filter;
+
+    const [accountsRaw, counts, coverageByAccount] = await Promise.all([
+      listAccounts({ status: effectiveStatus }),
       getAccountStatusCounts(),
+      getCoverageByAccount(),
     ]);
+
+    // Decorate each account with its readiness row so the list can show a
+    // launch-ready pill + gap count inline.
+    const accounts = accountsRaw.map((a) => {
+      const cov = coverageByAccount[a.id];
+      return {
+        ...a,
+        launchReady: cov?.ready ?? null,
+        launchGaps: cov?.gaps ?? null,
+      };
+    }).filter((a) => !readinessFilter || a.launchReady === false);
+
+    // Launch-readiness rollup across all customers (ignores any active filter
+    // so the stat card always tells the truth).
+    const customerIds = Object.keys(coverageByAccount);
+    const launchReadyCount = customerIds.filter((id) => coverageByAccount[id].ready).length;
+    const launchGapCount = customerIds.length - launchReadyCount;
+
     res.render('accounts', {
       title: 'Accounts',
       accounts,
       counts,
       filter,
+      readinessFilter,
+      launchReadiness: {
+        total: customerIds.length,
+        ready: launchReadyCount,
+        gaps: launchGapCount,
+      },
       importResults: popImport(req, 'accountsImport'),
     });
   } catch (err) {
@@ -736,8 +768,41 @@ webRouter.get('/accounts/:id', requireAuth, async (req, res, next) => {
     if (!UUID_RE.test(req.params.id)) return res.redirect('/accounts');
     const bundle = await getAccountBundle(req.params.id);
     if (!bundle) return res.redirect('/accounts');
-    res.render('account_detail', { title: bundle.account.account_name, ...bundle });
+    res.render('account_detail', {
+      title: bundle.account.account_name,
+      personas: PERSONAS,
+      ...bundle,
+    });
   } catch (err) {
+    next(err);
+  }
+});
+
+// Draft a May 15 launch intro to a specific persona at this customer
+// account. Click target for every cell of the whitespace map. Fires
+// synchronously (generateSequence is one Claude call, a few seconds) and
+// redirects to /drafts so the AE sees the new row immediately.
+webRouter.post('/accounts/:id/draft-launch', requireAuth, async (req, res, next) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.redirect('/accounts');
+    const personaId = (req.body?.persona || '').trim();
+    const prospectId = (req.body?.prospect_id || '').trim() || null;
+    if (!PERSONAS.some((p) => p.id === personaId)) {
+      return res.redirect(`/accounts/${req.params.id}`);
+    }
+    const result = await draftLaunchIntro({
+      account_id: req.params.id,
+      persona_id: personaId,
+      prospect_id: prospectId && UUID_RE.test(prospectId) ? prospectId : null,
+      owner_user_id: req.session.userId,
+    });
+    if (result.skipped) {
+      console.log(`[accounts/draft-launch] skipped: ${result.skipped}`);
+      return res.redirect(`/accounts/${req.params.id}`);
+    }
+    res.redirect('/drafts');
+  } catch (err) {
+    console.error('[accounts/draft-launch]', err);
     next(err);
   }
 });

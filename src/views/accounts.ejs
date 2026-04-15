@@ -50,6 +50,31 @@
   <% } %>
 </div>
 
+<% if (launchReadiness && launchReadiness.total > 0) { %>
+  <div class="bg-white border-2 border-slate-900 rounded-lg p-4 mb-6 flex items-center justify-between gap-4 flex-wrap">
+    <div>
+      <div class="text-xs uppercase tracking-wide text-slate-500">May 15 launch · Performance Graph · Gartner CSO Summit</div>
+      <div class="text-lg font-semibold mt-1">
+        <span class="text-emerald-700"><%= launchReadiness.ready %></span>
+        <span class="text-slate-400">/</span>
+        <span><%= launchReadiness.total %></span>
+        <span class="text-slate-500 text-sm font-normal">customers launch-ready</span>
+      </div>
+      <div class="text-xs text-slate-500 mt-0.5">
+        Launch-ready = coverage on both Frontline Manager and RevOps, contacted in last 60 days or replied.
+      </div>
+    </div>
+    <% if (launchReadiness.gaps > 0) { %>
+      <a href="/accounts?readiness=not_ready"
+         class="text-sm bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded font-medium shrink-0">
+        Show <%= launchReadiness.gaps %> account<%= launchReadiness.gaps === 1 ? '' : 's' %> needing work →
+      </a>
+    <% } else { %>
+      <span class="pill bg-emerald-100 text-emerald-800">All customers launch-ready</span>
+    <% } %>
+  </div>
+<% } %>
+
 <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
   <a href="/accounts?status=customer" class="bg-white border border-slate-200 rounded-lg p-4 hover:border-emerald-300">
     <div class="text-xs uppercase tracking-wide text-slate-500">Customers</div>
@@ -146,7 +171,10 @@
 <div class="bg-white border border-slate-200 rounded-lg overflow-hidden">
   <div class="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
     <h2 class="font-semibold">
-      <% if (filter) { %>
+      <% if (readinessFilter === 'not_ready') { %>
+        Customers not launch-ready
+        <a href="/accounts" class="text-xs text-slate-500 hover:text-slate-900 font-normal ml-2 underline">Clear filter</a>
+      <% } else if (filter) { %>
         <%= filter.charAt(0).toUpperCase() + filter.slice(1) %> accounts
         <a href="/accounts" class="text-xs text-slate-500 hover:text-slate-900 font-normal ml-2 underline">Clear filter</a>
       <% } else { %>
@@ -164,6 +192,7 @@
           <th class="text-left px-4 py-2">Account</th>
           <th class="text-left px-4 py-2">Domain</th>
           <th class="text-left px-4 py-2">Status</th>
+          <th class="text-left px-4 py-2">Launch</th>
           <th class="text-left px-4 py-2">Owner</th>
           <th class="text-left px-4 py-2">Industry</th>
         </tr>
@@ -177,6 +206,17 @@
             </td>
             <td class="px-4 py-3 text-xs text-slate-500"><%= a.domain || '—' %></td>
             <td class="px-4 py-3"><%- pill(statusColor[a.status] || 'slate', a.status) %></td>
+            <td class="px-4 py-3 text-xs">
+              <% if (a.status !== 'customer') { %>
+                <span class="text-slate-300">—</span>
+              <% } else if (a.launchReady === true) { %>
+                <span class="pill bg-emerald-100 text-emerald-800">ready</span>
+              <% } else if (a.launchReady === false) { %>
+                <span class="pill bg-amber-100 text-amber-800"><%= a.launchGaps || 0 %> gap<%= a.launchGaps === 1 ? '' : 's' %></span>
+              <% } else { %>
+                <span class="text-slate-400">no domain</span>
+              <% } %>
+            </td>
             <td class="px-4 py-3 text-xs">
               <% if (a.owner_name || a.owner_email) { %>
                 <%= a.owner_name || a.owner_email %>

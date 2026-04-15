@@ -15,10 +15,13 @@ import { discoverCandidates } from './agents/discoverer.js';
 import { getIntentSignals } from './integrations/commonroom.js';
 import { upsertProspect } from './db/prospects.js';
 import { addToApprovalQueue } from './queue/approval_queue.js';
-import { getCampaignRoster } from './db/campaigns.js';
+import { getCampaignRoster, addProspectToCampaign } from './db/campaigns.js';
 import { setMoveStatus } from './db/champions.js';
+import { getAccountById } from './db/accounts_registry.js';
 import { query } from './db/index.js';
 import { PILOT_BATCH } from './lib/pilot_batch.js';
+import { findOrCreateLaunchCampaign } from './lib/launch_campaign.js';
+import { PERSONAS } from './lib/personas.js';
 
 const MIN_FIT_TO_DRAFT = 60; // below this we save the prospect but skip drafting
 
@@ -371,6 +374,81 @@ export async function draftChampionReconnect(move) {
   await setMoveStatus(move.id, 'drafted', prospect.id);
 
   return { prospect, draft: queued, routing: move.routing };
+}
+
+// Draft a May-15-launch intro for a specific persona on a specific customer
+// account. Used by the "Draft launch intro" button on the whitespace map.
+//
+// If we already have a researched prospect matching the persona on this
+// account, we draft against that contact. If we don't (a "gap" cell), we
+// synthesize a placeholder prospect seeded with just the account + persona
+// — the writer's system prompt knows how to handle a thin prospect as long
+// as the campaign context is rich, and the operator can fill in the actual
+// contact name before sending from the approval queue.
+export async function draftLaunchIntro({
+  account_id,
+  persona_id,
+  prospect_id = null,
+  owner_user_id = null,
+}) {
+  const persona = PERSONAS.find((p) => p.id === persona_id);
+  if (!persona) throw new Error(`unknown persona: ${persona_id}`);
+
+  const account = await getAccountById(account_id);
+  if (!account) throw new Error('account not found');
+  if (account.status !== 'customer') {
+    return { skipped: `launch intros only apply to customer accounts (got ${account.status})` };
+  }
+
+  // Prefer an existing researched contact on this account if the caller
+  // pointed us at one. Otherwise build a seed keyed on account + persona
+  // so the writer can lead with the feedback/input framing.
+  let prospect;
+  if (prospect_id) {
+    const { rows } = await query(`SELECT * FROM prospects WHERE id = $1`, [prospect_id]);
+    prospect = rows[0];
+    if (!prospect) throw new Error('prospect not found');
+  } else {
+    prospect = await upsertProspect({
+      company: account.account_name,
+      domain: account.domain,
+      contact_name: null,
+      contact_title: persona.label,
+      contact_email: null,
+      industry: account.industry || null,
+      // Use the existing outreach-prompt persona vocabulary so the writer
+      // recognizes it without a schema change. Frontline Mgr maps to the
+      // existing 'salesleader' bucket; RevOps stays 'revops'.
+      persona: persona.id === 'frontline_manager' ? 'salesleader' : 'revops',
+      seniority: persona.id === 'frontline_manager' ? 'manager' : 'director',
+      fit_score: 80, // customer = warm by definition
+      customer_status: 'customer',
+      timing_signal: 'Performance Graph launch (May 15) + CEO Gartner CSO Summit roundtable',
+      timing_signal_source: null,
+      additional_context: `Target persona: ${persona.label} — ${persona.why}`,
+      disqualified: false,
+      owner_user_id: owner_user_id || account.owner_user_id,
+    });
+  }
+
+  const campaign = await findOrCreateLaunchCampaign(owner_user_id || account.owner_user_id);
+  await addProspectToCampaign(campaign.id, prospect.id);
+
+  const draft = await generateSequence(prospect, {
+    ...campaign,
+    // Leave special_invite off by default — operator can flip it per
+    // prospect from the campaign page once Gartner attendees are confirmed.
+    special_invite_for_this_prospect: false,
+  });
+
+  const queued = await addToApprovalQueue({
+    prospect,
+    draft,
+    status: 'pending',
+    campaign_id: campaign.id,
+  });
+
+  return { prospect, draft: queued, campaign };
 }
 
 /**

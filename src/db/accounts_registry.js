@@ -5,6 +5,7 @@
 // expansion-play generator do.
 
 import { query } from './index.js';
+import { PERSONAS, matchPersona, coverageState } from '../lib/personas.js';
 
 const VALID_STATUS = new Set(['customer', 'prospect', 'churned', 'disqualified']);
 const VALID_OWNER_ROLE = new Set(['ae', 'csm']);
@@ -298,7 +299,14 @@ export async function getAccountBundle(id) {
   )).rows : [];
   const championCounts = Object.fromEntries(championCountsRow.map((r) => [r.source, r.n]));
 
-  return { account, prospects, drafts, sent, championCounts };
+  // Stakeholder whitespace map — only rendered for customer accounts, but
+  // we compute it for any account that has a domain so the detail-page
+  // route can decide without a second round-trip. Cheap: ~1 extra query.
+  const coverage = account.status === 'customer' && account.domain
+    ? await getAccountCoverage(id)
+    : null;
+
+  return { account, prospects, drafts, sent, championCounts, coverage };
 }
 
 // Nuke the entire accounts book. Used by the "Clear all accounts" button
@@ -309,6 +317,139 @@ export async function getAccountBundle(id) {
 export async function clearAllAccounts() {
   const { rowCount } = await query(`DELETE FROM accounts_registry`);
   return rowCount || 0;
+}
+
+// Build the whitespace coverage map for a single account. For each target
+// persona, find every contact on this account (matched by domain → prospects
+// table, then title regex → persona), plus the most recent outbound touch +
+// any reply. Coverage state is derived from those two timestamps; the UI
+// uses it to color the cell and pick the right CTA.
+//
+// Only meaningful for customer accounts — the caller should gate this. We
+// still run it for any status (cheap, and useful for debugging), but don't
+// render the map unless account.status === 'customer'.
+export async function getAccountCoverage(accountId) {
+  const account = await getAccountById(accountId);
+  if (!account || !account.domain) {
+    return {
+      account,
+      personas: PERSONAS.map((p) => ({
+        ...p, contacts: [], state: 'gap', lastContactedAt: null, lastReplyAt: null,
+      })),
+      launchReady: false,
+    };
+  }
+
+  // One round-trip: every prospect on this domain, with their latest
+  // outbound touch + reply (if any). LEFT JOINs so prospects with zero
+  // sent_messages still surface.
+  const { rows } = await query(
+    `SELECT p.id, p.contact_name, p.contact_title, p.contact_email,
+            p.persona AS scored_persona, p.researched_at,
+            (SELECT MAX(sm.sent_at)
+               FROM sent_messages sm
+              WHERE sm.prospect_id = p.id) AS last_contacted_at,
+            (SELECT MAX(sm.reply_received_at)
+               FROM sent_messages sm
+              WHERE sm.prospect_id = p.id AND sm.reply_received = TRUE) AS last_reply_at
+       FROM prospects p
+      WHERE LOWER(p.domain) = LOWER($1)
+        AND p.disqualified = FALSE
+      ORDER BY p.researched_at DESC NULLS LAST`,
+    [account.domain]
+  );
+
+  // Bucket contacts into personas by title regex.
+  const byPersona = Object.fromEntries(PERSONAS.map((p) => [p.id, []]));
+  for (const r of rows) {
+    const pid = matchPersona(r.contact_title);
+    if (pid && byPersona[pid]) byPersona[pid].push(r);
+  }
+
+  const personas = PERSONAS.map((p) => {
+    const contacts = byPersona[p.id];
+    const lastContactedAt = contacts
+      .map((c) => c.last_contacted_at)
+      .filter(Boolean)
+      .reduce((max, d) => (!max || new Date(d) > new Date(max) ? d : max), null);
+    const lastReplyAt = contacts
+      .map((c) => c.last_reply_at)
+      .filter(Boolean)
+      .reduce((max, d) => (!max || new Date(d) > new Date(max) ? d : max), null);
+    const state = coverageState({
+      lastContactedAt,
+      lastReplyAt,
+      researched: contacts.length > 0,
+    });
+    return { ...p, contacts, state, lastContactedAt, lastReplyAt };
+  });
+
+  // Launch-ready = every persona is either 'covered' or 'researched'. Gaps
+  // and stale are the things the 30-day window has to fix.
+  const launchReady = personas.every((p) => p.state === 'covered');
+
+  return { account, personas, launchReady };
+}
+
+// Batched coverage for the accounts list page — avoids N+1 when rendering
+// the launch-readiness rollup. One scan across all customer accounts,
+// grouped by domain → persona. Returns a map of accountId → { ready, gaps }.
+export async function getCoverageByAccount() {
+  // Only customers are in scope for the launch-readiness model. Ignore the
+  // others so we don't waste a query.
+  const { rows: accounts } = await query(
+    `SELECT id, domain FROM accounts_registry WHERE status = 'customer' AND domain IS NOT NULL`
+  );
+  if (accounts.length === 0) return {};
+
+  const domains = accounts.map((a) => a.domain.toLowerCase());
+
+  // Pull every prospect on any of those domains in one go. Include latest
+  // touch + reply for the coverage-state decision.
+  const { rows: prospects } = await query(
+    `SELECT p.id, p.domain, p.contact_title,
+            (SELECT MAX(sm.sent_at) FROM sent_messages sm WHERE sm.prospect_id = p.id) AS last_contacted_at,
+            (SELECT MAX(sm.reply_received_at) FROM sent_messages sm
+              WHERE sm.prospect_id = p.id AND sm.reply_received = TRUE) AS last_reply_at
+       FROM prospects p
+      WHERE LOWER(p.domain) = ANY($1::text[])
+        AND p.disqualified = FALSE`,
+    [domains]
+  );
+
+  // Build domain → persona-id → contacts[] lookup.
+  const byDomain = {};
+  for (const p of prospects) {
+    const d = p.domain.toLowerCase();
+    const pid = matchPersona(p.contact_title);
+    if (!pid) continue;
+    byDomain[d] ||= {};
+    byDomain[d][pid] ||= [];
+    byDomain[d][pid].push(p);
+  }
+
+  const out = {};
+  for (const a of accounts) {
+    const buckets = byDomain[a.domain.toLowerCase()] || {};
+    const personaStates = PERSONAS.map((p) => {
+      const contacts = buckets[p.id] || [];
+      const lastContactedAt = contacts
+        .map((c) => c.last_contacted_at).filter(Boolean)
+        .reduce((max, d) => (!max || new Date(d) > new Date(max) ? d : max), null);
+      const lastReplyAt = contacts
+        .map((c) => c.last_reply_at).filter(Boolean)
+        .reduce((max, d) => (!max || new Date(d) > new Date(max) ? d : max), null);
+      return coverageState({
+        lastContactedAt, lastReplyAt, researched: contacts.length > 0,
+      });
+    });
+    out[a.id] = {
+      ready: personaStates.every((s) => s === 'covered'),
+      gaps: personaStates.filter((s) => s === 'gap' || s === 'stale').length,
+      states: personaStates,
+    };
+  }
+  return out;
 }
 
 export async function getAccountStatusCounts() {

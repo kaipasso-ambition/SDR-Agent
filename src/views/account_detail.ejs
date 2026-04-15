@@ -84,6 +84,82 @@
   </div>
 </div>
 
+<% if (account.status === 'customer' && coverage) { %>
+  <%
+    const stateColor = {
+      covered:    { bg: 'bg-emerald-50', border: 'border-emerald-200', pill: 'bg-emerald-100 text-emerald-800', label: 'Covered' },
+      stale:      { bg: 'bg-amber-50',   border: 'border-amber-200',   pill: 'bg-amber-100 text-amber-800',     label: 'Stale — re-reach' },
+      researched: { bg: 'bg-sky-50',     border: 'border-sky-200',     pill: 'bg-sky-100 text-sky-800',         label: 'Researched, not contacted' },
+      gap:        { bg: 'bg-slate-50',   border: 'border-slate-200',   pill: 'bg-slate-100 text-slate-700',     label: 'No coverage' },
+    };
+  %>
+  <div class="bg-white border border-slate-200 rounded-lg mb-6 overflow-hidden">
+    <div class="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+      <div>
+        <h2 class="font-semibold">Launch-readiness map</h2>
+        <div class="text-xs text-slate-500 mt-0.5">
+          Performance Graph launch · May 15 · Gartner CSO Summit · covered = contacted in last 60 days or replied
+        </div>
+      </div>
+      <% if (coverage.launchReady) { %>
+        <span class="pill bg-emerald-100 text-emerald-800">Launch-ready</span>
+      <% } else { %>
+        <% const gapCount = coverage.personas.filter(function(p){return p.state === 'gap' || p.state === 'stale';}).length; %>
+        <span class="pill bg-amber-100 text-amber-800">
+          <%= gapCount %> gap<%= gapCount === 1 ? '' : 's' %>
+        </span>
+      <% } %>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-0">
+      <% coverage.personas.forEach(function(p, idx) {
+        const sc = stateColor[p.state] || stateColor.gap;
+      %>
+        <div class="<%= sc.bg %> <%= idx === 0 ? 'md:border-r' : '' %> border-slate-200 p-4">
+          <div class="flex items-center justify-between mb-1">
+            <div class="font-medium"><%= p.label %></div>
+            <span class="pill <%= sc.pill %>"><%= sc.label %></span>
+          </div>
+          <div class="text-xs text-slate-600 mb-3"><%= p.why %></div>
+
+          <% if (p.contacts.length > 0) { %>
+            <div class="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">Contacts in this bucket</div>
+            <ul class="text-xs space-y-1 mb-3">
+              <% p.contacts.slice(0, 5).forEach(function(c) { %>
+                <li>
+                  <span class="font-medium text-slate-800"><%= c.contact_name || '(name missing)' %></span>
+                  <% if (c.contact_title) { %><span class="text-slate-500"> — <%= c.contact_title %></span><% } %>
+                  <% if (c.last_reply_at) { %>
+                    <span class="text-emerald-700"> · replied <%= new Date(c.last_reply_at).toLocaleDateString() %></span>
+                  <% } else if (c.last_contacted_at) { %>
+                    <span class="text-slate-500"> · last touch <%= new Date(c.last_contacted_at).toLocaleDateString() %></span>
+                  <% } else { %>
+                    <span class="text-slate-400"> · not contacted</span>
+                  <% } %>
+                </li>
+              <% }); %>
+              <% if (p.contacts.length > 5) { %>
+                <li class="text-slate-500">+ <%= p.contacts.length - 5 %> more</li>
+              <% } %>
+            </ul>
+          <% } else { %>
+            <div class="text-xs text-slate-500 italic mb-3">No contacts in this persona yet on <%= account.domain || 'this account' %>.</div>
+          <% } %>
+
+          <form method="POST" action="/accounts/<%= account.id %>/draft-launch" class="inline">
+            <input type="hidden" name="persona" value="<%= p.id %>" />
+            <button type="submit" class="text-xs bg-slate-900 hover:bg-slate-800 text-white px-3 py-1.5 rounded font-medium">
+              <% if (p.state === 'gap') { %>Draft May 15th intro
+              <% } else if (p.state === 'stale') { %>Draft re-reach
+              <% } else if (p.state === 'researched') { %>Draft first touch
+              <% } else { %>Draft follow-up<% } %>
+            </button>
+          </form>
+        </div>
+      <% }); %>
+    </div>
+  </div>
+<% } %>
+
 <div class="bg-white border border-slate-200 rounded-lg mb-6 overflow-hidden">
   <div class="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
     <h2 class="font-semibold">Prospects on this account</h2>
