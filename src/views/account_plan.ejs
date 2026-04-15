@@ -333,7 +333,8 @@
         + Start a play
         <% if (triggerSignal) { %><span class="text-xs text-slate-500 font-normal">· triggered by "<%= triggerSignal.title %>"</span><% } %>
       </summary>
-      <form method="POST" action="/accounts/<%= account.id %>/plays" class="mt-3 space-y-3">
+      <form method="POST" action="/accounts/<%= account.id %>/plays" class="mt-3 space-y-3"
+            onsubmit="return startBuildingPlay(this)">
         <% if (triggerSignal) { %>
           <input type="hidden" name="triggered_by_signal_id" value="<%= triggerSignal.id %>" />
           <div class="bg-white border border-slate-200 rounded p-3 text-xs">
@@ -382,16 +383,63 @@
           </div>
         <% } %>
 
-        <button type="submit" class="bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded font-medium text-sm">
-          Build the play →
+        <button type="submit" id="play-build-btn"
+                class="bg-slate-900 hover:bg-slate-800 disabled:bg-slate-400 disabled:cursor-wait text-white px-4 py-2 rounded font-medium text-sm inline-flex items-center gap-2">
+          <svg id="play-build-spinner" class="hidden animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+          </svg>
+          <span id="play-build-label">Build the play →</span>
         </button>
-        <p class="text-xs text-slate-500">
+        <p id="play-build-status" class="text-xs text-slate-500">
           Claude expands your instinct into 2–5 sequenced moves. When a champion is on the path,
           the champion carries the ball on internal moves and you carry the artifact that
           equips them. Takes ~10s.
         </p>
       </form>
     </details>
+
+    <script>
+      // Sync call to /plays takes ~6-12s (Claude expansion). Without
+      // feedback, the page just freezes and the AE assumes it hung.
+      // We disable the button, swap to a spinner, and rotate through a
+      // short status script so they can see it's still working. Browser
+      // submits the form in the background; status messages are purely
+      // cosmetic — we don't know which step the server is actually on.
+      function startBuildingPlay(form) {
+        const btn    = document.getElementById('play-build-btn');
+        const spin   = document.getElementById('play-build-spinner');
+        const label  = document.getElementById('play-build-label');
+        const status = document.getElementById('play-build-status');
+        if (!btn || btn.disabled) return false;
+
+        btn.disabled = true;
+        spin.classList.remove('hidden');
+        label.textContent = 'Building the play…';
+
+        const frames = [
+          'Reading your instinct…',
+          'Pulling the account context + prior plays…',
+          'Resolving the champion on the path…',
+          'Sequencing the moves…',
+          'Drafting champion-voice artifacts…',
+          'Almost there — stitching the narrative…',
+        ];
+        let i = 0;
+        status.textContent = frames[0];
+        status.className = 'text-xs text-emerald-700 font-medium';
+        const timer = setInterval(() => {
+          i = (i + 1) % frames.length;
+          status.textContent = frames[i];
+        }, 2500);
+
+        // Safety net: if the browser hangs or the request dies without a
+        // redirect, clear the interval after 3 minutes so we don't spin
+        // forever. The user can refresh to see whatever did persist.
+        setTimeout(() => clearInterval(timer), 180000);
+        return true;
+      }
+    </script>
 
     <!-- Existing plays -->
     <% if (plays.length === 0) { %>
