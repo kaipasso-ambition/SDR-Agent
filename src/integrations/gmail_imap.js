@@ -20,11 +20,18 @@ import { upsertPresencePost } from '../db/presence.js';
 
 function client() {
   const user = process.env.GMAIL_IMAP_USER;
-  const pass = process.env.GMAIL_IMAP_PASSWORD;
+  // Google displays app passwords grouped as "abcd efgh ijkl mnop".
+  // If the operator pastes it as-is, IMAP PLAIN auth fails with
+  // "Invalid credentials (Failure)" — strip any whitespace so a
+  // copy-paste with visible groups still works.
+  const rawPass = process.env.GMAIL_IMAP_PASSWORD;
+  const pass = rawPass ? rawPass.replace(/\s+/g, '') : '';
+
   if (!user || !pass) {
     throw new Error(
       '[gmail_imap] GMAIL_IMAP_USER and GMAIL_IMAP_PASSWORD must be set. ' +
-      'Generate an app password at https://myaccount.google.com/apppasswords'
+      'Generate an app password at https://myaccount.google.com/apppasswords ' +
+      '(requires 2FA on the Google account).'
     );
   }
   return new ImapFlow({
@@ -48,7 +55,22 @@ export async function pollPresenceInbox({ markSeen = true, dryRun = false } = {}
   const imap = client();
   const stats = { emails_seen: 0, posts_upserted: 0, posts_new: 0, errors: [] };
 
-  await imap.connect();
+  try {
+    await imap.connect();
+  } catch (err) {
+    // Gmail returns 'AUTHENTICATIONFAILED' on bad app-password; re-throw a
+    // message the operator can act on. Everything else bubbles up raw.
+    if (err?.authenticationFailed || err?.serverResponseCode === 'AUTHENTICATIONFAILED') {
+      const user = process.env.GMAIL_IMAP_USER || '(unset)';
+      throw new Error(
+        `[gmail_imap] Gmail rejected the login for ${user}: invalid credentials. ` +
+        `Check GMAIL_IMAP_PASSWORD is a current app password (not the account password), ` +
+        `2FA is enabled on ${user}, and the app password hasn't been revoked. ` +
+        `Regenerate at https://myaccount.google.com/apppasswords and update the env var.`
+      );
+    }
+    throw err;
+  }
   try {
     const lock = await imap.getMailboxLock(label);
     try {
