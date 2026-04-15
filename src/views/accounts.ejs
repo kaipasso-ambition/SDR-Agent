@@ -54,15 +54,55 @@
     <span class="text-xs text-slate-500">Works with HubSpot / Salesforce exports — headers are auto-mapped</span>
   </div>
   <form method="POST" action="/accounts/import" class="p-4">
-    <textarea name="csv" rows="8" placeholder="Paste directly from HubSpot, Salesforce, or Google Sheets — include the header row.&#10;&#10;Recognized columns (any of these work):&#10;  name · Account Name · Company → account_name&#10;  website · Website · Domain     → domain&#10;  type · Account Type · Status   → status  (Customer/Prospect/Churned/Disqualified)&#10;  owner · Account Owner          → owner (email or name)&#10;  industry · vertical · segment  → industry&#10;&#10;Example:&#10;Account Name,Website,Type,Owner,Industry&#10;Acme Logistics,acme.com,Customer,kai@ambition.com,Logistics&#10;Bravo Tech,https://www.bravotech.io,Churned,colin@ambition.com,SaaS"
+    <textarea id="csvTextarea" name="csv" rows="8" placeholder="Paste directly from HubSpot, Salesforce, or Google Sheets — or use the 'Choose file' button above to load a .csv.&#10;Include the header row.&#10;&#10;Recognized columns (any of these work):&#10;  name · Account Name · Company → account_name&#10;  website · Website · Domain     → domain&#10;  type · Account Type · Status   → status  (Customer/Prospect/Churned/Disqualified)&#10;  owner · Account Owner          → owner (email or name)&#10;  industry · vertical · segment  → industry&#10;&#10;Example:&#10;Account Name,Website,Type,Owner,Industry&#10;Acme Logistics,acme.com,Customer,kai@ambition.com,Logistics&#10;Bravo Tech,https://www.bravotech.io,Churned,colin@ambition.com,SaaS"
       class="w-full border border-slate-300 rounded px-3 py-2 text-sm font-mono focus:ring-1 focus:ring-slate-500 focus:outline-none"></textarea>
-    <div class="flex items-center justify-between mt-3">
-      <span class="text-xs text-slate-500">
+    <div class="flex items-center justify-between mt-3 gap-4 flex-wrap">
+      <span class="text-xs text-slate-500 flex-1 min-w-0">
         Tab- or comma-separated. Domains are normalized (https://, www., paths all stripped). Dedups by domain, then by account_name. Unknown status values map to "prospect" with a warning.
       </span>
-      <button type="submit" class="bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded text-sm font-medium">Import</button>
+      <div class="flex items-center gap-2">
+        <label class="cursor-pointer bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 px-3 py-2 rounded text-sm font-medium inline-flex items-center gap-2">
+          <span>Choose .csv file</span>
+          <input id="csvFileInput" type="file" accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values,text/plain" class="hidden" />
+        </label>
+        <span id="csvFileLabel" class="text-xs text-slate-500"></span>
+        <button type="submit" class="bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded text-sm font-medium">Import</button>
+      </div>
     </div>
   </form>
+  <script>
+    (function () {
+      // Client-side CSV file loader — reads the file into the textarea so the
+      // operator can eyeball it before submitting. We intentionally don't use
+      // multipart/form-data; keeps the server endpoint a simple form post.
+      var input = document.getElementById('csvFileInput');
+      var textarea = document.getElementById('csvTextarea');
+      var label = document.getElementById('csvFileLabel');
+      if (!input || !textarea) return;
+      input.addEventListener('change', function () {
+        var file = input.files && input.files[0];
+        if (!file) return;
+        // 5mb server limit — warn early if we're over it.
+        if (file.size > 5 * 1024 * 1024) {
+          label.textContent = file.name + ' is too large (>5mb) — split it.';
+          label.className = 'text-xs text-red-600';
+          return;
+        }
+        var reader = new FileReader();
+        reader.onload = function () {
+          textarea.value = reader.result || '';
+          label.textContent = file.name + ' loaded (' + (file.size / 1024).toFixed(1) + ' KB) — review and click Import.';
+          label.className = 'text-xs text-emerald-700';
+          textarea.focus();
+        };
+        reader.onerror = function () {
+          label.textContent = 'Could not read ' + file.name;
+          label.className = 'text-xs text-red-600';
+        };
+        reader.readAsText(file);
+      });
+    })();
+  </script>
   <% if (importResults && importResults.length > 0) { %>
     <div class="px-4 pb-4">
       <div class="text-xs font-semibold text-slate-700 uppercase tracking-wide mb-2">Last import</div>
