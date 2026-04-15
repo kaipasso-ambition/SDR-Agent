@@ -144,6 +144,9 @@ Scan the web for what has CHANGED since close_date that might neutralize the los
   if (!Array.isArray(parsed) || parsed.length === 0) {
     console.log('\n[scan] NO TRIGGERS returned. Claude found nothing material since close_date.\n');
     console.log('This is a valid answer — not every dead deal has a fresh revisit moment.');
+    console.log('\n--- DEBUG: raw model text below (verify whether Claude really returned [] or the parser dropped something) ---\n');
+    console.log(text || '(empty response)');
+    console.log('\n--- end raw text ---\n');
     return;
   }
 
