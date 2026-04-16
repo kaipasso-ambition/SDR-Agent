@@ -27,7 +27,7 @@ import {
 import { PERSONAS } from '../lib/personas.js';
 import { runChampionCheckCycle } from '../agents/champion_tracker.js';
 import { runSignalScanCycle } from '../agents/signal_analyzer.js';
-import { scanDeadDeal } from '../agents/revisit_scanner.js';
+import { scanDeadDeal, buildRevisitPaths } from '../agents/revisit_scanner.js';
 import {
   getDeadDealByOpportunityId,
   setScanRunning,
@@ -35,6 +35,13 @@ import {
   setScanFailed,
   listDeadDealsWithScan,
 } from '../db/dead_deals.js';
+import {
+  createRevisitPaths,
+  getPathsForDeal,
+  getPathsById,
+  selectPath,
+  setOutcome,
+} from '../db/revisit_plans.js';
 import {
   getSignalsForBrief,
   getSignalById,
@@ -932,7 +939,8 @@ webRouter.get('/revisit/:opportunity_id', requireAuth, async (req, res, next) =>
   try {
     const deal = await getDeadDealByOpportunityId(req.params.opportunity_id);
     if (!deal) return res.redirect('/revisit');
-    res.render('revisit_detail', { title: deal.account_name, deal });
+    const pathSets = await getPathsForDeal(req.params.opportunity_id);
+    res.render('revisit_detail', { title: deal.account_name, deal, pathSets });
   } catch (err) {
     next(err);
   }
@@ -969,6 +977,69 @@ webRouter.post('/revisit/:opportunity_id/scan', requireAuth, async (req, res, ne
       });
 
     res.redirect(`/revisit/${encodeURIComponent(oppId)}`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Build three re-entry paths for a specific trigger. Synchronous — the AE
+// clicks "Build paths" on a trigger card and waits ~10-15s for Claude to
+// reason over the deal+trigger context. No web search, just reasoning.
+webRouter.post('/revisit/:opportunity_id/paths', requireAuth, async (req, res, next) => {
+  try {
+    const oppId = req.params.opportunity_id;
+    const deal = await getDeadDealByOpportunityId(oppId);
+    if (!deal) return res.redirect('/revisit');
+
+    const triggerIdx = parseInt(req.body?.trigger_index, 10);
+    const triggers = Array.isArray(deal.last_scan_result) ? deal.last_scan_result : [];
+    if (!Number.isFinite(triggerIdx) || triggerIdx < 0 || triggerIdx >= triggers.length) {
+      return res.redirect(`/revisit/${encodeURIComponent(oppId)}`);
+    }
+
+    const trigger = triggers[triggerIdx];
+    const result = await buildRevisitPaths(deal, trigger);
+
+    await createRevisitPaths({
+      opportunity_id: oppId,
+      trigger_index: triggerIdx,
+      trigger_title: trigger.trigger_title || null,
+      paths: result.paths,
+    });
+
+    console.log(`[revisit] built ${result.paths.length} paths for ${oppId} trigger #${triggerIdx} in ${result.elapsed_ms}ms`);
+    res.redirect(`/revisit/${encodeURIComponent(oppId)}#trigger-${triggerIdx}`);
+  } catch (err) {
+    console.error('[revisit/paths] failed:', err);
+    next(err);
+  }
+});
+
+// AE selects a path — records the choice + timestamp for learning.
+webRouter.post('/revisit/paths/:id/select', requireAuth, async (req, res, next) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.redirect('/revisit');
+    const pathSet = await getPathsById(req.params.id);
+    if (!pathSet) return res.redirect('/revisit');
+    const idx = parseInt(req.body?.path_index, 10);
+    if (!Number.isFinite(idx) || idx < 0 || idx > 2) return res.redirect(`/revisit/${encodeURIComponent(pathSet.opportunity_id)}`);
+    await selectPath(pathSet.id, idx);
+    res.redirect(`/revisit/${encodeURIComponent(pathSet.opportunity_id)}#paths-${pathSet.id}`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// AE records the outcome of a path they executed.
+webRouter.post('/revisit/paths/:id/outcome', requireAuth, async (req, res, next) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.redirect('/revisit');
+    const pathSet = await getPathsById(req.params.id);
+    if (!pathSet) return res.redirect('/revisit');
+    const outcome = ['won', 'lost', 'no_response', 'in_progress'].includes(req.body?.outcome) ? req.body.outcome : null;
+    if (!outcome) return res.redirect(`/revisit/${encodeURIComponent(pathSet.opportunity_id)}`);
+    await setOutcome(pathSet.id, { outcome, notes: (req.body?.notes || '').trim() || null });
+    res.redirect(`/revisit/${encodeURIComponent(pathSet.opportunity_id)}#paths-${pathSet.id}`);
   } catch (err) {
     next(err);
   }

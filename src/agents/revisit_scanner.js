@@ -8,6 +8,7 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { REVISIT_SCAN_PROMPT } from '../prompts/revisit_scan.js';
+import { REVISIT_PATHS_PROMPT } from '../prompts/revisit_paths.js';
 
 const client = new Anthropic();
 
@@ -107,4 +108,47 @@ Scan the web for what has CHANGED since close_date that might neutralize the los
 
   const triggers = stripCiteTags(parsed);
   return { triggers, searches, queries, elapsed_ms, skipped: null, raw: text };
+}
+
+/**
+ * Build three re-entry paths for a single trigger on a dead deal. No
+ * web_search — this is pure reasoning over the trigger + deal context.
+ *
+ * Returns: { paths: [...], elapsed_ms: int } or throws on failure.
+ */
+export async function buildRevisitPaths(deal, trigger) {
+  const context = buildContext(deal);
+  const userContent = `
+Account and deal context:
+${JSON.stringify(context, null, 2)}
+
+The following trigger was surfaced by a recent web scan:
+${JSON.stringify(trigger, null, 2)}
+
+Generate three distinct re-entry paths for this trigger. Return the JSON object per the instructions.
+`.trim();
+
+  const t0 = Date.now();
+  const response = await client.messages.create({
+    model: 'claude-sonnet-4-20250514',
+    max_tokens: 4000,
+    system: REVISIT_PATHS_PROMPT,
+    messages: [{ role: 'user', content: userContent }],
+  }, { timeout: 2 * 60 * 1000 });
+
+  const elapsed_ms = Date.now() - t0;
+  const text = response.content
+    .filter((b) => b.type === 'text').map((b) => b.text).join('').trim();
+
+  // Parse — try fenced JSON first, then bare object.
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const brace = text.match(/\{[\s\S]*\}/);
+  const jsonText = fenced ? fenced[1].trim() : (brace ? brace[0] : text);
+
+  const parsed = JSON.parse(jsonText);
+  if (!parsed.paths || !Array.isArray(parsed.paths)) {
+    throw new Error('Model returned JSON without a paths array');
+  }
+
+  return { paths: parsed.paths, elapsed_ms };
 }

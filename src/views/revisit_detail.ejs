@@ -16,19 +16,52 @@
     if (s === 2) return 'bg-slate-100 text-slate-700';
     return 'bg-slate-100 text-slate-500';
   };
+  const channelIcon = (ch) => {
+    if (ch === 'linkedin') return 'in';
+    if (ch === 'email')    return '@';
+    if (ch === 'call')     return '☎';
+    if (ch === 'internal') return '→';
+    if (ch === 'event')    return '★';
+    return '·';
+  };
+  const channelColor = (ch) => {
+    if (ch === 'linkedin') return 'bg-blue-100 text-blue-800';
+    if (ch === 'email')    return 'bg-emerald-100 text-emerald-800';
+    if (ch === 'call')     return 'bg-amber-100 text-amber-800';
+    if (ch === 'internal') return 'bg-slate-100 text-slate-700';
+    if (ch === 'event')    return 'bg-purple-100 text-purple-800';
+    return 'bg-slate-100 text-slate-600';
+  };
+  const likelihoodColor = (l) => {
+    if (l === 'high')   return 'text-emerald-700';
+    if (l === 'medium') return 'text-amber-700';
+    return 'text-red-700';
+  };
+  // Build a quick lookup: trigger_index → pathSet for that trigger (most recent first)
+  const pathsByTrigger = {};
+  (pathSets || []).forEach(function(ps) {
+    if (!pathsByTrigger[ps.trigger_index]) pathsByTrigger[ps.trigger_index] = ps;
+  });
+  const pathColors = [
+    { border: 'border-blue-300',   bg: 'bg-blue-50',   header: 'bg-blue-100 text-blue-900',   selected: 'ring-2 ring-blue-500' },
+    { border: 'border-emerald-300', bg: 'bg-emerald-50', header: 'bg-emerald-100 text-emerald-900', selected: 'ring-2 ring-emerald-500' },
+    { border: 'border-purple-300', bg: 'bg-purple-50',  header: 'bg-purple-100 text-purple-900',  selected: 'ring-2 ring-purple-500' },
+  ];
+  const outcomeLabels = { won: 'Won', lost: 'Lost', no_response: 'No response', in_progress: 'In progress' };
+  const outcomeColors = { won: 'bg-emerald-100 text-emerald-800', lost: 'bg-red-100 text-red-800', no_response: 'bg-slate-100 text-slate-700', in_progress: 'bg-amber-100 text-amber-800' };
 %>
 
 <div class="mb-2 text-sm text-slate-500">
-  <a href="/revisit" class="hover:text-slate-900">← Revisit</a>
+  <a href="/revisit" class="hover:text-slate-900">&larr; Revisit</a>
 </div>
 
 <div class="flex items-start justify-between gap-4 mb-6">
   <div>
     <h1 class="text-2xl font-semibold"><%= deal.account_name %></h1>
     <div class="text-sm text-slate-500 mt-1">
-      <%= deal.account_type_at_close || 'unknown type' %> · closed <%= fmtDate(deal.close_date) %>
-      <% if (deal.loss_reason) { %> · loss reason: <strong class="text-slate-700"><%= deal.loss_reason %></strong><% } %>
-      <% if (deal.owner_name) { %> · owner: <%= deal.owner_name %><% } %>
+      <%= deal.account_type_at_close || 'unknown type' %> &middot; closed <%= fmtDate(deal.close_date) %>
+      <% if (deal.loss_reason) { %> &middot; loss reason: <strong class="text-slate-700"><%= deal.loss_reason %></strong><% } %>
+      <% if (deal.owner_name) { %> &middot; owner: <%= deal.owner_name %><% } %>
     </div>
     <div class="text-[11px] text-slate-400 mt-1">opp: <%= deal.opportunity_id %></div>
   </div>
@@ -36,7 +69,7 @@
     <button type="submit"
             class="text-sm bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded font-medium disabled:opacity-50"
             <% if (isRunning) { %>disabled<% } %>>
-      <% if (isRunning) { %>Scanning…<% } else if (status === 'completed') { %>Re-scan<% } else { %>Run scan<% } %>
+      <% if (isRunning) { %>Scanning&hellip;<% } else if (status === 'completed') { %>Re-scan<% } else { %>Run scan<% } %>
     </button>
   </form>
 </div>
@@ -45,7 +78,7 @@
   <div class="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6 flex items-center gap-3">
     <span class="inline-block w-2 h-2 bg-amber-500 rounded-full animate-pulse"></span>
     <div class="flex-1 text-sm text-amber-900">
-      Scanning the web for what has changed since close_date. Typically 1–3 minutes (~6 web searches).
+      Scanning the web for what has changed since close_date. Typically 1&ndash;3 minutes (~6 web searches).
     </div>
   </div>
   <script>setTimeout(function(){ location.reload(); }, 15000);</script>
@@ -56,9 +89,7 @@
   </div>
 <% } %>
 
-<!-- Original deal context — what we know going in. The scanner reads all of
-     this; we surface it here so the AE can sanity-check what Claude was given
-     before judging the triggers. -->
+<!-- Deal context -->
 <details class="bg-white border border-slate-200 rounded-lg p-5 mb-6" <% if (!triggers.length && !isRunning) { %>open<% } %>>
   <summary class="cursor-pointer text-sm font-semibold text-slate-700 select-none">Deal context (what the scanner sees)</summary>
   <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 text-sm">
@@ -90,7 +121,7 @@
     <h2 class="text-lg font-semibold">
       <%= triggers.length %> trigger<%= triggers.length === 1 ? '' : 's' %>
       <% if (deal.last_scan_searches != null) { %>
-        <span class="text-xs text-slate-500 font-normal">· <%= deal.last_scan_searches %> web searches</span>
+        <span class="text-xs text-slate-500 font-normal">&middot; <%= deal.last_scan_searches %> web searches</span>
       <% } %>
     </h2>
   </div>
@@ -102,14 +133,18 @@
       Worth re-scanning in a few weeks.
     </div>
   <% } else { %>
-    <ul class="space-y-4">
-      <% triggers.forEach(function(t, i) { %>
-        <li class="bg-white border-2 border-slate-200 rounded-lg p-5">
+    <div class="space-y-6">
+      <% triggers.forEach(function(t, i) {
+        const ps = pathsByTrigger[i];
+        const paths = ps && Array.isArray(ps.paths) ? ps.paths : [];
+      %>
+        <div id="trigger-<%= i %>" class="bg-white border-2 border-slate-200 rounded-lg p-5">
+          <!-- Trigger card header -->
           <div class="flex items-start justify-between gap-4 mb-2">
             <div class="flex items-center gap-2 flex-wrap">
               <span class="pill <%= sevPill(t.severity) %>">SEV <%= t.severity %></span>
               <% if (t.signal_type) { %><span class="pill bg-slate-100 text-slate-700"><%= t.signal_type %></span><% } %>
-              <% if (t.loss_reason_link) { %><span class="text-xs text-slate-500">↳ <%= t.loss_reason_link %></span><% } %>
+              <% if (t.loss_reason_link) { %><span class="text-xs text-slate-500">&darr; <%= t.loss_reason_link %></span><% } %>
             </div>
             <span class="text-xs text-slate-400">#<%= i + 1 %></span>
           </div>
@@ -135,7 +170,7 @@
               <% t.sponsors_to_target.forEach(function(sp) { %>
                 <li>
                   <strong><%= sp.name %></strong>
-                  <% if (sp.title) { %><span class="text-slate-600">— <%= sp.title %></span><% } %>
+                  <% if (sp.title) { %><span class="text-slate-600">&mdash; <%= sp.title %></span><% } %>
                   <% if (sp.role_guess) { %><span class="text-xs text-slate-500"> (<%= sp.role_guess %>)</span><% } %>
                   <% if (sp.why_this_person) { %><div class="text-xs text-slate-500"><%= sp.why_this_person %></div><% } %>
                 </li>
@@ -144,19 +179,164 @@
           <% } %>
 
           <div class="flex items-center justify-between gap-3 mt-4 flex-wrap text-xs">
-            <% if (t.source_url) { %>
-              <a href="<%= t.source_url %>" target="_blank" rel="noopener"
-                 class="text-slate-600 hover:text-slate-900 underline truncate max-w-md inline-block align-middle">
-                Source ↗ <%= t.source_url %>
-              </a>
-            <% } else { %><span></span><% } %>
-            <% if (t.source_excerpt) { %>
-              <span class="text-slate-400 italic max-w-md truncate">"<%= t.source_excerpt %>"</span>
+            <div>
+              <% if (t.source_url) { %>
+                <a href="<%= t.source_url %>" target="_blank" rel="noopener"
+                   class="text-slate-600 hover:text-slate-900 underline truncate max-w-md inline-block align-middle">
+                  Source &nearr;
+                </a>
+              <% } %>
+              <% if (t.source_excerpt) { %>
+                <span class="text-slate-400 italic ml-2">"<%= t.source_excerpt %>"</span>
+              <% } %>
+            </div>
+            <% if (!ps) { %>
+              <form method="POST" action="/revisit/<%= encodeURIComponent(deal.opportunity_id) %>/paths">
+                <input type="hidden" name="trigger_index" value="<%= i %>" />
+                <button type="submit"
+                        class="bg-slate-900 hover:bg-slate-800 text-white px-4 py-1.5 rounded font-medium text-xs">
+                  Build paths &rarr;
+                </button>
+              </form>
             <% } %>
           </div>
-        </li>
+
+          <!-- ============================================================ -->
+          <!-- PATH CARDS — shown when paths exist for this trigger          -->
+          <!-- ============================================================ -->
+          <% if (ps && paths.length > 0) { %>
+            <div id="paths-<%= ps.id %>" class="mt-6 border-t border-slate-200 pt-5">
+              <div class="flex items-center justify-between mb-4">
+                <h3 class="text-sm font-semibold text-slate-700">
+                  3 paths &mdash;
+                  <% if (ps.selected_path != null) { %>
+                    <span class="text-emerald-700">path <%= ps.selected_path + 1 %> selected</span>
+                    <% if (ps.outcome) { %>
+                      &middot; <span class="pill <%= outcomeColors[ps.outcome] || 'bg-slate-100' %>"><%= outcomeLabels[ps.outcome] || ps.outcome %></span>
+                    <% } %>
+                  <% } else { %>
+                    <span class="text-slate-500">pick one</span>
+                  <% } %>
+                </h3>
+                <% if (!ps.selected_path && ps.selected_path !== 0) { %>
+                  <form method="POST" action="/revisit/<%= encodeURIComponent(deal.opportunity_id) %>/paths">
+                    <input type="hidden" name="trigger_index" value="<%= i %>" />
+                    <button type="submit" class="text-xs text-slate-500 hover:text-slate-900 underline">Regenerate</button>
+                  </form>
+                <% } %>
+              </div>
+
+              <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <% paths.forEach(function(p, pi) {
+                  const color = pathColors[pi] || pathColors[0];
+                  const isSelected = ps.selected_path === pi;
+                  const isDimmed = ps.selected_path != null && !isSelected;
+                %>
+                  <div class="border-2 <%= color.border %> rounded-lg overflow-hidden flex flex-col
+                              <%= isSelected ? color.selected : '' %>
+                              <%= isDimmed ? 'opacity-50' : '' %>">
+                    <!-- Path header -->
+                    <div class="<%= color.header %> px-4 py-2.5 text-sm font-semibold flex items-center justify-between">
+                      <span>Path <%= pi + 1 %>: <%= p.path_name %></span>
+                      <% if (isSelected) { %><span class="text-[10px] uppercase tracking-wider font-bold">Selected</span><% } %>
+                    </div>
+
+                    <div class="<%= color.bg %> px-4 py-3 flex-1 flex flex-col">
+                      <!-- Description -->
+                      <div class="text-sm text-slate-700 mb-3"><%= p.description %></div>
+
+                      <!-- Steps timeline -->
+                      <div class="space-y-2 mb-4 flex-1">
+                        <% (p.steps || []).forEach(function(step) { %>
+                          <div class="flex gap-2 text-sm">
+                            <div class="shrink-0 w-12 text-right text-[11px] font-semibold text-slate-500 pt-0.5">Day <%= step.day %></div>
+                            <div class="shrink-0">
+                              <span class="pill <%= channelColor(step.channel) %> text-[10px]"><%= channelIcon(step.channel) %> <%= step.channel %></span>
+                            </div>
+                            <div class="flex-1">
+                              <div class="text-slate-800 font-medium text-xs"><%= step.action %></div>
+                              <% if (step.draft_message) { %>
+                                <div class="text-xs text-slate-600 mt-0.5 italic border-l-2 border-slate-300 pl-2">"<%= step.draft_message %>"</div>
+                              <% } %>
+                            </div>
+                          </div>
+                        <% }); %>
+                      </div>
+
+                      <!-- Outcomes -->
+                      <div class="grid grid-cols-2 gap-2 text-[11px] mb-3">
+                        <div class="bg-white rounded p-2 border border-emerald-200">
+                          <div class="font-semibold text-emerald-700 uppercase tracking-wide mb-0.5">Best case</div>
+                          <div class="text-slate-700"><%= p.best_case?.description || '—' %></div>
+                          <% if (p.best_case?.likelihood) { %>
+                            <div class="mt-1 <%= likelihoodColor(p.best_case.likelihood) %> font-semibold">
+                              Likelihood: <%= p.best_case.likelihood %>
+                            </div>
+                          <% } %>
+                        </div>
+                        <div class="bg-white rounded p-2 border border-red-200">
+                          <div class="font-semibold text-red-700 uppercase tracking-wide mb-0.5">Worst case</div>
+                          <div class="text-slate-700"><%= p.worst_case?.description || '—' %></div>
+                          <% if (p.worst_case?.likelihood) { %>
+                            <div class="mt-1 <%= likelihoodColor(p.worst_case.likelihood) %> font-semibold">
+                              Likelihood: <%= p.worst_case.likelihood %>
+                            </div>
+                          <% } %>
+                        </div>
+                      </div>
+
+                      <% if (p.rationale) { %>
+                        <div class="text-[11px] text-slate-500 italic mb-3"><%= p.rationale %></div>
+                      <% } %>
+
+                      <!-- Select button -->
+                      <% if (ps.selected_path == null) { %>
+                        <form method="POST" action="/revisit/paths/<%= ps.id %>/select" class="mt-auto">
+                          <input type="hidden" name="path_index" value="<%= pi %>" />
+                          <button type="submit"
+                                  class="w-full text-xs font-medium py-2 rounded border-2 <%= color.border %> text-slate-700 hover:bg-white transition">
+                            Select this path
+                          </button>
+                        </form>
+                      <% } %>
+                    </div>
+                  </div>
+                <% }); %>
+              </div>
+
+              <!-- Outcome tracker — shown after a path is selected -->
+              <% if (ps.selected_path != null && !ps.outcome) { %>
+                <div class="mt-4 bg-slate-50 border border-slate-200 rounded-lg p-4">
+                  <div class="text-sm font-semibold text-slate-700 mb-2">How did it go?</div>
+                  <form method="POST" action="/revisit/paths/<%= ps.id %>/outcome" class="flex items-end gap-3 flex-wrap">
+                    <div>
+                      <select name="outcome" class="text-sm border border-slate-300 rounded px-3 py-1.5">
+                        <option value="in_progress">In progress</option>
+                        <option value="won">Won (meeting / reply)</option>
+                        <option value="no_response">No response</option>
+                        <option value="lost">Lost (rejected)</option>
+                      </select>
+                    </div>
+                    <div class="flex-1">
+                      <input type="text" name="notes" placeholder="What happened? (optional)" class="w-full text-sm border border-slate-300 rounded px-3 py-1.5" />
+                    </div>
+                    <button type="submit" class="text-sm bg-slate-900 hover:bg-slate-800 text-white px-4 py-1.5 rounded font-medium">
+                      Record outcome
+                    </button>
+                  </form>
+                </div>
+              <% } else if (ps.outcome) { %>
+                <div class="mt-4 bg-slate-50 border border-slate-200 rounded-lg p-4 text-sm">
+                  <span class="pill <%= outcomeColors[ps.outcome] || 'bg-slate-100' %>"><%= outcomeLabels[ps.outcome] || ps.outcome %></span>
+                  <% if (ps.outcome_notes) { %><span class="text-slate-600 ml-2"><%= ps.outcome_notes %></span><% } %>
+                  <span class="text-xs text-slate-400 ml-2">&middot; recorded <%= fmtDate(ps.outcome_at) %></span>
+                </div>
+              <% } %>
+            </div>
+          <% } %>
+        </div>
       <% }); %>
-    </ul>
+    </div>
   <% } %>
 <% } else if (!isRunning) { %>
   <div class="bg-white border border-slate-200 rounded-lg p-8 text-sm text-slate-500 text-center">

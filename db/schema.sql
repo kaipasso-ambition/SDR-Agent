@@ -690,3 +690,22 @@ ALTER TABLE dead_deals ADD COLUMN IF NOT EXISTS last_scan_result JSONB;        -
 ALTER TABLE dead_deals ADD COLUMN IF NOT EXISTS last_scan_searches INT;
 ALTER TABLE dead_deals ADD COLUMN IF NOT EXISTS last_scan_error TEXT;
 
+-- Revisit paths — three re-entry strategies per trigger, with projected
+-- outcomes. The AE picks one; we store the selection + eventual outcome so
+-- the prompt can learn from win/loss patterns over time.
+CREATE TABLE IF NOT EXISTS revisit_paths (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  opportunity_id TEXT NOT NULL,
+  trigger_index INT NOT NULL,         -- index into dead_deals.last_scan_result[]
+  trigger_title TEXT,                 -- snapshot so the card is readable even if re-scanned
+  paths JSONB NOT NULL,               -- array of 3 path objects
+  selected_path INT,                  -- 0|1|2 — which the AE chose
+  outcome TEXT CHECK (outcome IN ('won','lost','no_response','in_progress')),
+  outcome_notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  selected_at TIMESTAMPTZ,
+  outcome_at TIMESTAMPTZ,
+  FOREIGN KEY (opportunity_id) REFERENCES dead_deals(opportunity_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS revisit_paths_opp_idx ON revisit_paths(opportunity_id);
+
