@@ -188,15 +188,10 @@ webRouter.post('/logout', (req, res) => {
 
 // ---------- Authenticated pages ----------
 
-webRouter.get('/', requireAuth, async (req, res, next) => {
-  try {
-    const counts = await getCounts(req.session.userId);
-    const connections = await getConnectionStatus();
-    res.render('dashboard', { title: 'Dashboard', counts, connections });
-  } catch (err) {
-    next(err);
-  }
-});
+// Home = Today. The dashboard used to be a bag of counters for the old
+// prospecting pipeline; the thesis is now Strategic-AE signal intelligence
+// and /brief (rendered as "Today") is the one screen that matters.
+webRouter.get('/', requireAuth, (req, res) => res.redirect('/brief'));
 
 webRouter.get('/drafts', requireAuth, async (req, res, next) => {
   try {

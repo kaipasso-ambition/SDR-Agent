@@ -13,11 +13,12 @@
 <body class="bg-slate-50 text-slate-900 min-h-screen">
   <% if (typeof user !== 'undefined' && user) { %>
     <%
-      // Three macro-phases of the Strategic-AE loop:
-      //   Prospecting   — finding and drafting into new prospects
-      //   Presence      — LinkedIn engagement / warm-path surface
-      //   Account Build — working the book (customers, prospects, churned)
-      //                   where plays + brief + game-plan live.
+      // Three-item primary nav. The job is "show me the one move to make
+      // today, on the right account." Everything else — cross-account
+      // indexes (/plays, /events), per-account deep dives (/expand,
+      // /revisit), the old outbound pipeline (/drafts, /replies,
+      // /prospects, /discovery, /presence) — lives under "More" so the
+      // primary surface stays quiet.
       // Dropdowns are plain <details> — no JS needed, closes on outside
       // click via the built-in <details> semantics + a tiny helper below.
     %>
@@ -25,60 +26,41 @@
       <div class="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
         <div class="flex items-center gap-5">
           <a href="/" class="font-semibold text-slate-900">Ambition SDR</a>
-          <a href="/" class="text-sm text-slate-600 hover:text-slate-900">Dashboard</a>
 
-          <!-- PROSPECTING -->
+          <a href="/brief" class="text-sm text-slate-600 hover:text-slate-900 flex items-center gap-1.5">
+            Today
+            <% if (typeof signalsUnacked !== 'undefined' && signalsUnacked > 0) { %>
+              <span class="inline-flex items-center justify-center bg-red-600 text-white text-[10px] font-semibold rounded-full min-w-[18px] h-[18px] px-1.5 leading-none"><%= signalsUnacked %></span>
+            <% } %>
+          </a>
+
+          <a href="/accounts" class="text-sm text-slate-600 hover:text-slate-900">Accounts</a>
+
+          <a href="/settings" class="text-sm text-slate-600 hover:text-slate-900">Settings</a>
+
+          <!-- MORE — demoted surfaces. Nothing is deleted; it's just not
+               competing for attention with the primary job. -->
           <details class="nav-menu relative">
-            <summary class="text-sm text-slate-600 hover:text-slate-900 cursor-pointer list-none select-none flex items-center gap-1">
-              Prospecting <span class="text-slate-400 text-[10px]">▼</span>
-            </summary>
-            <div class="absolute left-0 top-full mt-1 w-56 bg-white border border-slate-200 rounded-lg shadow-lg py-1 text-sm">
-              <a href="/drafts" class="block px-3 py-1.5 text-slate-700 hover:bg-slate-50">Drafts</a>
-              <a href="/replies" class="block px-3 py-1.5 text-slate-700 hover:bg-slate-50">Replies</a>
-              <a href="/prospects" class="block px-3 py-1.5 text-slate-700 hover:bg-slate-50">Prospects</a>
-              <a href="/prospects/import" class="block px-3 py-1.5 text-slate-700 hover:bg-slate-50">Pilot import</a>
-              <a href="/discovery" class="block px-3 py-1.5 text-slate-700 hover:bg-slate-50">Discovery runs</a>
-            </div>
-          </details>
-
-          <!-- PRESENCE -->
-          <a href="/presence" class="text-sm text-slate-600 hover:text-slate-900">Presence</a>
-
-          <!-- ACCOUNT BUILDING -->
-          <details class="nav-menu relative">
-            <summary class="text-sm text-slate-600 hover:text-slate-900 cursor-pointer list-none select-none flex items-center gap-1">
-              Account Building
-              <% if (typeof signalsUnacked !== 'undefined' && signalsUnacked > 0) { %>
-                <span class="inline-flex items-center justify-center bg-red-600 text-white text-[10px] font-semibold rounded-full min-w-[18px] h-[18px] px-1.5 leading-none"><%= signalsUnacked %></span>
-              <% } %>
-              <span class="text-slate-400 text-[10px]">▼</span>
+            <summary class="text-sm text-slate-500 hover:text-slate-900 cursor-pointer list-none select-none flex items-center gap-1">
+              More <span class="text-slate-400 text-[10px]">▼</span>
             </summary>
             <div class="absolute left-0 top-full mt-1 w-60 bg-white border border-slate-200 rounded-lg shadow-lg py-1 text-sm">
-              <div class="px-3 pt-1.5 pb-1 text-[10px] uppercase tracking-wide text-slate-400 font-semibold">The book</div>
-              <a href="/accounts?status=customer" class="block px-3 py-1.5 text-slate-700 hover:bg-slate-50 flex items-center justify-between">
-                <span>Customers</span><span class="text-[10px] text-emerald-700">·</span>
-              </a>
-              <a href="/accounts?status=prospect" class="block px-3 py-1.5 text-slate-700 hover:bg-slate-50">Prospects</a>
-              <a href="/accounts?status=churned" class="block px-3 py-1.5 text-slate-700 hover:bg-slate-50">Churned</a>
-              <a href="/accounts" class="block px-3 py-1.5 text-slate-700 hover:bg-slate-50">All accounts</a>
+              <div class="px-3 pt-1.5 pb-1 text-[10px] uppercase tracking-wide text-slate-400 font-semibold">Cross-account indexes</div>
+              <a href="/plays" class="block px-3 py-1.5 text-slate-700 hover:bg-slate-50">Plays</a>
+              <a href="/events" class="block px-3 py-1.5 text-slate-700 hover:bg-slate-50">Events &amp; one-offs</a>
+              <a href="/expand" class="block px-3 py-1.5 text-slate-700 hover:bg-slate-50">Expand (portfolio)</a>
+              <a href="/revisit" class="block px-3 py-1.5 text-slate-700 hover:bg-slate-50">Revisit (portfolio)</a>
 
               <div class="border-t border-slate-100 mt-1 pt-1">
-                <div class="px-3 pt-1.5 pb-1 text-[10px] uppercase tracking-wide text-slate-400 font-semibold">Moves</div>
-                <a href="/brief" class="block px-3 py-1.5 text-slate-700 hover:bg-slate-50 flex items-center justify-between">
-                  <span>Today</span>
-                  <% if (typeof signalsUnacked !== 'undefined' && signalsUnacked > 0) { %>
-                    <span class="inline-flex items-center justify-center bg-red-600 text-white text-[10px] font-semibold rounded-full min-w-[18px] h-[18px] px-1.5 leading-none"><%= signalsUnacked %></span>
-                  <% } %>
-                </a>
-                <a href="/plays" class="block px-3 py-1.5 text-slate-700 hover:bg-slate-50">Plays</a>
-                <a href="/events" class="block px-3 py-1.5 text-slate-700 hover:bg-slate-50">Events &amp; one-offs</a>
-                <a href="/expand" class="block px-3 py-1.5 text-slate-700 hover:bg-slate-50">Expand (Customer growth)</a>
-                <a href="/revisit" class="block px-3 py-1.5 text-slate-700 hover:bg-slate-50">Revisit (Closed Lost)</a>
+                <div class="px-3 pt-1.5 pb-1 text-[10px] uppercase tracking-wide text-slate-400 font-semibold">Outbound pipeline</div>
+                <a href="/drafts" class="block px-3 py-1.5 text-slate-700 hover:bg-slate-50">Drafts</a>
+                <a href="/replies" class="block px-3 py-1.5 text-slate-700 hover:bg-slate-50">Replies</a>
+                <a href="/prospects" class="block px-3 py-1.5 text-slate-700 hover:bg-slate-50">Prospects</a>
+                <a href="/discovery" class="block px-3 py-1.5 text-slate-700 hover:bg-slate-50">Discovery runs</a>
+                <a href="/presence" class="block px-3 py-1.5 text-slate-700 hover:bg-slate-50">Presence (LinkedIn)</a>
               </div>
             </div>
           </details>
-
-          <a href="/settings" class="text-sm text-slate-600 hover:text-slate-900">Settings</a>
         </div>
         <div class="flex items-center gap-3 text-sm text-slate-500">
           <span><%= user.name || user.email %></span>
