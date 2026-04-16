@@ -707,3 +707,133 @@
   </section>
 
 </div>
+
+<!-- ============ THEORY OF THE CASE (full width, below intel) ============ -->
+<section class="bg-white border border-slate-200 rounded-lg overflow-hidden mt-6">
+  <header class="px-4 py-3 border-b border-slate-200">
+    <h2 class="font-semibold">Theory of the case</h2>
+    <p class="text-xs text-slate-500 mt-0.5">
+      Which Ambition use case fits this account, for which persona, supported by which signals.
+    </p>
+  </header>
+
+  <% if (hypotheses.length === 0) { %>
+    <div class="p-5 text-sm text-slate-500">
+      No hypotheses yet. Draft one below — plays attach to hypotheses so your reasoning carries forward.
+    </div>
+  <% } else { %>
+    <ul class="divide-y divide-slate-100">
+      <% hypotheses.forEach(function(h) { %>
+        <li class="p-4">
+          <div class="flex items-center gap-2 flex-wrap mb-1">
+            <span class="pill bg-slate-900 text-white"><%= useCaseLabel[h.use_case] || h.use_case %></span>
+            <span class="pill bg-sky-100 text-sky-800"><%= h.target_persona_id %></span>
+            <span class="text-xs text-slate-500">confidence <%= h.confidence %>/5</span>
+            <% if (h.status === 'validated') { %><span class="pill bg-emerald-100 text-emerald-800">validated</span>
+            <% } else if (h.status === 'disproven') { %><span class="pill bg-slate-100 text-slate-500">disproven</span>
+            <% } %>
+          </div>
+          <p class="text-sm text-slate-800"><%= h.narrative_hook %></p>
+
+          <% if (h.narrative && (h.narrative.current_state || h.narrative.future_state || h.narrative.bridge)) { %>
+            <div class="mt-3 space-y-2 text-xs">
+              <% if (h.narrative.current_state) { %>
+                <div class="bg-slate-50 border-l-2 border-slate-300 rounded px-3 py-2">
+                  <div class="uppercase tracking-wide text-[10px] text-slate-500 font-semibold mb-0.5">Today</div>
+                  <div class="text-slate-800"><%= h.narrative.current_state %></div>
+                </div>
+              <% } %>
+              <% if (h.narrative.future_state) { %>
+                <div class="bg-emerald-50 border-l-2 border-emerald-400 rounded px-3 py-2">
+                  <div class="uppercase tracking-wide text-[10px] text-emerald-700 font-semibold mb-0.5">What would be different</div>
+                  <div class="text-slate-800"><%= h.narrative.future_state %></div>
+                </div>
+              <% } %>
+              <% if (h.narrative.bridge) { %>
+                <div class="bg-violet-50 border-l-2 border-violet-400 rounded px-3 py-2">
+                  <div class="uppercase tracking-wide text-[10px] text-violet-700 font-semibold mb-0.5">Bridge</div>
+                  <div class="text-slate-800"><%= h.narrative.bridge %></div>
+                </div>
+              <% } %>
+            </div>
+          <% } %>
+
+          <div class="text-xs text-slate-500 mt-2"><%= h.evidence_count || 0 %> evidence signal<%= h.evidence_count === 1 ? '' : 's' %></div>
+          <details class="mt-2">
+            <summary class="text-xs text-slate-500 hover:text-slate-900 cursor-pointer">Edit</summary>
+            <form method="POST" action="/hypotheses/<%= h.id %>" class="mt-2 space-y-2 text-xs">
+              <textarea name="narrative_hook" rows="2" class="w-full border border-slate-300 rounded px-2 py-1"><%= h.narrative_hook %></textarea>
+              <div class="space-y-1">
+                <div class="uppercase tracking-wide text-[10px] text-slate-500 font-semibold">Three-beat narrative (champion voice — optional)</div>
+                <textarea name="narrative_current_state" rows="2" placeholder="Today — what's the status quo?" class="w-full border border-slate-300 rounded px-2 py-1"><%= (h.narrative && h.narrative.current_state) || '' %></textarea>
+                <textarea name="narrative_future_state" rows="2" placeholder="What would be different?" class="w-full border border-slate-300 rounded px-2 py-1"><%= (h.narrative && h.narrative.future_state) || '' %></textarea>
+                <textarea name="narrative_bridge" rows="2" placeholder="Bridge — what we're asking for" class="w-full border border-slate-300 rounded px-2 py-1"><%= (h.narrative && h.narrative.bridge) || '' %></textarea>
+              </div>
+              <div class="grid grid-cols-3 gap-2">
+                <select name="status" class="border border-slate-300 rounded px-2 py-1">
+                  <option value="theory"     <%= h.status === 'theory' ? 'selected' : '' %>>Theory</option>
+                  <option value="validated"  <%= h.status === 'validated' ? 'selected' : '' %>>Validated</option>
+                  <option value="disproven"  <%= h.status === 'disproven' ? 'selected' : '' %>>Disproven</option>
+                </select>
+                <label class="flex items-center gap-1"><span class="text-slate-500">conf</span>
+                  <input type="number" min="1" max="5" name="confidence" value="<%= h.confidence %>" class="w-14 border border-slate-300 rounded px-2 py-1" />
+                </label>
+                <button type="submit" class="bg-slate-900 hover:bg-slate-800 text-white rounded font-medium">Save</button>
+              </div>
+              <button type="submit" formaction="/hypotheses/<%= h.id %>/delete" class="text-red-600 hover:text-red-800 text-xs">Remove</button>
+            </form>
+          </details>
+        </li>
+      <% }); %>
+    </ul>
+  <% } %>
+
+  <details class="border-t border-slate-200 p-4 bg-slate-50">
+    <summary class="text-xs font-semibold text-slate-700 cursor-pointer">+ New hypothesis</summary>
+    <form method="POST" action="/accounts/<%= account.id %>/hypotheses" class="mt-3 space-y-2 text-xs">
+      <div class="grid grid-cols-2 gap-2">
+        <select name="use_case" required class="border border-slate-300 rounded px-2 py-1">
+          <option value="">Use case *</option>
+          <% Object.keys(useCaseLabel).forEach(function(k) { %>
+            <option value="<%= k %>"><%= useCaseLabel[k] %></option>
+          <% }); %>
+        </select>
+        <select name="target_persona_id" required class="border border-slate-300 rounded px-2 py-1">
+          <option value="">Persona *</option>
+          <% personas.forEach(function(p) { %>
+            <option value="<%= p.id %>"><%= p.label || p.id %></option>
+          <% }); %>
+        </select>
+      </div>
+      <textarea name="narrative_hook" rows="2" required placeholder="Narrative hook — one line. &quot;Earnings call flagged tooling rationalization; pitch one Performance Graph across SDR + AE.&quot;" class="w-full border border-slate-300 rounded px-2 py-1"></textarea>
+
+      <details>
+        <summary class="cursor-pointer text-slate-500 text-xs">+ Three-beat narrative (champion voice — optional, Nasralla arc)</summary>
+        <div class="mt-2 space-y-1">
+          <textarea name="narrative_current_state" rows="2" placeholder="Today. What the champion sees inside the org today — status quo, pain, workaround." class="w-full border border-slate-300 rounded px-2 py-1"></textarea>
+          <textarea name="narrative_future_state" rows="2" placeholder="What would be different. What the champion is telling their peers life looks like on the other side." class="w-full border border-slate-300 rounded px-2 py-1"></textarea>
+          <textarea name="narrative_bridge" rows="2" placeholder="Bridge. The specific ask — 20 minutes, a meeting, a one-pager input — in the champion's voice." class="w-full border border-slate-300 rounded px-2 py-1"></textarea>
+        </div>
+      </details>
+      <div class="grid grid-cols-2 gap-2">
+        <label class="flex items-center gap-1"><span class="text-slate-500">confidence</span>
+          <input type="number" min="1" max="5" name="confidence" value="3" class="w-14 border border-slate-300 rounded px-2 py-1" />
+        </label>
+        <% if (pulseSignals && pulseSignals.length > 0) { %>
+          <details class="relative">
+            <summary class="cursor-pointer text-slate-500">Attach evidence signals (<%= pulseSignals.length %> available)</summary>
+            <div class="absolute z-10 right-0 mt-1 w-72 max-h-60 overflow-y-auto bg-white border border-slate-300 rounded p-2 shadow">
+              <% pulseSignals.forEach(function(s) { %>
+                <label class="flex items-start gap-2 py-1 text-xs">
+                  <input type="checkbox" name="evidence_signal_ids" value="<%= s.id %>" />
+                  <span><%= s.title %></span>
+                </label>
+              <% }); %>
+            </div>
+          </details>
+        <% } %>
+      </div>
+      <button type="submit" class="bg-slate-900 hover:bg-slate-800 text-white px-3 py-1 rounded font-medium">Save hypothesis</button>
+    </form>
+  </details>
+</section>
