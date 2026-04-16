@@ -78,6 +78,7 @@ import { coachDossier } from '../agents/dossier_coach.js';
 import { planDossier } from '../agents/dossier_planner.js';
 import { fitUseCase } from '../agents/use_case_fit.js';
 import { pullIndustryInsight } from '../agents/industry_insight.js';
+import { generateHypotheses } from '../agents/hypothesis_generator.js';
 import {
   getAccountIntel,
   setIntelRunning,
@@ -2029,6 +2030,94 @@ webRouter.post('/accounts/:id/intel/industry', requireAuth, async (req, res, nex
       });
 
     res.redirect(`/accounts/${accountId}/plan#intel`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Generate hypotheses — AE picks which signals to feed in (checkboxes on
+// the Hypotheses section); the agent drafts 1-3 hypotheses with the
+// Nasralla three-beat narrative, and we insert them via createHypothesis
+// so they flow through the same CRUD surface as hand-written ones.
+webRouter.post('/accounts/:id/hypotheses/generate', requireAuth, async (req, res, next) => {
+  try {
+    const accountId = req.params.id;
+    if (!UUID_RE.test(accountId)) return res.redirect('/accounts');
+    const bundle = await getAccountBundle(accountId);
+    if (!bundle) return res.redirect('/accounts');
+
+    const intel = await getAccountIntel(accountId);
+    if (intel.hypotheses_gen?.status === 'running') {
+      return res.redirect(`/accounts/${accountId}/plan#hypotheses`);
+    }
+
+    // Selected signals from the checkbox group. Empty = use all pulse
+    // signals on the account (that's what "select based on what was
+    // found" defaults to when the AE hasn't explicitly pruned).
+    const selectedIds = new Set(
+      []
+        .concat(req.body?.signal_ids || [])
+        .filter((v) => typeof v === 'string' && UUID_RE.test(v))
+    );
+    const allSignals = Array.isArray(bundle.signals) ? bundle.signals : [];
+    const selectedSignals = selectedIds.size > 0
+      ? allSignals.filter((s) => selectedIds.has(s.id))
+      : allSignals;
+
+    const [contacts, dossier] = await Promise.all([
+      listContactsForAccount(accountId),
+      getDossier(accountId).catch(() => null),
+    ]);
+
+    const userId = req.session.userId;
+    await setIntelRunning(accountId, 'hypotheses_gen');
+
+    Promise.resolve()
+      .then(async () => {
+        const out = await generateHypotheses(bundle.account, {
+          selectedSignals,
+          dossier,
+          contacts,
+          personas: PERSONAS,
+          useCaseFit: intel.use_case_fit?.status === 'completed' ? intel.use_case_fit.result : null,
+        });
+        if (out.error || !out.result) {
+          await setIntelFailed(accountId, 'hypotheses_gen', out.error || 'no_result');
+          return;
+        }
+        const drafted = Array.isArray(out.result.hypotheses) ? out.result.hypotheses : [];
+        let inserted = 0;
+        for (const h of drafted) {
+          try {
+            await createHypothesis({
+              account_id: accountId,
+              use_case: h.use_case,
+              target_persona_id: h.target_persona_id,
+              narrative_hook: h.narrative_hook,
+              narrative: h.narrative,
+              evidence_signal_ids: h.evidence_signal_ids || [],
+              confidence: h.confidence,
+              status: 'theory',
+              created_by_user_id: userId,
+            });
+            inserted += 1;
+          } catch (e) {
+            console.error(`[intel] hypothesis insert failed for ${accountId}:`, e.message);
+          }
+        }
+        await setIntelResult(accountId, 'hypotheses_gen', {
+          drafted: drafted.length,
+          inserted,
+          rationale: out.result.rationale || null,
+        });
+        console.log(`[intel] hypotheses generated for ${accountId} — ${inserted}/${drafted.length}, ${out.elapsed_ms}ms`);
+      })
+      .catch(async (err) => {
+        console.error(`[intel] hypotheses ${accountId} failed:`, err);
+        try { await setIntelFailed(accountId, 'hypotheses_gen', err.message || String(err)); } catch (_) {}
+      });
+
+    res.redirect(`/accounts/${accountId}/plan#hypotheses`);
   } catch (err) {
     next(err);
   }

@@ -837,7 +837,7 @@ ALTER TABLE revisit_paths ADD COLUMN IF NOT EXISTS trigger_snapshot JSONB;
 
 CREATE TABLE IF NOT EXISTS account_intel (
   account_id UUID NOT NULL REFERENCES accounts_registry(id) ON DELETE CASCADE,
-  kind TEXT NOT NULL CHECK (kind IN ('use_case_fit', 'industry_insight')),
+  kind TEXT NOT NULL CHECK (kind IN ('use_case_fit', 'industry_insight', 'hypotheses_gen')),
   status TEXT NOT NULL DEFAULT 'idle' CHECK (status IN ('idle', 'running', 'completed', 'failed')),
   result JSONB,
   error TEXT,
@@ -845,3 +845,27 @@ CREATE TABLE IF NOT EXISTS account_intel (
   completed_at TIMESTAMPTZ,
   PRIMARY KEY (account_id, kind)
 );
+
+-- Upgrade existing deployments: the original CHECK on account_intel.kind only
+-- allowed ('use_case_fit', 'industry_insight'). Rewrite it in place so the
+-- hypothesis-generator kind ('hypotheses_gen') can be inserted.
+DO $$
+DECLARE
+  cname TEXT;
+  cdef  TEXT;
+BEGIN
+  SELECT c.conname, pg_get_constraintdef(c.oid)
+    INTO cname, cdef
+    FROM pg_constraint c
+    JOIN pg_class     t ON t.oid = c.conrelid
+   WHERE t.relname = 'account_intel'
+     AND c.contype = 'c'
+     AND pg_get_constraintdef(c.oid) ILIKE '%use_case_fit%'
+   LIMIT 1;
+  IF cname IS NOT NULL AND cdef NOT ILIKE '%hypotheses_gen%' THEN
+    EXECUTE 'ALTER TABLE account_intel DROP CONSTRAINT ' || quote_ident(cname);
+    ALTER TABLE account_intel
+      ADD CONSTRAINT account_intel_kind_check
+      CHECK (kind IN ('use_case_fit', 'industry_insight', 'hypotheses_gen'));
+  END IF;
+END$$;
