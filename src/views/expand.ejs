@@ -69,6 +69,7 @@
           <th class="text-left px-4 py-2 font-semibold">Customer</th>
           <th class="text-left px-4 py-2 font-semibold w-32">State</th>
           <th class="text-left px-4 py-2 font-semibold w-24">Notes</th>
+          <th class="text-left px-4 py-2 font-semibold w-36">Last scan</th>
           <th class="text-left px-4 py-2 font-semibold w-32">Last activity</th>
           <th class="text-right px-4 py-2 font-semibold"></th>
         </tr>
@@ -80,6 +81,8 @@
           else if (c.has_dossier)                state = { cls: 'bg-slate-100 text-slate-700', label: 'started' };
           else                                   state = { cls: 'bg-slate-100 text-slate-500', label: 'untouched' };
           const lastActivity = c.last_note_at || c.dossier_updated_at;
+          const scanStatus = c.last_scan_status;
+          const triggerCount = c.trigger_count || 0;
         %>
           <tr class="border-b border-slate-100 hover:bg-slate-50">
             <td class="px-4 py-2.5">
@@ -90,6 +93,20 @@
             </td>
             <td class="px-4 py-2.5"><span class="pill <%= state.cls %>"><%= state.label %></span></td>
             <td class="px-4 py-2.5 tabular-nums text-slate-700"><%= c.note_count %></td>
+            <td class="px-4 py-2.5 text-xs">
+              <% if (scanStatus === 'running') { %>
+                <span class="inline-flex items-center gap-1.5 text-amber-700">
+                  <span class="inline-block w-1.5 h-1.5 bg-amber-500 rounded-full animate-pulse"></span>
+                  scanning&hellip;
+                </span>
+              <% } else if (scanStatus === 'completed') { %>
+                <span class="text-slate-700"><%= triggerCount %> trigger<%= triggerCount === 1 ? '' : 's' %></span>
+              <% } else if (scanStatus === 'failed') { %>
+                <span class="text-red-700">failed</span>
+              <% } else { %>
+                <span class="text-slate-400">&mdash;</span>
+              <% } %>
+            </td>
             <td class="px-4 py-2.5 text-xs text-slate-500"><%= fmtRelative(lastActivity) %></td>
             <td class="px-4 py-2.5 text-right">
               <a href="/expand/<%= c.id %>" class="text-xs text-slate-600 hover:text-slate-900 underline">

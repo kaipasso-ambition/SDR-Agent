@@ -56,7 +56,16 @@ import {
   getExpansionNote,
   deleteExpansionNote,
   listExpansionPortfolio,
+  setScanRunning as setExpansionScanRunning,
+  setScanResult as setExpansionScanResult,
+  setScanFailed as setExpansionScanFailed,
+  createExpansionPaths,
+  getExpansionPathsById,
+  listExpansionPathsForAccount,
+  selectExpansionPath,
+  setExpansionOutcome,
 } from '../db/expansions.js';
+import { scanCustomer, buildExpansionPaths } from '../agents/expansion_scanner.js';
 import {
   getSignalsForBrief,
   getSignalById,
@@ -1147,11 +1156,12 @@ webRouter.get('/expand/:account_id', requireAuth, async (req, res, next) => {
     if (!UUID_RE.test(req.params.account_id)) return res.redirect('/expand');
     // The People Map reuses game_plan_contacts so /expand and /accounts/:id/plan
     // stay in sync — one canonical org chart per account.
-    const [bundle, dossier, notes, contacts] = await Promise.all([
+    const [bundle, dossier, notes, contacts, pathSets] = await Promise.all([
       getAccountBundle(req.params.account_id),
       getDossier(req.params.account_id),
       listExpansionNotes(req.params.account_id),
       listContactsForAccount(req.params.account_id),
+      listExpansionPathsForAccount(req.params.account_id),
     ]);
     if (!bundle) return res.redirect('/expand');
     // Only customers get the /expand treatment. Churned accounts belong in
@@ -1166,6 +1176,7 @@ webRouter.get('/expand/:account_id', requireAuth, async (req, res, next) => {
       dossier,
       notes,
       contacts,
+      pathSets,
     });
   } catch (err) {
     next(err);
@@ -1213,6 +1224,137 @@ webRouter.post('/expand/notes/:id/delete', requireAuth, async (req, res, next) =
     await deleteExpansionNote(req.params.id);
     if (n?.account_id) return res.redirect(`/expand/${n.account_id}#notes`);
     res.redirect('/expand');
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Kick off an expansion scan on a customer. Same fire-and-forget pattern as
+// /revisit — flip status to 'running' before returning so the detail page
+// shows a spinner, then update to completed/failed from the background
+// promise. Requires a saved dossier; without destination goals to filter
+// against, the scanner has no optimization function.
+webRouter.post('/expand/:account_id/scan', requireAuth, async (req, res, next) => {
+  try {
+    const accountId = req.params.account_id;
+    if (!UUID_RE.test(accountId)) return res.redirect('/expand');
+    const [bundle, dossier] = await Promise.all([
+      getAccountBundle(accountId),
+      getDossier(accountId),
+    ]);
+    if (!bundle || bundle.account.status !== 'customer') {
+      return res.redirect('/expand');
+    }
+    // Need a dossier with at least a destination — otherwise the scanner has
+    // nothing to optimize toward and will either surface generic news or
+    // (correctly) return an empty array.
+    if (!dossier || !dossier.destination) {
+      return res.redirect(`/expand/${accountId}`);
+    }
+    if (dossier.last_scan_status === 'running') {
+      return res.redirect(`/expand/${accountId}`);
+    }
+
+    await setExpansionScanRunning(accountId);
+
+    const [notes, contacts] = await Promise.all([
+      listExpansionNotes(accountId),
+      listContactsForAccount(accountId),
+    ]);
+
+    Promise.resolve()
+      .then(async () => {
+        const result = await scanCustomer(bundle.account, { dossier, notes, contacts });
+        await setExpansionScanResult(accountId, {
+          triggers: result.triggers,
+          searches: result.searches,
+        });
+        console.log(`[expand] scan ${accountId} done — ${result.triggers.length} triggers, ${result.searches} searches, skipped=${result.skipped || 'no'}`);
+      })
+      .catch(async (err) => {
+        console.error(`[expand] scan ${accountId} failed:`, err);
+        try {
+          await setExpansionScanFailed(accountId, { error: err.message || String(err) });
+        } catch (_) { /* best effort */ }
+      });
+
+    res.redirect(`/expand/${accountId}`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Build three expansion paths for one trigger. Synchronous (~10-15s) — the
+// AE clicks "Build paths" and waits. No web_search, just reasoning over the
+// dossier + trigger + people map.
+webRouter.post('/expand/:account_id/paths', requireAuth, async (req, res, next) => {
+  try {
+    const accountId = req.params.account_id;
+    if (!UUID_RE.test(accountId)) return res.redirect('/expand');
+    const [bundle, dossier, notes, contacts] = await Promise.all([
+      getAccountBundle(accountId),
+      getDossier(accountId),
+      listExpansionNotes(accountId),
+      listContactsForAccount(accountId),
+    ]);
+    if (!bundle || bundle.account.status !== 'customer') return res.redirect('/expand');
+
+    const triggers = Array.isArray(dossier?.last_scan_result) ? dossier.last_scan_result : [];
+    const triggerIdx = parseInt(req.body?.trigger_index, 10);
+    if (!Number.isFinite(triggerIdx) || triggerIdx < 0 || triggerIdx >= triggers.length) {
+      return res.redirect(`/expand/${accountId}`);
+    }
+
+    const trigger = triggers[triggerIdx];
+    const result = await buildExpansionPaths(bundle.account, trigger, { dossier, notes, contacts });
+
+    await createExpansionPaths({
+      account_id: accountId,
+      trigger_index: triggerIdx,
+      trigger_title: trigger.trigger_title || null,
+      trigger_snapshot: trigger,
+      paths: result.paths,
+    });
+
+    console.log(`[expand] built ${result.paths.length} paths for ${accountId} trigger #${triggerIdx} in ${result.elapsed_ms}ms`);
+    res.redirect(`/expand/${accountId}#trigger-${triggerIdx}`);
+  } catch (err) {
+    console.error('[expand/paths] failed:', err);
+    next(err);
+  }
+});
+
+// AE selects a path — records the choice + timestamp for learning.
+webRouter.post('/expand/paths/:id/select', requireAuth, async (req, res, next) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.redirect('/expand');
+    const pathSet = await getExpansionPathsById(req.params.id);
+    if (!pathSet) return res.redirect('/expand');
+    const idx = parseInt(req.body?.path_index, 10);
+    if (!Number.isFinite(idx) || idx < 0 || idx > 2) {
+      return res.redirect(`/expand/${pathSet.account_id}`);
+    }
+    await selectExpansionPath(pathSet.id, idx);
+    res.redirect(`/expand/${pathSet.account_id}#paths-${pathSet.id}`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// AE records the outcome of an expansion path they executed.
+webRouter.post('/expand/paths/:id/outcome', requireAuth, async (req, res, next) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.redirect('/expand');
+    const pathSet = await getExpansionPathsById(req.params.id);
+    if (!pathSet) return res.redirect('/expand');
+    const outcome = ['won', 'lost', 'no_response', 'in_progress'].includes(req.body?.outcome)
+      ? req.body.outcome : null;
+    if (!outcome) return res.redirect(`/expand/${pathSet.account_id}`);
+    await setExpansionOutcome(pathSet.id, {
+      outcome,
+      notes: (req.body?.notes || '').trim() || null,
+    });
+    res.redirect(`/expand/${pathSet.account_id}#paths-${pathSet.id}`);
   } catch (err) {
     next(err);
   }

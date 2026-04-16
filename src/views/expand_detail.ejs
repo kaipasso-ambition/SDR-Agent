@@ -37,6 +37,68 @@
   const otherContacts = contacts.filter(c =>
     !['economic_buyer', 'champion', 'blocker', 'coach'].includes(c.deal_role)
   );
+  // ---------- Scan state + triggers/paths ----------
+  const triggers     = Array.isArray(dossier?.last_scan_result) ? dossier.last_scan_result : [];
+  const scanStatus   = dossier?.last_scan_status;
+  const isScanning   = scanStatus === 'running';
+  const hasDossier   = Boolean(dossier);
+  const canScan      = hasDossier && dossier.destination;
+  const sevPill = (s) => {
+    if (s >= 5) return 'bg-red-100 text-red-800';
+    if (s === 4) return 'bg-orange-100 text-orange-800';
+    if (s === 3) return 'bg-amber-100 text-amber-800';
+    if (s === 2) return 'bg-slate-100 text-slate-700';
+    return 'bg-slate-100 text-slate-500';
+  };
+  const channelIcon = (ch) => {
+    if (ch === 'linkedin') return 'in';
+    if (ch === 'email')    return '@';
+    if (ch === 'call')     return '☎';
+    if (ch === 'internal') return '→';
+    if (ch === 'slack')    return '#';
+    if (ch === 'event')    return '★';
+    return '·';
+  };
+  const channelColor = (ch) => {
+    if (ch === 'linkedin') return 'bg-blue-100 text-blue-800';
+    if (ch === 'email')    return 'bg-emerald-100 text-emerald-800';
+    if (ch === 'call')     return 'bg-amber-100 text-amber-800';
+    if (ch === 'internal') return 'bg-slate-100 text-slate-700';
+    if (ch === 'slack')    return 'bg-purple-100 text-purple-800';
+    if (ch === 'event')    return 'bg-fuchsia-100 text-fuchsia-800';
+    return 'bg-slate-100 text-slate-600';
+  };
+  const actorLabel = { ae: 'You', champion: 'Champion', sponsor: 'Sponsor', target: 'Target' };
+  const actorColor = {
+    ae:       'bg-slate-100 text-slate-700',
+    champion: 'bg-emerald-100 text-emerald-800',
+    sponsor:  'bg-blue-100 text-blue-800',
+    target:   'bg-purple-100 text-purple-800',
+  };
+  const carryLabel = {
+    existing_champion: 'Champion carries',
+    existing_sponsor:  'Sponsor carries',
+    new_target:        'New target',
+  };
+  const carryColor = {
+    existing_champion: 'bg-emerald-100 text-emerald-800',
+    existing_sponsor:  'bg-blue-100 text-blue-800',
+    new_target:        'bg-amber-100 text-amber-800',
+  };
+  // Latest pathSet per trigger_index — the /expand/:id/paths route always
+  // inserts a new row, so the FIRST one we see (list is DESC) is current.
+  const pathsByTrigger = {};
+  (pathSets || []).forEach(function(ps) {
+    if (!pathsByTrigger[ps.trigger_index]) pathsByTrigger[ps.trigger_index] = ps;
+  });
+  const pathColors = [
+    { border: 'border-blue-300',    header: 'bg-blue-50 text-blue-900 border-b border-blue-200',       dot: 'bg-blue-500',    bar: 'bg-blue-500',    selected: 'ring-2 ring-blue-500',    selectBtn: 'bg-blue-600 hover:bg-blue-700 text-white' },
+    { border: 'border-emerald-300', header: 'bg-emerald-50 text-emerald-900 border-b border-emerald-200', dot: 'bg-emerald-500', bar: 'bg-emerald-500', selected: 'ring-2 ring-emerald-500', selectBtn: 'bg-emerald-600 hover:bg-emerald-700 text-white' },
+    { border: 'border-purple-300',  header: 'bg-purple-50 text-purple-900 border-b border-purple-200',  dot: 'bg-purple-500',  bar: 'bg-purple-500',  selected: 'ring-2 ring-purple-500',  selectBtn: 'bg-purple-600 hover:bg-purple-700 text-white' },
+  ];
+  const outcomeLabels = { won: 'Won', lost: 'Lost', no_response: 'No response', in_progress: 'In progress' };
+  const outcomeColors = { won: 'bg-emerald-100 text-emerald-800', lost: 'bg-red-100 text-red-800', no_response: 'bg-slate-100 text-slate-700', in_progress: 'bg-amber-100 text-amber-800' };
+  const effortLabel = (s) => ({1:'XS',2:'S',3:'M',4:'L',5:'XL'}[s] || '?');
 %>
 
 <div class="mb-2 text-sm text-slate-500">
@@ -55,18 +117,42 @@
       <div class="text-[11px] text-slate-400 mt-1">dossier updated <%= fmtDate(dossier.updated_at) %></div>
     <% } %>
   </div>
-  <a href="/accounts/<%= account.id %>/plan"
-     class="text-xs text-slate-600 hover:text-slate-900 underline shrink-0 mt-2">
-    Open Plan (org chart) &rarr;
-  </a>
+  <div class="shrink-0 flex items-center gap-3">
+    <a href="/accounts/<%= account.id %>/plan"
+       class="text-xs text-slate-600 hover:text-slate-900 underline mt-2">
+      Open Plan (org chart) &rarr;
+    </a>
+    <% if (canScan) { %>
+      <form method="POST" action="/expand/<%= account.id %>/scan">
+        <button type="submit"
+                class="text-sm bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded font-medium disabled:opacity-50"
+                <% if (isScanning) { %>disabled<% } %>>
+          <% if (isScanning) { %>Scanning&hellip;<% } else if (scanStatus === 'completed') { %>Re-scan<% } else { %>Run scan<% } %>
+        </button>
+      </form>
+    <% } %>
+  </div>
 </div>
 
-<!-- Phase 2 placeholder -->
-<div class="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6 text-sm text-amber-900">
-  <strong>Phase 1.</strong> Dossier + notes live here so you have somewhere to drop what you know.
-  Phase 2 adds a web scanner (what's happening externally that unlocks your destination goals?)
-  and a path generator (3 moves per trigger, warm-intro-via-champion base rates).
-</div>
+<% if (isScanning) { %>
+  <div class="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6 flex items-center gap-3">
+    <span class="inline-block w-2 h-2 bg-amber-500 rounded-full animate-pulse"></span>
+    <div class="flex-1 text-sm text-amber-900">
+      Scanning the web for movement that strengthens one of your destination goals. Typically 1&ndash;3 minutes (~6 web searches).
+    </div>
+  </div>
+  <script>setTimeout(function(){ location.reload(); }, 15000);</script>
+<% } else if (scanStatus === 'failed') { %>
+  <div class="bg-red-50 border border-red-200 rounded-lg p-4 mb-6 text-sm text-red-900">
+    <strong>Last scan failed.</strong>
+    <% if (dossier?.last_scan_error) { %><div class="mt-1 text-red-800 font-mono text-xs"><%= dossier.last_scan_error %></div><% } %>
+  </div>
+<% } else if (!canScan) { %>
+  <div class="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6 text-sm text-amber-900">
+    <strong>Fill in <em>Destination</em> below to enable the scanner.</strong>
+    The destination goals are the filter — without them the scanner has nothing to optimize toward.
+  </div>
+<% } %>
 
 <!-- ---------- Dossier editor ---------- -->
 <form method="POST" action="/expand/<%= account.id %>/dossier" class="space-y-5 mb-8">
@@ -238,3 +324,380 @@
     </ul>
   <% } %>
 </div>
+
+<!-- ---------- Triggers (from scanner) + paths ---------- -->
+<% if (scanStatus === 'completed' || triggers.length > 0) { %>
+  <div class="mb-3 flex items-center justify-between">
+    <h2 class="text-lg font-semibold">
+      <%= triggers.length %> expansion trigger<%= triggers.length === 1 ? '' : 's' %>
+      <% if (dossier?.last_scan_searches != null) { %>
+        <span class="text-xs text-slate-500 font-normal">&middot; <%= dossier.last_scan_searches %> web searches</span>
+      <% } %>
+    </h2>
+  </div>
+
+  <% if (triggers.length === 0) { %>
+    <div class="bg-white border border-slate-200 rounded-lg p-8 text-sm text-slate-500 text-center mb-8">
+      <div class="text-base text-slate-700 mb-1">Nothing connectable surfaced.</div>
+      Claude searched but didn't find external movement that plausibly strengthens one of the stated destination goals.
+      Worth re-scanning once the dossier has fresher context.
+    </div>
+  <% } else { %>
+    <div class="space-y-6 mb-8">
+      <% triggers.forEach(function(t, i) {
+        const ps = pathsByTrigger[i];
+        const paths = ps && Array.isArray(ps.paths) ? ps.paths : [];
+        const carry = t.carry_internally || {};
+      %>
+        <div id="trigger-<%= i %>" class="bg-white border-2 border-slate-200 rounded-lg p-5">
+          <!-- Trigger header: severity + signal_type + destination_link -->
+          <div class="flex items-start justify-between gap-4 mb-2">
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="pill <%= sevPill(t.severity) %>">SEV <%= t.severity %></span>
+              <% if (t.signal_type) { %><span class="pill bg-slate-100 text-slate-700"><%= t.signal_type %></span><% } %>
+              <% if (carry.role && carryLabel[carry.role]) { %>
+                <span class="pill <%= carryColor[carry.role] %>"><%= carryLabel[carry.role] %></span>
+              <% } %>
+            </div>
+            <span class="text-xs text-slate-400">#<%= i + 1 %></span>
+          </div>
+
+          <div class="text-base font-semibold text-slate-900 mb-1"><%= t.trigger_title %></div>
+          <% if (t.trigger_summary) { %>
+            <div class="text-sm text-slate-600 mb-3"><%= t.trigger_summary %></div>
+          <% } %>
+
+          <% if (t.destination_link) { %>
+            <div class="mt-3 mb-2">
+              <div class="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">Advances destination goal</div>
+              <div class="text-sm text-slate-800 bg-emerald-50 border-l-2 border-emerald-400 pl-3 py-1"><%= t.destination_link %></div>
+            </div>
+          <% } %>
+
+          <% if (t.why_this_unlocks) { %>
+            <div class="text-xs font-semibold uppercase tracking-wide text-slate-500 mt-3 mb-1">Why this strengthens the ask</div>
+            <div class="text-sm text-slate-800"><%= t.why_this_unlocks %></div>
+          <% } %>
+
+          <% if (carry.who && carry.who !== 'unknown') { %>
+            <div class="text-xs font-semibold uppercase tracking-wide text-slate-500 mt-3 mb-1">Who should hear this first</div>
+            <div class="text-sm text-slate-800"><%= carry.who %></div>
+          <% } %>
+
+          <% if (t.champion_talking_point) { %>
+            <div class="mt-3 bg-slate-50 border-l-2 border-slate-400 pl-3 py-2 pr-2">
+              <div class="text-[10px] uppercase tracking-wide text-slate-500 font-semibold">Champion talking point</div>
+              <div class="text-sm text-slate-700 italic">&ldquo;<%= t.champion_talking_point %>&rdquo;</div>
+            </div>
+          <% } %>
+
+          <div class="flex items-center justify-between gap-3 mt-4 flex-wrap text-xs">
+            <div>
+              <% if (t.source_url) { %>
+                <a href="<%= t.source_url %>" target="_blank" rel="noopener"
+                   class="text-slate-600 hover:text-slate-900 underline truncate max-w-md inline-block align-middle">
+                  Source &nearr;
+                </a>
+              <% } %>
+              <% if (t.source_excerpt) { %>
+                <span class="text-slate-400 italic ml-2">&ldquo;<%= t.source_excerpt %>&rdquo;</span>
+              <% } %>
+            </div>
+            <% if (!ps) { %>
+              <form method="POST" action="/expand/<%= account.id %>/paths">
+                <input type="hidden" name="trigger_index" value="<%= i %>" />
+                <button type="submit"
+                        class="bg-slate-900 hover:bg-slate-800 text-white px-4 py-1.5 rounded font-medium text-xs">
+                  Build paths &rarr;
+                </button>
+              </form>
+            <% } %>
+          </div>
+
+          <!-- ============================================================ -->
+          <!-- PATH CARDS                                                    -->
+          <!-- ============================================================ -->
+          <% if (ps && paths.length > 0) {
+            const safeM = (p) => p.metrics || {};
+            const bestReply = Math.max(...paths.map(p => safeM(p).predicted_reply_rate ?? -1));
+            const daysArr = paths.map(p => safeM(p).predicted_days_to_meeting).filter(n => Number.isFinite(n));
+            const bestDays = daysArr.length ? Math.min(...daysArr) : null;
+            const bestEffort = Math.min(...paths.map(p => safeM(p).effort_score ?? 99));
+            const bestConf  = Math.max(...paths.map(p => safeM(p).confidence ?? -1));
+          %>
+            <div id="paths-<%= ps.id %>" class="mt-6 border-t border-slate-200 pt-5">
+              <div class="flex items-center justify-between mb-4">
+                <h3 class="text-sm font-semibold text-slate-700">
+                  Hypotheses
+                  <% if (ps.selected_path != null) { %>
+                    &middot; <span class="text-emerald-700">Path <%= ps.selected_path + 1 %> selected</span>
+                    <% if (ps.outcome) { %>
+                      &middot; <span class="pill <%= outcomeColors[ps.outcome] || 'bg-slate-100' %>"><%= outcomeLabels[ps.outcome] || ps.outcome %></span>
+                    <% } %>
+                  <% } %>
+                </h3>
+                <% if (ps.selected_path == null) { %>
+                  <form method="POST" action="/expand/<%= account.id %>/paths">
+                    <input type="hidden" name="trigger_index" value="<%= i %>" />
+                    <button type="submit" class="text-xs text-slate-500 hover:text-slate-900 underline">Regenerate</button>
+                  </form>
+                <% } %>
+              </div>
+
+              <!-- Comparison table -->
+              <div class="bg-white border border-slate-200 rounded-lg overflow-hidden mb-4">
+                <table class="w-full text-sm">
+                  <thead class="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500">
+                    <tr>
+                      <th class="text-left px-3 py-2 font-semibold">Path</th>
+                      <th class="text-left px-3 py-2 font-semibold">Entry point</th>
+                      <th class="text-right px-3 py-2 font-semibold">Reply %</th>
+                      <th class="text-right px-3 py-2 font-semibold">Days&nbsp;&rarr;&nbsp;meet</th>
+                      <th class="text-right px-3 py-2 font-semibold">Effort</th>
+                      <th class="text-right px-3 py-2 font-semibold">Confidence</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <% paths.forEach(function(p, pi) {
+                      const m = p.metrics || {};
+                      const ep = p.entry_point || {};
+                      const color = pathColors[pi] || pathColors[0];
+                      const isSelected = ps.selected_path === pi;
+                      const highlight = (val, best) => (best != null && val === best) ? 'font-semibold text-emerald-700' : 'text-slate-700';
+                    %>
+                      <tr class="border-t border-slate-100 <%= isSelected ? 'bg-emerald-50' : '' %>">
+                        <td class="px-3 py-2">
+                          <a href="#path-<%= ps.id %>-<%= pi %>" class="inline-flex items-center gap-2">
+                            <span class="inline-block w-2 h-2 rounded-full <%= color.dot %>"></span>
+                            <span class="font-medium text-slate-800"><%= p.path_name %></span>
+                          </a>
+                        </td>
+                        <td class="px-3 py-2 text-slate-600 text-xs">
+                          <% if (ep.role) { %>
+                            <span class="pill <%= carryColor[ep.role] || 'bg-slate-100 text-slate-600' %> text-[10px]"><%= carryLabel[ep.role] || ep.role %></span>
+                          <% } %>
+                          <% if (ep.who && ep.who !== 'unknown') { %>
+                            <span class="ml-1"><%= ep.who %></span>
+                          <% } %>
+                        </td>
+                        <td class="px-3 py-2 text-right tabular-nums <%= highlight(m.predicted_reply_rate, bestReply) %>">
+                          <%= m.predicted_reply_rate != null ? m.predicted_reply_rate + '%' : '—' %>
+                        </td>
+                        <td class="px-3 py-2 text-right tabular-nums <%= highlight(m.predicted_days_to_meeting, bestDays) %>">
+                          <%= m.predicted_days_to_meeting != null ? m.predicted_days_to_meeting + 'd' : '—' %>
+                        </td>
+                        <td class="px-3 py-2 text-right tabular-nums <%= highlight(m.effort_score, bestEffort) %>">
+                          <%= effortLabel(m.effort_score) %>
+                        </td>
+                        <td class="px-3 py-2 text-right tabular-nums <%= highlight(m.confidence, bestConf) %>">
+                          <%= m.confidence != null ? m.confidence + '/10' : '—' %>
+                        </td>
+                      </tr>
+                    <% }); %>
+                  </tbody>
+                </table>
+              </div>
+
+              <!-- Detail cards: one per path -->
+              <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <% paths.forEach(function(p, pi) {
+                  const m = p.metrics || {};
+                  const ep = p.entry_point || {};
+                  const color = pathColors[pi] || pathColors[0];
+                  const isSelected = ps.selected_path === pi;
+                  const isDimmed = ps.selected_path != null && !isSelected;
+                  const reply = m.predicted_reply_rate ?? 0;
+                  const conf  = m.confidence ?? 0;
+                  const effort = m.effort_score ?? 0;
+                %>
+                  <div id="path-<%= ps.id %>-<%= pi %>"
+                       class="bg-white border-2 <%= color.border %> rounded-lg overflow-hidden flex flex-col
+                              <%= isSelected ? color.selected : '' %>
+                              <%= isDimmed ? 'opacity-50' : '' %>">
+                    <div class="<%= color.header %> px-4 py-2 flex items-center justify-between">
+                      <div class="flex items-center gap-2">
+                        <span class="inline-block w-2 h-2 rounded-full <%= color.dot %>"></span>
+                        <span class="text-sm font-semibold">Path <%= pi + 1 %></span>
+                      </div>
+                      <% if (isSelected) { %><span class="text-[10px] uppercase tracking-wider font-bold">&check; Selected</span><% } %>
+                    </div>
+
+                    <div class="p-4 flex-1 flex flex-col">
+                      <div class="text-base font-semibold text-slate-900 mb-1"><%= p.path_name %></div>
+                      <div class="text-xs text-slate-600 italic mb-3 leading-snug"><%= p.hypothesis %></div>
+
+                      <% if (ep.role) { %>
+                        <div class="mb-3 flex items-center gap-2 text-xs">
+                          <span class="pill <%= carryColor[ep.role] || 'bg-slate-100 text-slate-600' %> text-[10px]"><%= carryLabel[ep.role] || ep.role %></span>
+                          <% if (ep.who && ep.who !== 'unknown') { %>
+                            <span class="text-slate-700 font-medium"><%= ep.who %></span>
+                          <% } %>
+                        </div>
+                      <% } %>
+
+                      <!-- Metric grid -->
+                      <div class="grid grid-cols-2 gap-3 mb-4">
+                        <div class="bg-slate-50 rounded p-2.5">
+                          <div class="text-[10px] uppercase tracking-wide text-slate-500 font-semibold">Reply %</div>
+                          <div class="text-xl font-bold tabular-nums text-slate-900"><%= reply %>%</div>
+                          <div class="w-full bg-slate-200 rounded-full h-1 mt-1">
+                            <div class="<%= color.bar %> h-1 rounded-full" style="width: <%= Math.min(100, reply * 2) %>%"></div>
+                          </div>
+                        </div>
+                        <div class="bg-slate-50 rounded p-2.5">
+                          <div class="text-[10px] uppercase tracking-wide text-slate-500 font-semibold">Days &rarr; meet</div>
+                          <div class="text-xl font-bold tabular-nums text-slate-900">
+                            <%= m.predicted_days_to_meeting != null ? m.predicted_days_to_meeting + 'd' : '—' %>
+                          </div>
+                          <div class="text-[10px] text-slate-400 mt-1">if booked</div>
+                        </div>
+                        <div class="bg-slate-50 rounded p-2.5">
+                          <div class="text-[10px] uppercase tracking-wide text-slate-500 font-semibold">Effort</div>
+                          <div class="flex items-baseline gap-1">
+                            <div class="text-xl font-bold text-slate-900"><%= effortLabel(effort) %></div>
+                            <div class="text-[10px] text-slate-500"><%= ['','<30min','1hr','½ day','1 day','multi-day'][effort] || '' %></div>
+                          </div>
+                          <div class="flex gap-0.5 mt-1">
+                            <% for (let e = 1; e <= 5; e++) { %>
+                              <div class="flex-1 h-1 rounded-full <%= e <= effort ? color.bar : 'bg-slate-200' %>"></div>
+                            <% } %>
+                          </div>
+                        </div>
+                        <div class="bg-slate-50 rounded p-2.5">
+                          <div class="text-[10px] uppercase tracking-wide text-slate-500 font-semibold">Confidence</div>
+                          <div class="text-xl font-bold tabular-nums text-slate-900"><%= conf %><span class="text-xs text-slate-500">/10</span></div>
+                          <div class="w-full bg-slate-200 rounded-full h-1 mt-1">
+                            <div class="<%= color.bar %> h-1 rounded-full" style="width: <%= conf * 10 %>%"></div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <!-- Sequence timeline with actor row -->
+                      <div class="mb-4">
+                        <div class="text-[10px] uppercase tracking-wide text-slate-500 font-semibold mb-2">Sequence</div>
+                        <div class="flex items-start gap-1 overflow-x-auto">
+                          <% (p.steps || []).forEach(function(step, si) { %>
+                            <% if (si > 0) { %>
+                              <div class="h-px bg-slate-300 flex-1 mt-3 min-w-[12px]"></div>
+                            <% } %>
+                            <div class="flex flex-col items-center shrink-0" title="<%= step.action %>">
+                              <div class="w-6 h-6 rounded-full <%= channelColor(step.channel) %> flex items-center justify-center text-[11px] font-bold"><%= channelIcon(step.channel) %></div>
+                              <div class="text-[9px] text-slate-500 mt-1">D<%= step.day %></div>
+                              <div class="text-[9px] text-slate-700 font-medium"><%= step.channel %></div>
+                              <% if (step.actor) { %>
+                                <div class="text-[9px] px-1 rounded mt-0.5 <%= actorColor[step.actor] || 'bg-slate-100 text-slate-500' %>"><%= actorLabel[step.actor] || step.actor %></div>
+                              <% } %>
+                            </div>
+                          <% }); %>
+                        </div>
+                      </div>
+
+                      <!-- Ask of champion — the actual message the AE sends to the champion -->
+                      <% if (p.ask_of_champion) { %>
+                        <div class="mb-3 bg-emerald-50 border-l-2 border-emerald-400 pl-3 py-2">
+                          <div class="text-[10px] uppercase tracking-wide text-emerald-700 font-semibold">Ask the champion</div>
+                          <div class="text-xs text-slate-700 mt-1 leading-snug"><%= p.ask_of_champion %></div>
+                        </div>
+                      <% } %>
+
+                      <!-- Destination linkage — why this moves the dossier goal -->
+                      <% if (p.destination_goal_advanced) { %>
+                        <div class="mb-3 text-[11px]">
+                          <span class="font-semibold text-slate-600">Advances:</span>
+                          <span class="text-slate-700"><%= p.destination_goal_advanced %></span>
+                        </div>
+                      <% } %>
+
+                      <!-- Best / worst -->
+                      <div class="grid grid-cols-2 gap-2 mb-3 text-[11px]">
+                        <div class="bg-emerald-50 border border-emerald-200 rounded p-2">
+                          <div class="text-[10px] uppercase tracking-wide text-emerald-700 font-semibold">Best</div>
+                          <div class="text-slate-700 leading-snug"><%= p.best_case || '—' %></div>
+                        </div>
+                        <div class="bg-red-50 border border-red-200 rounded p-2">
+                          <div class="text-[10px] uppercase tracking-wide text-red-700 font-semibold">Worst</div>
+                          <div class="text-slate-700 leading-snug"><%= p.worst_case || '—' %></div>
+                        </div>
+                      </div>
+
+                      <% if (p.key_variable) { %>
+                        <div class="text-[11px] text-slate-500 mb-3">
+                          <span class="font-semibold text-slate-600">Hinges on:</span> <%= p.key_variable %>
+                        </div>
+                      <% } %>
+
+                      <!-- Drafts, collapsed -->
+                      <% if ((p.steps || []).some(s => s.draft_message)) { %>
+                        <details class="mb-3 text-xs">
+                          <summary class="cursor-pointer text-slate-600 hover:text-slate-900 select-none font-medium">&#9662; Show drafts (<%= (p.steps || []).filter(s => s.draft_message).length %>)</summary>
+                          <div class="mt-2 space-y-2">
+                            <% (p.steps || []).forEach(function(step) { if (step.draft_message) { %>
+                              <div class="bg-slate-50 border-l-2 <%= color.border %> pl-3 py-2 pr-2">
+                                <div class="text-[10px] uppercase tracking-wide text-slate-500 font-semibold flex items-center gap-2">
+                                  <span>Day <%= step.day %> &middot; <%= step.channel %> &middot; <%= step.action %></span>
+                                  <% if (step.actor) { %>
+                                    <span class="pill <%= actorColor[step.actor] || 'bg-slate-100 text-slate-600' %> text-[9px]"><%= actorLabel[step.actor] || step.actor %></span>
+                                  <% } %>
+                                </div>
+                                <div class="text-slate-700 mt-1 whitespace-pre-wrap"><%= step.draft_message %></div>
+                              </div>
+                            <% } }); %>
+                          </div>
+                        </details>
+                      <% } %>
+
+                      <!-- Select -->
+                      <% if (ps.selected_path == null) { %>
+                        <form method="POST" action="/expand/paths/<%= ps.id %>/select" class="mt-auto">
+                          <input type="hidden" name="path_index" value="<%= pi %>" />
+                          <button type="submit"
+                                  class="w-full text-xs font-semibold py-2 rounded <%= color.selectBtn %> transition">
+                            Select this hypothesis
+                          </button>
+                        </form>
+                      <% } %>
+                    </div>
+                  </div>
+                <% }); %>
+              </div>
+
+              <!-- Outcome tracker -->
+              <% if (ps.selected_path != null && !ps.outcome) { %>
+                <div class="mt-4 bg-slate-50 border border-slate-200 rounded-lg p-4">
+                  <div class="text-sm font-semibold text-slate-700 mb-2">How did it go?</div>
+                  <form method="POST" action="/expand/paths/<%= ps.id %>/outcome" class="flex items-end gap-3 flex-wrap">
+                    <div>
+                      <select name="outcome" class="text-sm border border-slate-300 rounded px-3 py-1.5">
+                        <option value="in_progress">In progress</option>
+                        <option value="won">Won (meeting / reply)</option>
+                        <option value="no_response">No response</option>
+                        <option value="lost">Lost (rejected)</option>
+                      </select>
+                    </div>
+                    <div class="flex-1">
+                      <input type="text" name="notes" placeholder="What happened? (optional)" class="w-full text-sm border border-slate-300 rounded px-3 py-1.5" />
+                    </div>
+                    <button type="submit" class="text-sm bg-slate-900 hover:bg-slate-800 text-white px-4 py-1.5 rounded font-medium">
+                      Record outcome
+                    </button>
+                  </form>
+                </div>
+              <% } else if (ps.outcome) { %>
+                <div class="mt-4 bg-slate-50 border border-slate-200 rounded-lg p-4 text-sm">
+                  <span class="pill <%= outcomeColors[ps.outcome] || 'bg-slate-100' %>"><%= outcomeLabels[ps.outcome] || ps.outcome %></span>
+                  <% if (ps.outcome_notes) { %><span class="text-slate-600 ml-2"><%= ps.outcome_notes %></span><% } %>
+                  <span class="text-xs text-slate-400 ml-2">&middot; recorded <%= fmtDate(ps.outcome_at) %></span>
+                </div>
+              <% } %>
+            </div>
+          <% } %>
+        </div>
+      <% }); %>
+    </div>
+  <% } %>
+<% } else if (canScan && !isScanning) { %>
+  <div class="bg-white border border-slate-200 rounded-lg p-8 text-sm text-slate-500 text-center mb-8">
+    <div class="text-base text-slate-700 mb-1">Not scanned yet.</div>
+    Click <strong>Run scan</strong> above to ask Claude what's happening externally that strengthens one of your stated destination goals.
+  </div>
+<% } %>

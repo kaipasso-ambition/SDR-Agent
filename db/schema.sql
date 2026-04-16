@@ -752,3 +752,34 @@ CREATE TABLE IF NOT EXISTS expansion_notes (
 );
 CREATE INDEX IF NOT EXISTS expansion_notes_account_idx ON expansion_notes(account_id, created_at DESC);
 
+-- Per-customer scan state, owned by the /expand UI. Mirrors dead_deals' scan
+-- columns: one scan at a time per account, last_scan_result holds the most
+-- recent triggers as a JSONB array. The /expand list renders last-result
+-- badges from these columns without a join.
+ALTER TABLE account_expansion_dossier ADD COLUMN IF NOT EXISTS last_scan_status TEXT;
+ALTER TABLE account_expansion_dossier ADD COLUMN IF NOT EXISTS last_scan_started_at TIMESTAMPTZ;
+ALTER TABLE account_expansion_dossier ADD COLUMN IF NOT EXISTS last_scan_result JSONB;
+ALTER TABLE account_expansion_dossier ADD COLUMN IF NOT EXISTS last_scan_searches INT;
+ALTER TABLE account_expansion_dossier ADD COLUMN IF NOT EXISTS last_scan_error TEXT;
+
+-- Expansion paths — three moves per trigger. Same shape as revisit_paths:
+-- array of 3 path objects as JSONB, the AE picks one, we log outcome. Keyed
+-- by (account_id, trigger_index) against the current dossier.last_scan_result
+-- array — rescanning mutates that array, so path rows are scoped to the
+-- scan generation by virtue of being created after it.
+CREATE TABLE IF NOT EXISTS expansion_paths (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  account_id UUID NOT NULL REFERENCES accounts_registry(id) ON DELETE CASCADE,
+  trigger_index INT NOT NULL,
+  trigger_title TEXT,
+  trigger_snapshot JSONB,              -- full trigger at the moment paths were built
+  paths JSONB NOT NULL,                -- array of 3 path objects
+  selected_path INT,
+  outcome TEXT CHECK (outcome IN ('won','lost','no_response','in_progress')),
+  outcome_notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  selected_at TIMESTAMPTZ,
+  outcome_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS expansion_paths_account_idx ON expansion_paths(account_id, created_at DESC);
+

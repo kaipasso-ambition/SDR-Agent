@@ -77,6 +77,105 @@ export async function deleteExpansionNote(id) {
   await query(`DELETE FROM expansion_notes WHERE id = $1`, [id]);
 }
 
+// ---------- Scan state ----------
+//
+// One scan at a time per customer. Mirrors dead_deals' last_scan_* pattern:
+// the current triggers live on the dossier row so the list view can show
+// "3 triggers · last scanned 2d ago" without a join. Rescanning overwrites;
+// history lives in expansion_paths (what the AE actually acted on).
+
+export async function setScanRunning(accountId) {
+  await query(
+    `UPDATE account_expansion_dossier
+        SET last_scan_status     = 'running',
+            last_scan_started_at = NOW(),
+            last_scan_error      = NULL
+      WHERE account_id = $1`,
+    [accountId]
+  );
+}
+
+export async function setScanResult(accountId, { triggers, searches }) {
+  await query(
+    `UPDATE account_expansion_dossier
+        SET last_scan_status   = 'completed',
+            last_scan_result   = $2::jsonb,
+            last_scan_searches = $3,
+            last_scan_error    = NULL
+      WHERE account_id = $1`,
+    [accountId, JSON.stringify(triggers || []), searches ?? null]
+  );
+}
+
+export async function setScanFailed(accountId, { error, searches }) {
+  await query(
+    `UPDATE account_expansion_dossier
+        SET last_scan_status   = 'failed',
+            last_scan_error    = $2,
+            last_scan_searches = $3
+      WHERE account_id = $1`,
+    [accountId, (error || '').slice(0, 1000), searches ?? null]
+  );
+}
+
+// ---------- Paths ----------
+
+export async function createExpansionPaths({ account_id, trigger_index, trigger_title, trigger_snapshot, paths }) {
+  const { rows } = await query(
+    `INSERT INTO expansion_paths
+       (account_id, trigger_index, trigger_title, trigger_snapshot, paths)
+     VALUES ($1, $2, $3, $4::jsonb, $5::jsonb)
+     RETURNING *`,
+    [
+      account_id,
+      trigger_index,
+      trigger_title || null,
+      trigger_snapshot ? JSON.stringify(trigger_snapshot) : null,
+      JSON.stringify(paths),
+    ]
+  );
+  return rows[0];
+}
+
+export async function getExpansionPathsById(id) {
+  const { rows } = await query(
+    `SELECT * FROM expansion_paths WHERE id = $1 LIMIT 1`,
+    [id]
+  );
+  return rows[0] || null;
+}
+
+export async function listExpansionPathsForAccount(accountId) {
+  const { rows } = await query(
+    `SELECT * FROM expansion_paths
+      WHERE account_id = $1
+      ORDER BY created_at DESC`,
+    [accountId]
+  );
+  return rows;
+}
+
+export async function selectExpansionPath(id, pathIndex) {
+  await query(
+    `UPDATE expansion_paths
+        SET selected_path = $2,
+            selected_at   = NOW()
+      WHERE id = $1`,
+    [id, pathIndex]
+  );
+}
+
+export async function setExpansionOutcome(id, { outcome, notes }) {
+  await query(
+    `UPDATE expansion_paths
+        SET outcome       = $2,
+            outcome_notes = $3,
+            outcome_at    = NOW()
+      WHERE id = $1`,
+    [id, outcome, notes || null]
+  );
+}
+
 // ---------- Portfolio view ----------
 //
 // Every active customer with a "where you are vs. where you're going" column
@@ -90,6 +189,12 @@ export async function listExpansionPortfolio() {
             d.footprint IS NOT NULL                       AS has_dossier,
             d.destination IS NOT NULL                     AS has_destination,
             d.updated_at                                  AS dossier_updated_at,
+            d.last_scan_status                            AS last_scan_status,
+            d.last_scan_started_at                        AS last_scan_started_at,
+            COALESCE(
+              jsonb_array_length(COALESCE(d.last_scan_result, '[]'::jsonb)),
+              0
+            )::int                                        AS trigger_count,
             COALESCE(nc.note_count, 0)::int               AS note_count,
             nc.last_note_at                               AS last_note_at
        FROM accounts_registry a
