@@ -820,3 +820,28 @@ CREATE INDEX IF NOT EXISTS account_plays_revisit_path_idx
 -- persist the trigger object even when no path-enumeration has happened.
 ALTER TABLE revisit_paths ADD COLUMN IF NOT EXISTS trigger_snapshot JSONB;
 
+
+-- ---------------------------------------------------------------------------
+-- Account intel (Game Plan: Use Case Identifier + Industry Insight)
+-- ---------------------------------------------------------------------------
+-- Two AI-driven blocks at the bottom of the Game Plan page:
+--   - kind = 'use_case_fit'      : ranked Ambition use cases that match
+--                                  the account's signals + dossier.
+--   - kind = 'industry_insight'  : Challenger-style industry insight
+--                                  squarely focused on Sales Performance
+--                                  and Coaching, scoped to the account's
+--                                  industry.
+-- One row per (account_id, kind). Result is JSONB shaped per kind. Status
+-- column drives the running/completed/failed UX, mirroring the dossier
+-- coach/plan pattern.
+
+CREATE TABLE IF NOT EXISTS account_intel (
+  account_id UUID NOT NULL REFERENCES accounts_registry(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL CHECK (kind IN ('use_case_fit', 'industry_insight')),
+  status TEXT NOT NULL DEFAULT 'idle' CHECK (status IN ('idle', 'running', 'completed', 'failed')),
+  result JSONB,
+  error TEXT,
+  started_at TIMESTAMPTZ,
+  completed_at TIMESTAMPTZ,
+  PRIMARY KEY (account_id, kind)
+);

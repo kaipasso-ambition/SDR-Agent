@@ -13,14 +13,12 @@
 <body class="bg-slate-50 text-slate-900 min-h-screen">
   <% if (typeof user !== 'undefined' && user) { %>
     <%
-      // Three-item primary nav. The job is "show me the one move to make
-      // today, on the right account." Everything else — cross-account
-      // indexes (/plays, /events), per-account deep dives (/expand,
-      // /revisit), the old outbound pipeline (/drafts, /replies,
-      // /prospects, /discovery, /presence) — lives under "More" so the
-      // primary surface stays quiet.
-      // Dropdowns are plain <details> — no JS needed, closes on outside
-      // click via the built-in <details> semantics + a tiny helper below.
+      // Primary nav: Today, Accounts (with Plays nested — both index the
+      // book), Settings. Other surfaces (/expand, /revisit, /events,
+      // /drafts, /replies, /prospects, /discovery, /presence) still
+      // resolve as direct URLs but are kept off the nav until they earn
+      // primary real estate. Dropdowns are plain <details> + a small
+      // outside-click helper below.
     %>
     <nav class="bg-white border-b border-slate-200 relative z-20">
       <div class="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
@@ -34,33 +32,18 @@
             <% } %>
           </a>
 
-          <a href="/accounts" class="text-sm text-slate-600 hover:text-slate-900">Accounts</a>
-
-          <a href="/settings" class="text-sm text-slate-600 hover:text-slate-900">Settings</a>
-
-          <!-- MORE — demoted surfaces. Nothing is deleted; it's just not
-               competing for attention with the primary job. -->
           <details class="nav-menu relative">
-            <summary class="text-sm text-slate-500 hover:text-slate-900 cursor-pointer list-none select-none flex items-center gap-1">
-              More <span class="text-slate-400 text-[10px]">▼</span>
+            <summary class="text-sm text-slate-600 hover:text-slate-900 cursor-pointer list-none select-none flex items-center gap-1">
+              Accounts <span class="text-slate-400 text-[10px]">▼</span>
             </summary>
-            <div class="absolute left-0 top-full mt-1 w-60 bg-white border border-slate-200 rounded-lg shadow-lg py-1 text-sm">
-              <div class="px-3 pt-1.5 pb-1 text-[10px] uppercase tracking-wide text-slate-400 font-semibold">Cross-account indexes</div>
+            <div class="absolute left-0 top-full mt-1 w-44 bg-white border border-slate-200 rounded-lg shadow-lg py-1 text-sm">
+              <a href="/accounts" class="block px-3 py-1.5 text-slate-700 hover:bg-slate-50">Accounts</a>
               <a href="/plays" class="block px-3 py-1.5 text-slate-700 hover:bg-slate-50">Plays</a>
-              <a href="/events" class="block px-3 py-1.5 text-slate-700 hover:bg-slate-50">Events &amp; one-offs</a>
-              <a href="/expand" class="block px-3 py-1.5 text-slate-700 hover:bg-slate-50">Expand (portfolio)</a>
-              <a href="/revisit" class="block px-3 py-1.5 text-slate-700 hover:bg-slate-50">Revisit (portfolio)</a>
-
-              <div class="border-t border-slate-100 mt-1 pt-1">
-                <div class="px-3 pt-1.5 pb-1 text-[10px] uppercase tracking-wide text-slate-400 font-semibold">Outbound pipeline</div>
-                <a href="/drafts" class="block px-3 py-1.5 text-slate-700 hover:bg-slate-50">Drafts</a>
-                <a href="/replies" class="block px-3 py-1.5 text-slate-700 hover:bg-slate-50">Replies</a>
-                <a href="/prospects" class="block px-3 py-1.5 text-slate-700 hover:bg-slate-50">Prospects</a>
-                <a href="/discovery" class="block px-3 py-1.5 text-slate-700 hover:bg-slate-50">Discovery runs</a>
-                <a href="/presence" class="block px-3 py-1.5 text-slate-700 hover:bg-slate-50">Presence (LinkedIn)</a>
-              </div>
+              <a href="/drafts" class="block px-3 py-1.5 text-slate-700 hover:bg-slate-50">Drafts</a>
             </div>
           </details>
+
+          <a href="/settings" class="text-sm text-slate-600 hover:text-slate-900">Settings</a>
         </div>
         <div class="flex items-center gap-3 text-sm text-slate-500">
           <span><%= user.name || user.email %></span>

@@ -76,6 +76,14 @@ import {
 import { scanCustomer, buildExpansionPaths } from '../agents/expansion_scanner.js';
 import { coachDossier } from '../agents/dossier_coach.js';
 import { planDossier } from '../agents/dossier_planner.js';
+import { fitUseCase } from '../agents/use_case_fit.js';
+import { pullIndustryInsight } from '../agents/industry_insight.js';
+import {
+  getAccountIntel,
+  setIntelRunning,
+  setIntelResult,
+  setIntelFailed,
+} from '../db/account_intel.js';
 import {
   getSignalById,
   acknowledgeSignal,
@@ -1908,11 +1916,12 @@ webRouter.get('/accounts/:id/plan', requireAuth, async (req, res, next) => {
     const bundle = await getAccountBundle(accountId);
     if (!bundle) return res.redirect('/accounts');
 
-    const [contacts, hypotheses, plays, events] = await Promise.all([
+    const [contacts, hypotheses, plays, events, intel] = await Promise.all([
       listContactsForAccount(accountId),
       listHypothesesForAccount(accountId),
       listPlaysForAccount(accountId),
       listEvents({ includeCompleted: false }),
+      getAccountIntel(accountId),
     ]);
 
     // If the Start-a-play button handed us a signal_id, hydrate it so
@@ -1933,7 +1942,93 @@ webRouter.get('/accounts/:id/plan', requireAuth, async (req, res, next) => {
       triggerSignal,
       composerOpen: req.query?.new_play === '1',
       personas: PERSONAS,
+      intel,
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------- Game Plan intel (Use Case Identifier + Industry Insight) ----------
+//
+// Both kick off a background Claude call, flip status to 'running'
+// synchronously, redirect back. The view auto-reloads while running and
+// renders the result when done. Mirrors the dossier-coach/plan pattern.
+
+webRouter.post('/accounts/:id/intel/use-case', requireAuth, async (req, res, next) => {
+  try {
+    const accountId = req.params.id;
+    if (!UUID_RE.test(accountId)) return res.redirect('/accounts');
+    const bundle = await getAccountBundle(accountId);
+    if (!bundle) return res.redirect('/accounts');
+
+    const intel = await getAccountIntel(accountId);
+    if (intel.use_case_fit?.status === 'running') {
+      return res.redirect(`/accounts/${accountId}/plan#intel`);
+    }
+
+    await setIntelRunning(accountId, 'use_case_fit');
+
+    const [contacts, dossier] = await Promise.all([
+      listContactsForAccount(accountId),
+      getDossier(accountId).catch(() => null),
+    ]);
+
+    Promise.resolve()
+      .then(async () => {
+        const out = await fitUseCase(bundle.account, {
+          signals: bundle.signals || [],
+          dossier,
+          contacts,
+        });
+        if (out.error || !out.result) {
+          await setIntelFailed(accountId, 'use_case_fit', out.error || 'no_result');
+          return;
+        }
+        await setIntelResult(accountId, 'use_case_fit', out.result);
+        console.log(`[intel] use-case fit for ${accountId} — ${out.elapsed_ms}ms`);
+      })
+      .catch(async (err) => {
+        console.error(`[intel] use-case ${accountId} failed:`, err);
+        try { await setIntelFailed(accountId, 'use_case_fit', err.message || String(err)); } catch (_) {}
+      });
+
+    res.redirect(`/accounts/${accountId}/plan#intel`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+webRouter.post('/accounts/:id/intel/industry', requireAuth, async (req, res, next) => {
+  try {
+    const accountId = req.params.id;
+    if (!UUID_RE.test(accountId)) return res.redirect('/accounts');
+    const bundle = await getAccountBundle(accountId);
+    if (!bundle) return res.redirect('/accounts');
+
+    const intel = await getAccountIntel(accountId);
+    if (intel.industry_insight?.status === 'running') {
+      return res.redirect(`/accounts/${accountId}/plan#intel`);
+    }
+
+    await setIntelRunning(accountId, 'industry_insight');
+
+    Promise.resolve()
+      .then(async () => {
+        const out = await pullIndustryInsight(bundle.account);
+        if (out.error || !out.result) {
+          await setIntelFailed(accountId, 'industry_insight', out.error || 'no_result');
+          return;
+        }
+        await setIntelResult(accountId, 'industry_insight', out.result);
+        console.log(`[intel] industry insight for ${accountId} — ${out.searches} searches, ${out.elapsed_ms}ms`);
+      })
+      .catch(async (err) => {
+        console.error(`[intel] industry ${accountId} failed:`, err);
+        try { await setIntelFailed(accountId, 'industry_insight', err.message || String(err)); } catch (_) {}
+      });
+
+    res.redirect(`/accounts/${accountId}/plan#intel`);
   } catch (err) {
     next(err);
   }
