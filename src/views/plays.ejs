@@ -120,9 +120,16 @@
                     <span>by <%= p.author_name || 'unknown' %></span>
                     <span>·</span>
                     <span>updated <%= shortDate(p.updated_at) %></span>
-                    <% if (p.trigger_signal_title) { %>
+                    <% const triggerLabel = p.trigger_signal_title
+                        ? { kind: 'signal',    title: p.trigger_signal_title }
+                        : p.trigger_expansion_title
+                        ? { kind: 'expansion', title: p.trigger_expansion_title }
+                        : p.trigger_revisit_title
+                        ? { kind: 'revisit',   title: p.trigger_revisit_title }
+                        : null; %>
+                    <% if (triggerLabel) { %>
                       <span>·</span>
-                      <span class="italic">from "<%= p.trigger_signal_title %>"</span>
+                      <span class="italic">from <%= triggerLabel.kind %> "<%= triggerLabel.title %>"</span>
                     <% } %>
                   </div>
                 </div>

@@ -261,12 +261,16 @@ export async function listPlaysForAccount(accountId) {
             h.narrative_hook AS hypothesis_hook,
             s.title AS trigger_signal_title,
             s.risk_class AS trigger_signal_risk_class,
+            ep.trigger_title AS trigger_expansion_title,
+            rp.trigger_title AS trigger_revisit_title,
             u.name AS author_name,
             e.name AS event_name,
             e.kind AS event_kind
        FROM account_plays p
        LEFT JOIN account_hypotheses h ON h.id = p.hypothesis_id
        LEFT JOIN account_signals s   ON s.id = p.triggered_by_signal_id
+       LEFT JOIN expansion_paths ep  ON ep.id = p.triggered_by_expansion_path_id
+       LEFT JOIN revisit_paths rp    ON rp.id = p.triggered_by_revisit_path_id
        LEFT JOIN users u             ON u.id = p.author_user_id
        LEFT JOIN play_events e       ON e.id = p.event_id
       WHERE p.account_id = $1
@@ -303,6 +307,8 @@ export async function listPlaysForUser(userId, { status = null } = {}) {
             h.use_case  AS hypothesis_use_case,
             h.narrative_hook AS hypothesis_hook,
             s.title     AS trigger_signal_title,
+            ep.trigger_title AS trigger_expansion_title,
+            rp.trigger_title AS trigger_revisit_title,
             u.name      AS author_name,
             e.name      AS event_name,
             e.kind      AS event_kind
@@ -310,6 +316,8 @@ export async function listPlaysForUser(userId, { status = null } = {}) {
        JOIN accounts_registry a ON a.id = p.account_id
        LEFT JOIN account_hypotheses h ON h.id = p.hypothesis_id
        LEFT JOIN account_signals s    ON s.id = p.triggered_by_signal_id
+       LEFT JOIN expansion_paths ep   ON ep.id = p.triggered_by_expansion_path_id
+       LEFT JOIN revisit_paths rp     ON rp.id = p.triggered_by_revisit_path_id
        LEFT JOIN users u              ON u.id = p.author_user_id
        LEFT JOIN play_events e        ON e.id = p.event_id
       WHERE (a.owner_user_id = $1 OR a.owner_user_id IS NULL)
@@ -337,11 +345,15 @@ export async function getPlayById(id) {
             h.use_case AS hypothesis_use_case,
             h.narrative_hook AS hypothesis_hook,
             s.title AS trigger_signal_title,
+            ep.trigger_title AS trigger_expansion_title,
+            rp.trigger_title AS trigger_revisit_title,
             u.name AS author_name
        FROM account_plays p
        JOIN accounts_registry a ON a.id = p.account_id
        LEFT JOIN account_hypotheses h ON h.id = p.hypothesis_id
        LEFT JOIN account_signals s   ON s.id = p.triggered_by_signal_id
+       LEFT JOIN expansion_paths ep  ON ep.id = p.triggered_by_expansion_path_id
+       LEFT JOIN revisit_paths rp    ON rp.id = p.triggered_by_revisit_path_id
        LEFT JOIN users u             ON u.id = p.author_user_id
       WHERE p.id = $1`,
     [id]
@@ -353,6 +365,8 @@ export async function createPlay({
   account_id,
   hypothesis_id = null,
   triggered_by_signal_id = null,
+  triggered_by_expansion_path_id = null,
+  triggered_by_revisit_path_id = null,
   event_id = null,
   author_user_id = null,
   instinct,
@@ -365,13 +379,17 @@ export async function createPlay({
 }) {
   const { rows } = await query(
     `INSERT INTO account_plays (
-       account_id, hypothesis_id, triggered_by_signal_id, event_id, author_user_id,
+       account_id, hypothesis_id, triggered_by_signal_id,
+       triggered_by_expansion_path_id, triggered_by_revisit_path_id,
+       event_id, author_user_id,
        instinct, ai_expansion, contact_path, personal_invite_contact_ids,
        status, next_action, next_action_due
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::uuid[], $9::uuid[], $10, $11, $12)
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::uuid[], $11::uuid[], $12, $13, $14)
      RETURNING *`,
     [
-      account_id, hypothesis_id, triggered_by_signal_id, event_id, author_user_id,
+      account_id, hypothesis_id, triggered_by_signal_id,
+      triggered_by_expansion_path_id, triggered_by_revisit_path_id,
+      event_id, author_user_id,
       instinct, ai_expansion ? JSON.stringify(ai_expansion) : null,
       contact_path, personal_invite_contact_ids,
       status, next_action, next_action_due,

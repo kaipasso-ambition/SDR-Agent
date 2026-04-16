@@ -1087,6 +1087,93 @@ webRouter.post('/revisit/paths/:id/select', requireAuth, async (req, res, next) 
   }
 });
 
+// Soft unification: act on a revisit trigger the same way as a customer
+// signal. Creates a tracked account_plays row on the deal's account, seeded
+// from the trigger's re_entry_angle / sponsors_to_target. Links back to a
+// stub revisit_paths row so the trigger origin survives dossier rescans.
+webRouter.post('/revisit/:opportunity_id/triggers/:trigger_index/play', requireAuth, async (req, res, next) => {
+  try {
+    const oppId = req.params.opportunity_id;
+    const deal = await getDeadDealByOpportunityId(oppId);
+    if (!deal) return res.redirect('/revisit');
+
+    const triggerIdx = parseInt(req.params.trigger_index, 10);
+    const triggers = Array.isArray(deal.last_scan_result) ? deal.last_scan_result : [];
+    if (!Number.isFinite(triggerIdx) || triggerIdx < 0 || triggerIdx >= triggers.length) {
+      return res.redirect(`/revisit/${encodeURIComponent(oppId)}`);
+    }
+    const trigger = triggers[triggerIdx];
+    const accountId = deal.account_id;
+
+    const pathRow = await createRevisitPaths({
+      opportunity_id: oppId,
+      trigger_index: triggerIdx,
+      trigger_title: trigger.trigger_title || null,
+      trigger_snapshot: trigger,
+      paths: [],
+    });
+
+    // Normalize revisit-trigger shape into the {title, so_what,
+    // recommended_move} contract buildPlay expects.
+    const sponsorNames = Array.isArray(trigger.sponsors_to_target)
+      ? trigger.sponsors_to_target.map((s) => s?.name).filter(Boolean)
+      : [];
+    const normalized = {
+      title: trigger.trigger_title || 'Revisit trigger',
+      so_what: trigger.why_this_unlocks || trigger.trigger_summary || null,
+      recommended_move:
+        (trigger.re_entry_angle && trigger.re_entry_angle.trim())
+        || (sponsorNames.length ? `Re-enter via ${sponsorNames.join(', ')}` : null)
+        || (trigger.loss_reason_link ? `Counter to loss reason: ${trigger.loss_reason_link}` : null),
+      source_url: trigger.source_url || null,
+    };
+
+    const seed =
+      (normalized.recommended_move && normalized.recommended_move.trim())
+      || (normalized.so_what && normalized.so_what.trim())
+      || `Act on: ${normalized.title}`;
+    const instinct = `Triggered by revisit scan — ${normalized.title}\n\n${seed}`;
+
+    const [bundle, priorPlays] = await Promise.all([
+      getAccountBundle(accountId),
+      listPlaysForAccount(accountId),
+    ]);
+
+    const play = await createPlay({
+      account_id: accountId,
+      triggered_by_revisit_path_id: pathRow.id,
+      author_user_id: req.session.userId,
+      instinct,
+      status: 'drafting',
+    });
+
+    try {
+      const { expansion } = await buildPlay({
+        account: bundle?.account,
+        instinct,
+        hypothesis: null,
+        contact_path_resolved: [],
+        triggering_signal: normalized,
+        event: null,
+        personal_invites: [],
+        prior_plays: priorPlays
+          .filter((p) => p.id !== play.id)
+          .map((p) => ({ named_play: p.ai_expansion?.named_play || null, status: p.status })),
+      });
+      if (expansion) {
+        await updatePlay(play.id, { ai_expansion: expansion, status: 'active' });
+      }
+    } catch (err) {
+      console.error('[revisit/triggers/play build] expansion failed:', err.message);
+    }
+
+    res.redirect(`/accounts/${accountId}/plan#play-${play.id}`);
+  } catch (err) {
+    console.error('[revisit/triggers/play]', err);
+    next(err);
+  }
+});
+
 // AE records the outcome of a path they executed.
 webRouter.post('/revisit/paths/:id/outcome', requireAuth, async (req, res, next) => {
   try {
@@ -1347,6 +1434,94 @@ webRouter.post('/expand/paths/:id/select', requireAuth, async (req, res, next) =
     await selectExpansionPath(pathSet.id, idx);
     res.redirect(`/expand/${pathSet.account_id}#paths-${pathSet.id}`);
   } catch (err) {
+    next(err);
+  }
+});
+
+// Soft unification: act on an expansion trigger the same way as a customer
+// signal — create a tracked account_plays row, instinct seeded from the
+// trigger's champion_talking_point / carry_internally / destination_link,
+// buildPlay synchronously, redirect to the account plan. The play links back
+// to a stub expansion_paths row (paths=[]) so the trigger origin is durable
+// even if the dossier gets rescanned.
+webRouter.post('/expand/:account_id/triggers/:trigger_index/play', requireAuth, async (req, res, next) => {
+  try {
+    const accountId = req.params.account_id;
+    if (!UUID_RE.test(accountId)) return res.redirect('/expand');
+    const triggerIdx = parseInt(req.params.trigger_index, 10);
+    if (!Number.isFinite(triggerIdx) || triggerIdx < 0) return res.redirect(`/expand/${accountId}`);
+
+    const [bundle, dossier, priorPlays] = await Promise.all([
+      getAccountBundle(accountId),
+      getDossier(accountId),
+      listPlaysForAccount(accountId),
+    ]);
+    if (!bundle || bundle.account.status !== 'customer') return res.redirect('/expand');
+
+    const triggers = Array.isArray(dossier?.last_scan_result) ? dossier.last_scan_result : [];
+    if (triggerIdx >= triggers.length) return res.redirect(`/expand/${accountId}`);
+    const trigger = triggers[triggerIdx];
+
+    // Stub expansion_paths with paths=[] — the "Build paths" CTA is still
+    // independently clickable to enumerate 3 alternatives later.
+    const pathRow = await createExpansionPaths({
+      account_id: accountId,
+      trigger_index: triggerIdx,
+      trigger_title: trigger.trigger_title || null,
+      trigger_snapshot: trigger,
+      paths: [],
+    });
+
+    // Normalize the expansion-trigger shape into the {title, so_what,
+    // recommended_move} contract buildPlay expects.
+    const carryRole = trigger.carry_internally?.role ? ` (${trigger.carry_internally.role})` : '';
+    const normalized = {
+      title: trigger.trigger_title || 'Expansion trigger',
+      so_what: trigger.why_this_unlocks || trigger.trigger_summary || null,
+      recommended_move:
+        (trigger.champion_talking_point && trigger.champion_talking_point.trim())
+        || (trigger.carry_internally?.who ? `Carry internally through ${trigger.carry_internally.who}${carryRole}` : null)
+        || (trigger.destination_link ? `Link to destination: ${trigger.destination_link}` : null),
+      source_url: trigger.source_url || null,
+    };
+
+    const seed =
+      (normalized.recommended_move && normalized.recommended_move.trim())
+      || (normalized.so_what && normalized.so_what.trim())
+      || `Act on: ${normalized.title}`;
+    const instinct = `Triggered by expansion scan — ${normalized.title}\n\n${seed}`;
+
+    const play = await createPlay({
+      account_id: accountId,
+      triggered_by_expansion_path_id: pathRow.id,
+      author_user_id: req.session.userId,
+      instinct,
+      status: 'drafting',
+    });
+
+    try {
+      const { expansion } = await buildPlay({
+        account: bundle.account,
+        instinct,
+        hypothesis: null,
+        contact_path_resolved: [],
+        triggering_signal: normalized,
+        event: null,
+        personal_invites: [],
+        prior_plays: priorPlays
+          .filter((p) => p.id !== play.id)
+          .map((p) => ({ named_play: p.ai_expansion?.named_play || null, status: p.status })),
+      });
+      if (expansion) {
+        await updatePlay(play.id, { ai_expansion: expansion, status: 'active' });
+      }
+    } catch (err) {
+      console.error('[expand/triggers/play build] expansion failed:', err.message);
+    }
+
+    res.redirect(`/accounts/${accountId}/plan#play-${play.id}`);
+  } catch (err) {
+    console.error('[expand/triggers/play]', err);
     next(err);
   }
 });

@@ -948,15 +948,24 @@
                 <span class="text-slate-400 italic ml-2">&ldquo;<%= t.source_excerpt %>&rdquo;</span>
               <% } %>
             </div>
-            <% if (!ps) { %>
-              <form method="POST" action="/expand/<%= account.id %>/paths">
-                <input type="hidden" name="trigger_index" value="<%= i %>" />
+            <div class="flex items-center gap-2">
+              <form method="POST" action="/expand/<%= account.id %>/triggers/<%= i %>/play"
+                    onsubmit="this.querySelector('button').disabled=true;this.querySelector('button').textContent='Building play…';">
                 <button type="submit"
-                        class="bg-slate-900 hover:bg-slate-800 text-white px-4 py-1.5 rounded font-medium text-xs">
-                  Build paths &rarr;
+                        class="bg-slate-900 hover:bg-slate-800 disabled:bg-slate-500 disabled:cursor-wait text-white px-4 py-1.5 rounded font-medium text-xs">
+                  Build a play &rarr;
                 </button>
               </form>
-            <% } %>
+              <% if (!ps) { %>
+                <form method="POST" action="/expand/<%= account.id %>/paths">
+                  <input type="hidden" name="trigger_index" value="<%= i %>" />
+                  <button type="submit"
+                          class="border border-slate-300 text-slate-700 hover:bg-slate-50 px-3 py-1.5 rounded font-medium text-xs">
+                    Enumerate 3 paths
+                  </button>
+                </form>
+              <% } %>
+            </div>
           </div>
 
           <!-- ============================================================ -->

@@ -539,6 +539,16 @@
                   <% if (p.event_name) { %>
                     · <a href="/events/<%= p.event_id %>" class="inline-flex items-center gap-1 text-violet-700 hover:text-violet-900">🎯 <%= p.event_name %></a>
                   <% } %>
+                  <% const pTrigger = p.trigger_signal_title
+                      ? { kind: 'signal',    cls: 'bg-sky-50 text-sky-800 border-sky-200',          title: p.trigger_signal_title }
+                      : p.trigger_expansion_title
+                      ? { kind: 'expansion', cls: 'bg-emerald-50 text-emerald-800 border-emerald-200', title: p.trigger_expansion_title }
+                      : p.trigger_revisit_title
+                      ? { kind: 'revisit',   cls: 'bg-amber-50 text-amber-800 border-amber-200',     title: p.trigger_revisit_title }
+                      : null; %>
+                  <% if (pTrigger) { %>
+                    · <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-medium <%= pTrigger.cls %>" title="Triggered by <%= pTrigger.kind %>"><%= pTrigger.kind %>: "<%= pTrigger.title %>"</span>
+                  <% } %>
                 </div>
               </div>
               <div class="flex items-center gap-2">

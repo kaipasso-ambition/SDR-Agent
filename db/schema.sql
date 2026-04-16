@@ -801,3 +801,22 @@ CREATE TABLE IF NOT EXISTS expansion_paths (
 );
 CREATE INDEX IF NOT EXISTS expansion_paths_account_idx ON expansion_paths(account_id, created_at DESC);
 
+-- Soft unification: let a play point back at the trigger it was built from,
+-- whether that trigger lived in the customer-signal inbox, the expansion
+-- scanner's JSONB array, or the revisit scanner's JSONB array. The FK columns
+-- mirror triggered_by_signal_id on account_plays. Nullable — a play can still
+-- be composed freeform with no originating trigger.
+ALTER TABLE account_plays ADD COLUMN IF NOT EXISTS triggered_by_expansion_path_id UUID
+  REFERENCES expansion_paths(id) ON DELETE SET NULL;
+ALTER TABLE account_plays ADD COLUMN IF NOT EXISTS triggered_by_revisit_path_id UUID
+  REFERENCES revisit_paths(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS account_plays_expansion_path_idx
+  ON account_plays(triggered_by_expansion_path_id);
+CREATE INDEX IF NOT EXISTS account_plays_revisit_path_idx
+  ON account_plays(triggered_by_revisit_path_id);
+
+-- revisit_paths didn't capture the originating trigger snapshot the way
+-- expansion_paths does. Backfill the column so a "Build a play" stub can
+-- persist the trigger object even when no path-enumeration has happened.
+ALTER TABLE revisit_paths ADD COLUMN IF NOT EXISTS trigger_snapshot JSONB;
+

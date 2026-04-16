@@ -4,12 +4,18 @@
 
 import { query } from './index.js';
 
-export async function createRevisitPaths({ opportunity_id, trigger_index, trigger_title, paths }) {
+export async function createRevisitPaths({ opportunity_id, trigger_index, trigger_title, trigger_snapshot = null, paths }) {
   const { rows } = await query(
-    `INSERT INTO revisit_paths (opportunity_id, trigger_index, trigger_title, paths)
-     VALUES ($1, $2, $3, $4::jsonb)
+    `INSERT INTO revisit_paths (opportunity_id, trigger_index, trigger_title, trigger_snapshot, paths)
+     VALUES ($1, $2, $3, $4::jsonb, $5::jsonb)
      RETURNING *`,
-    [opportunity_id, trigger_index, trigger_title || null, JSON.stringify(paths)]
+    [
+      opportunity_id,
+      trigger_index,
+      trigger_title || null,
+      trigger_snapshot ? JSON.stringify(trigger_snapshot) : null,
+      JSON.stringify(paths),
+    ]
   );
   return rows[0];
 }
