@@ -44,6 +44,9 @@ import {
   getPortfolioStats,
   listInFlightPaths,
   listRecentOutcomes,
+  addRevisitNote,
+  listRevisitNotes,
+  deleteRevisitNote,
 } from '../db/revisit_plans.js';
 import {
   getSignalsForBrief,
@@ -956,8 +959,11 @@ webRouter.get('/revisit/:opportunity_id', requireAuth, async (req, res, next) =>
   try {
     const deal = await getDeadDealByOpportunityId(req.params.opportunity_id);
     if (!deal) return res.redirect('/revisit');
-    const pathSets = await getPathsForDeal(req.params.opportunity_id);
-    res.render('revisit_detail', { title: deal.account_name, deal, pathSets });
+    const [pathSets, notes] = await Promise.all([
+      getPathsForDeal(req.params.opportunity_id),
+      listRevisitNotes(req.params.opportunity_id),
+    ]);
+    res.render('revisit_detail', { title: deal.account_name, deal, pathSets, notes });
   } catch (err) {
     next(err);
   }
@@ -980,11 +986,16 @@ webRouter.post('/revisit/:opportunity_id/scan', requireAuth, async (req, res, ne
 
     await setScanRunning(oppId);
 
+    // Pull AE notes now so they're included in the scanner context.
+    // These are free-form scraps the AE dropped between scans and they
+    // can change what Claude chooses to search for.
+    const aeNotes = await listRevisitNotes(oppId);
+
     // Fire and forget. Errors get persisted to last_scan_error so the
     // detail page can show them.
     Promise.resolve()
       .then(async () => {
-        const result = await scanDeadDeal(deal);
+        const result = await scanDeadDeal(deal, { aeNotes });
         await setScanResult(oppId, result);
         console.log(`[revisit] scan ${oppId} done — ${result.triggers.length} triggers, ${result.searches} searches, skipped=${result.skipped || 'no'}`);
       })
@@ -1015,7 +1026,8 @@ webRouter.post('/revisit/:opportunity_id/paths', requireAuth, async (req, res, n
     }
 
     const trigger = triggers[triggerIdx];
-    const result = await buildRevisitPaths(deal, trigger);
+    const aeNotes = await listRevisitNotes(oppId);
+    const result = await buildRevisitPaths(deal, trigger, { aeNotes });
 
     await createRevisitPaths({
       opportunity_id: oppId,
@@ -1057,6 +1069,48 @@ webRouter.post('/revisit/paths/:id/outcome', requireAuth, async (req, res, next)
     if (!outcome) return res.redirect(`/revisit/${encodeURIComponent(pathSet.opportunity_id)}`);
     await setOutcome(pathSet.id, { outcome, notes: (req.body?.notes || '').trim() || null });
     res.redirect(`/revisit/${encodeURIComponent(pathSet.opportunity_id)}#paths-${pathSet.id}`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// AE drops a note on the dead deal — timestamped scrap of intel picked up
+// between scans. These feed into the scanner + path generator on every
+// subsequent run so late-arriving context actually changes the output.
+webRouter.post('/revisit/:opportunity_id/notes', requireAuth, async (req, res, next) => {
+  try {
+    const oppId = req.params.opportunity_id;
+    const deal = await getDeadDealByOpportunityId(oppId);
+    if (!deal) return res.redirect('/revisit');
+    const note = (req.body?.note || '').trim();
+    if (!note) return res.redirect(`/revisit/${encodeURIComponent(oppId)}#notes`);
+    // Soft cap — a note that's bigger than this is really a document and
+    // belongs somewhere else; the prompt budget has limits.
+    await addRevisitNote({
+      opportunity_id: oppId,
+      note: note.slice(0, 4000),
+      user_id: req.session.userId,
+    });
+    res.redirect(`/revisit/${encodeURIComponent(oppId)}#notes`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+webRouter.post('/revisit/notes/:id/delete', requireAuth, async (req, res, next) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.redirect('/revisit');
+    // Fetch the opportunity_id so we can redirect back. Cheap enough
+    // to do a small SELECT before the DELETE rather than threading it
+    // through the hidden form.
+    const { rows } = await query(
+      `SELECT opportunity_id FROM revisit_notes WHERE id = $1 LIMIT 1`,
+      [req.params.id]
+    );
+    const oppId = rows[0]?.opportunity_id;
+    await deleteRevisitNote(req.params.id);
+    if (oppId) return res.redirect(`/revisit/${encodeURIComponent(oppId)}#notes`);
+    res.redirect('/revisit');
   } catch (err) {
     next(err);
   }

@@ -29,7 +29,12 @@ export function stripCiteTags(value) {
 
 // Shape the deal context for Claude. Pulls LinkedIn out of the
 // accounts_registry.notes prefix the importer wrote.
-function buildContext(deal) {
+//
+// `aeNotes` is the list of timestamped scraps the AE has dropped since the
+// deal closed — each one is something they learned later that might matter
+// ("new CRO is ex-Outreach", "saw them at Gartner"). We pass them into every
+// call so late intel actually shows up in the output.
+function buildContext(deal, aeNotes = []) {
   return {
     account_name: deal.account_name,
     account_status: deal.account_status,
@@ -52,6 +57,12 @@ function buildContext(deal) {
       foa_note: deal.foa_note,
       next_step: deal.next_step,
     },
+    ae_notes: Array.isArray(aeNotes) && aeNotes.length > 0
+      ? aeNotes.map((n) => ({
+          added: n.created_at,
+          note: n.note,
+        }))
+      : null,
   };
 }
 
@@ -60,8 +71,8 @@ function buildContext(deal) {
  *   { triggers: [...], searches: int, queries: [str], elapsed_ms: int,
  *     skipped: 'no_web_search' | 'parse_failure' | null, raw: str }
  */
-export async function scanDeadDeal(deal) {
-  const context = buildContext(deal);
+export async function scanDeadDeal(deal, { aeNotes = [] } = {}) {
+  const context = buildContext(deal, aeNotes);
   const userContent = `
 Account and deal context:
 ${JSON.stringify(context, null, 2)}
@@ -116,8 +127,8 @@ Scan the web for what has CHANGED since close_date that might neutralize the los
  *
  * Returns: { paths: [...], elapsed_ms: int } or throws on failure.
  */
-export async function buildRevisitPaths(deal, trigger) {
-  const context = buildContext(deal);
+export async function buildRevisitPaths(deal, trigger, { aeNotes = [] } = {}) {
+  const context = buildContext(deal, aeNotes);
   const userContent = `
 Account and deal context:
 ${JSON.stringify(context, null, 2)}

@@ -709,3 +709,18 @@ CREATE TABLE IF NOT EXISTS revisit_paths (
 );
 CREATE INDEX IF NOT EXISTS revisit_paths_opp_idx ON revisit_paths(opportunity_id);
 
+-- Revisit notes — timestamped free-form scraps the AE picks up about a dead
+-- deal between scans ("heard their new CRO is ex-Outreach", "saw their VP at
+-- Gartner last week"). These feed back into both the scanner and the path
+-- generator as additional context, so late-arriving intel actually steers the
+-- output instead of sitting in a forgotten field.
+CREATE TABLE IF NOT EXISTS revisit_notes (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  opportunity_id TEXT NOT NULL,
+  note TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (opportunity_id) REFERENCES dead_deals(opportunity_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS revisit_notes_opp_idx ON revisit_notes(opportunity_id, created_at DESC);
+

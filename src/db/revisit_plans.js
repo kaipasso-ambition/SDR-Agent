@@ -53,6 +53,37 @@ export async function setOutcome(id, { outcome, notes }) {
   );
 }
 
+// ---------- AE notes on a dead deal ----------
+//
+// Free-form scraps picked up between scans. Read by the scanner + path
+// generator on every run, so a note added today changes tomorrow's paths.
+
+export async function addRevisitNote({ opportunity_id, note, user_id }) {
+  const { rows } = await query(
+    `INSERT INTO revisit_notes (opportunity_id, note, created_by_user_id)
+     VALUES ($1, $2, $3)
+     RETURNING *`,
+    [opportunity_id, note, user_id || null]
+  );
+  return rows[0];
+}
+
+export async function listRevisitNotes(opportunity_id) {
+  const { rows } = await query(
+    `SELECT n.id, n.note, n.created_at, u.name AS created_by_name
+       FROM revisit_notes n
+       LEFT JOIN users u ON u.id = n.created_by_user_id
+      WHERE n.opportunity_id = $1
+      ORDER BY n.created_at DESC`,
+    [opportunity_id]
+  );
+  return rows;
+}
+
+export async function deleteRevisitNote(id) {
+  await query(`DELETE FROM revisit_notes WHERE id = $1`, [id]);
+}
+
 // ---------- Portfolio view ----------
 //
 // Everything the /revisit dashboard needs. Three queries, kept separate so

@@ -116,6 +116,51 @@
   </div>
 </details>
 
+<!-- AE scratchpad — things learned between scans -->
+<div id="notes" class="bg-white border border-slate-200 rounded-lg p-5 mb-6">
+  <div class="flex items-baseline justify-between mb-3">
+    <h2 class="text-sm font-semibold text-slate-700">Notes
+      <span class="text-xs text-slate-400 font-normal">&middot; fed into the next scan &amp; path build</span>
+    </h2>
+    <span class="text-xs text-slate-400"><%= (notes || []).length %></span>
+  </div>
+
+  <form method="POST" action="/revisit/<%= encodeURIComponent(deal.opportunity_id) %>/notes" class="mb-4">
+    <textarea name="note" rows="2" maxlength="4000" required
+              placeholder="e.g. heard their new CRO is ex-Outreach, comp plan overhaul underway, saw them at Gartner CSO summit…"
+              class="w-full text-sm border border-slate-300 rounded p-2 focus:outline-none focus:border-slate-500"></textarea>
+    <div class="flex justify-end mt-2">
+      <button type="submit" class="text-xs bg-slate-900 hover:bg-slate-800 text-white px-3 py-1.5 rounded font-medium">
+        Add note
+      </button>
+    </div>
+  </form>
+
+  <% if ((notes || []).length === 0) { %>
+    <div class="text-xs text-slate-400 text-center py-2">
+      Nothing here yet. Drop anything you pick up about this account &mdash; it'll show up in the JSON context next time you scan or build paths.
+    </div>
+  <% } else { %>
+    <ul class="space-y-2">
+      <% (notes || []).forEach(function(n) { %>
+        <li class="flex items-start gap-3 text-sm border-l-2 border-slate-200 pl-3 py-1">
+          <div class="flex-1">
+            <div class="text-slate-700 whitespace-pre-wrap"><%= n.note %></div>
+            <div class="text-[11px] text-slate-400 mt-0.5">
+              <%= fmtDate(n.created_at) %>
+              <% if (n.created_by_name) { %> &middot; <%= n.created_by_name %><% } %>
+            </div>
+          </div>
+          <form method="POST" action="/revisit/notes/<%= n.id %>/delete"
+                onsubmit="return confirm('Delete this note?');" class="shrink-0">
+            <button type="submit" class="text-[11px] text-slate-400 hover:text-red-600">delete</button>
+          </form>
+        </li>
+      <% }); %>
+    </ul>
+  <% } %>
+</div>
+
 <% if (status === 'completed' || triggers.length > 0) { %>
   <div class="mb-3 flex items-center justify-between">
     <h2 class="text-lg font-semibold">
