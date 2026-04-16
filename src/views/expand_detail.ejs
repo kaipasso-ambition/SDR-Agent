@@ -322,6 +322,99 @@
   </div>
 </form>
 
+<!-- ---------- Next step (state-aware CTA) ---------- -->
+<%
+  // The dossier editor is above, the triggers/paths section is far below. Without
+  // an explicit next-step nudge here the AE has no obvious signal that Run scan
+  // (top-right) is what unblocks the rest of the flow. This panel mirrors the
+  // real state so there's always a single "do this next" button in view.
+  const triggerCount = triggers.length;
+%>
+<% if (!canScan) { %>
+  <div class="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-8 flex items-start gap-3">
+    <div class="shrink-0 w-6 h-6 rounded-full bg-amber-200 text-amber-900 flex items-center justify-center text-xs font-bold">!</div>
+    <div class="flex-1 text-sm">
+      <div class="font-semibold text-amber-900">Fill in <em>Destination</em> to unlock the scanner.</div>
+      <div class="text-amber-800 text-xs mt-1">
+        The destination goals are what the scanner optimizes toward. Without at least one, there's nothing for it to filter on.
+      </div>
+    </div>
+  </div>
+<% } else if (isScanning) { %>
+  <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-8 flex items-start gap-3">
+    <span class="inline-block w-2 h-2 bg-blue-500 rounded-full animate-pulse mt-2"></span>
+    <div class="flex-1 text-sm">
+      <div class="font-semibold text-blue-900">Scan running&hellip;</div>
+      <div class="text-blue-800 text-xs mt-1">
+        Claude is searching the web for movement that strengthens one of your destination goals. The page auto-refreshes when it's done.
+      </div>
+    </div>
+  </div>
+<% } else if (!scanStatus) { %>
+  <div class="bg-slate-900 text-white rounded-lg p-5 mb-8 flex items-center justify-between gap-4">
+    <div class="flex-1">
+      <div class="text-[10px] uppercase tracking-wider text-slate-300 font-semibold mb-1">Next step</div>
+      <div class="text-base font-semibold">Run the scanner &mdash; find expansion triggers</div>
+      <div class="text-xs text-slate-300 mt-1 leading-snug">
+        Claude searches the web for external movement (exec hires, earnings calls, product launches, partnerships) that plausibly strengthens one of your <em>Destination</em> goals. 1&ndash;3 min, ~6 searches.
+      </div>
+    </div>
+    <form method="POST" action="/expand/<%= account.id %>/scan" class="shrink-0">
+      <button type="submit"
+              class="bg-white hover:bg-slate-100 text-slate-900 px-5 py-2.5 rounded font-semibold text-sm whitespace-nowrap">
+        Run scan &rarr;
+      </button>
+    </form>
+  </div>
+<% } else if (scanStatus === 'failed') { %>
+  <div class="bg-red-50 border border-red-200 rounded-lg p-4 mb-8 flex items-center justify-between gap-4">
+    <div class="flex-1 text-sm">
+      <div class="font-semibold text-red-900">Last scan failed.</div>
+      <div class="text-red-800 text-xs mt-1">
+        <% if (dossier?.last_scan_error) { %><span class="font-mono"><%= dossier.last_scan_error %></span><% } else { %>Retry when ready.<% } %>
+      </div>
+    </div>
+    <form method="POST" action="/expand/<%= account.id %>/scan" class="shrink-0">
+      <button type="submit" class="bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded font-medium text-sm whitespace-nowrap">
+        Retry scan
+      </button>
+    </form>
+  </div>
+<% } else if (scanStatus === 'completed' && triggerCount === 0) { %>
+  <div class="bg-white border border-slate-200 rounded-lg p-5 mb-8 flex items-center justify-between gap-4">
+    <div class="flex-1 text-sm">
+      <div class="font-semibold text-slate-800">Scan found nothing connectable.</div>
+      <div class="text-slate-600 text-xs mt-1 leading-snug">
+        Add a fresh note below (recent meeting, Slack update, internal intel) or sharpen the <em>Destination</em> field, then re-scan.
+      </div>
+    </div>
+    <form method="POST" action="/expand/<%= account.id %>/scan" class="shrink-0">
+      <button type="submit" class="bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded font-medium text-sm whitespace-nowrap">
+        Re-scan
+      </button>
+    </form>
+  </div>
+<% } else if (scanStatus === 'completed' && triggerCount > 0) {
+     const pathsBuilt = Object.keys(pathsByTrigger).length;
+     const needsPaths = triggerCount - pathsBuilt;
+%>
+  <div class="bg-emerald-50 border border-emerald-200 rounded-lg p-5 mb-8 flex items-center justify-between gap-4">
+    <div class="flex-1 text-sm">
+      <div class="text-[10px] uppercase tracking-wider text-emerald-700 font-semibold mb-1">Next step</div>
+      <div class="font-semibold text-emerald-900">
+        <%= triggerCount %> trigger<%= triggerCount === 1 ? '' : 's' %> below<% if (needsPaths > 0) { %> &middot; build paths on <%= needsPaths === triggerCount ? 'one' : needsPaths %> to generate hypotheses<% } else { %> &middot; paths built on all<% } %>
+      </div>
+      <div class="text-emerald-800 text-xs mt-1 leading-snug">
+        Each path predicts reply rate, days to meeting, and effort. Warm-intro-via-champion is the default where your people map supports it.
+      </div>
+    </div>
+    <a href="#trigger-0"
+       class="shrink-0 bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded font-semibold text-sm whitespace-nowrap">
+      Jump to triggers &darr;
+    </a>
+  </div>
+<% } %>
+
 <!-- ---------- People map (reused from /accounts/:id/plan) ---------- -->
 <div class="bg-white border border-slate-200 rounded-lg p-5 mb-8">
   <div class="flex items-baseline justify-between mb-3">
