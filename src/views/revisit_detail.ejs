@@ -43,9 +43,9 @@
     if (!pathsByTrigger[ps.trigger_index]) pathsByTrigger[ps.trigger_index] = ps;
   });
   const pathColors = [
-    { border: 'border-blue-300',   bg: 'bg-blue-50',   header: 'bg-blue-100 text-blue-900',   selected: 'ring-2 ring-blue-500' },
-    { border: 'border-emerald-300', bg: 'bg-emerald-50', header: 'bg-emerald-100 text-emerald-900', selected: 'ring-2 ring-emerald-500' },
-    { border: 'border-purple-300', bg: 'bg-purple-50',  header: 'bg-purple-100 text-purple-900',  selected: 'ring-2 ring-purple-500' },
+    { border: 'border-blue-300',    header: 'bg-blue-50 text-blue-900 border-b border-blue-200',       dot: 'bg-blue-500',    bar: 'bg-blue-500',    selected: 'ring-2 ring-blue-500',    selectBtn: 'bg-blue-600 hover:bg-blue-700 text-white' },
+    { border: 'border-emerald-300', header: 'bg-emerald-50 text-emerald-900 border-b border-emerald-200', dot: 'bg-emerald-500', bar: 'bg-emerald-500', selected: 'ring-2 ring-emerald-500', selectBtn: 'bg-emerald-600 hover:bg-emerald-700 text-white' },
+    { border: 'border-purple-300',  header: 'bg-purple-50 text-purple-900 border-b border-purple-200',  dot: 'bg-purple-500',  bar: 'bg-purple-500',  selected: 'ring-2 ring-purple-500',  selectBtn: 'bg-purple-600 hover:bg-purple-700 text-white' },
   ];
   const outcomeLabels = { won: 'Won', lost: 'Lost', no_response: 'No response', in_progress: 'In progress' };
   const outcomeColors = { won: 'bg-emerald-100 text-emerald-800', lost: 'bg-red-100 text-red-800', no_response: 'bg-slate-100 text-slate-700', in_progress: 'bg-amber-100 text-amber-800' };
@@ -202,23 +202,31 @@
           </div>
 
           <!-- ============================================================ -->
-          <!-- PATH CARDS — shown when paths exist for this trigger          -->
+          <!-- PATH CARDS — dashboard view: comparison table + metric cards -->
           <!-- ============================================================ -->
-          <% if (ps && paths.length > 0) { %>
+          <% if (ps && paths.length > 0) {
+            // Compute comparison stats for the summary table — highlight
+            // the best number in each column. "Best" is subjective per
+            // column: high reply/confidence is good, low days/effort is good.
+            const safeM = (p) => p.metrics || {};
+            const bestReply = Math.max(...paths.map(p => safeM(p).predicted_reply_rate ?? -1));
+            const bestDays  = Math.min(...paths.map(p => safeM(p).predicted_days_to_meeting ?? 9999).filter(n => n !== 9999));
+            const bestEffort = Math.min(...paths.map(p => safeM(p).effort_score ?? 99));
+            const bestConf  = Math.max(...paths.map(p => safeM(p).confidence ?? -1));
+            const effortLabel = (s) => ({1:'XS',2:'S',3:'M',4:'L',5:'XL'}[s] || '?');
+          %>
             <div id="paths-<%= ps.id %>" class="mt-6 border-t border-slate-200 pt-5">
               <div class="flex items-center justify-between mb-4">
                 <h3 class="text-sm font-semibold text-slate-700">
-                  3 paths &mdash;
+                  Hypotheses
                   <% if (ps.selected_path != null) { %>
-                    <span class="text-emerald-700">path <%= ps.selected_path + 1 %> selected</span>
+                    &middot; <span class="text-emerald-700">Path <%= ps.selected_path + 1 %> selected</span>
                     <% if (ps.outcome) { %>
                       &middot; <span class="pill <%= outcomeColors[ps.outcome] || 'bg-slate-100' %>"><%= outcomeLabels[ps.outcome] || ps.outcome %></span>
                     <% } %>
-                  <% } else { %>
-                    <span class="text-slate-500">pick one</span>
                   <% } %>
                 </h3>
-                <% if (!ps.selected_path && ps.selected_path !== 0) { %>
+                <% if (ps.selected_path == null) { %>
                   <form method="POST" action="/revisit/<%= encodeURIComponent(deal.opportunity_id) %>/paths">
                     <input type="hidden" name="trigger_index" value="<%= i %>" />
                     <button type="submit" class="text-xs text-slate-500 hover:text-slate-900 underline">Regenerate</button>
@@ -226,76 +234,180 @@
                 <% } %>
               </div>
 
+              <!-- Comparison table — scannable first read -->
+              <div class="bg-white border border-slate-200 rounded-lg overflow-hidden mb-4">
+                <table class="w-full text-sm">
+                  <thead class="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500">
+                    <tr>
+                      <th class="text-left px-3 py-2 font-semibold">Path</th>
+                      <th class="text-right px-3 py-2 font-semibold">Reply %</th>
+                      <th class="text-right px-3 py-2 font-semibold">Days&nbsp;&rarr;&nbsp;meet</th>
+                      <th class="text-right px-3 py-2 font-semibold">Effort</th>
+                      <th class="text-right px-3 py-2 font-semibold">Confidence</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <% paths.forEach(function(p, pi) {
+                      const m = p.metrics || {};
+                      const color = pathColors[pi] || pathColors[0];
+                      const isSelected = ps.selected_path === pi;
+                      const highlight = (val, best) => val === best ? 'font-semibold text-emerald-700' : 'text-slate-700';
+                    %>
+                      <tr class="border-t border-slate-100 <%= isSelected ? 'bg-emerald-50' : '' %>">
+                        <td class="px-3 py-2">
+                          <a href="#path-<%= ps.id %>-<%= pi %>" class="inline-flex items-center gap-2">
+                            <span class="inline-block w-2 h-2 rounded-full <%= color.dot %>"></span>
+                            <span class="font-medium text-slate-800"><%= p.path_name %></span>
+                          </a>
+                        </td>
+                        <td class="px-3 py-2 text-right tabular-nums <%= highlight(m.predicted_reply_rate, bestReply) %>">
+                          <%= m.predicted_reply_rate != null ? m.predicted_reply_rate + '%' : '—' %>
+                        </td>
+                        <td class="px-3 py-2 text-right tabular-nums <%= highlight(m.predicted_days_to_meeting, bestDays) %>">
+                          <%= m.predicted_days_to_meeting != null ? m.predicted_days_to_meeting + 'd' : '—' %>
+                        </td>
+                        <td class="px-3 py-2 text-right tabular-nums <%= highlight(m.effort_score, bestEffort) %>">
+                          <%= effortLabel(m.effort_score) %>
+                        </td>
+                        <td class="px-3 py-2 text-right tabular-nums <%= highlight(m.confidence, bestConf) %>">
+                          <%= m.confidence != null ? m.confidence + '/10' : '—' %>
+                        </td>
+                      </tr>
+                    <% }); %>
+                  </tbody>
+                </table>
+              </div>
+
+              <!-- Detail cards: one per path -->
               <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
                 <% paths.forEach(function(p, pi) {
+                  const m = p.metrics || {};
                   const color = pathColors[pi] || pathColors[0];
                   const isSelected = ps.selected_path === pi;
                   const isDimmed = ps.selected_path != null && !isSelected;
+                  const reply = m.predicted_reply_rate ?? 0;
+                  const conf  = m.confidence ?? 0;
+                  const effort = m.effort_score ?? 0;
                 %>
-                  <div class="border-2 <%= color.border %> rounded-lg overflow-hidden flex flex-col
+                  <div id="path-<%= ps.id %>-<%= pi %>"
+                       class="bg-white border-2 <%= color.border %> rounded-lg overflow-hidden flex flex-col
                               <%= isSelected ? color.selected : '' %>
                               <%= isDimmed ? 'opacity-50' : '' %>">
-                    <!-- Path header -->
-                    <div class="<%= color.header %> px-4 py-2.5 text-sm font-semibold flex items-center justify-between">
-                      <span>Path <%= pi + 1 %>: <%= p.path_name %></span>
-                      <% if (isSelected) { %><span class="text-[10px] uppercase tracking-wider font-bold">Selected</span><% } %>
+                    <!-- Header strip -->
+                    <div class="<%= color.header %> px-4 py-2 flex items-center justify-between">
+                      <div class="flex items-center gap-2">
+                        <span class="inline-block w-2 h-2 rounded-full <%= color.dot %>"></span>
+                        <span class="text-sm font-semibold">Path <%= pi + 1 %></span>
+                      </div>
+                      <% if (isSelected) { %><span class="text-[10px] uppercase tracking-wider font-bold">&check; Selected</span><% } %>
                     </div>
 
-                    <div class="<%= color.bg %> px-4 py-3 flex-1 flex flex-col">
-                      <!-- Description -->
-                      <div class="text-sm text-slate-700 mb-3"><%= p.description %></div>
+                    <div class="p-4 flex-1 flex flex-col">
+                      <!-- Path name + hypothesis -->
+                      <div class="text-base font-semibold text-slate-900 mb-1"><%= p.path_name %></div>
+                      <div class="text-xs text-slate-600 italic mb-4 leading-snug"><%= p.hypothesis %></div>
 
-                      <!-- Steps timeline -->
-                      <div class="space-y-2 mb-4 flex-1">
-                        <% (p.steps || []).forEach(function(step) { %>
-                          <div class="flex gap-2 text-sm">
-                            <div class="shrink-0 w-12 text-right text-[11px] font-semibold text-slate-500 pt-0.5">Day <%= step.day %></div>
-                            <div class="shrink-0">
-                              <span class="pill <%= channelColor(step.channel) %> text-[10px]"><%= channelIcon(step.channel) %> <%= step.channel %></span>
-                            </div>
-                            <div class="flex-1">
-                              <div class="text-slate-800 font-medium text-xs"><%= step.action %></div>
-                              <% if (step.draft_message) { %>
-                                <div class="text-xs text-slate-600 mt-0.5 italic border-l-2 border-slate-300 pl-2">"<%= step.draft_message %>"</div>
-                              <% } %>
-                            </div>
+                      <!-- Metric grid: 2×2 big numbers + bars -->
+                      <div class="grid grid-cols-2 gap-3 mb-4">
+                        <!-- Reply rate -->
+                        <div class="bg-slate-50 rounded p-2.5">
+                          <div class="text-[10px] uppercase tracking-wide text-slate-500 font-semibold">Reply %</div>
+                          <div class="text-xl font-bold tabular-nums text-slate-900"><%= reply %>%</div>
+                          <div class="w-full bg-slate-200 rounded-full h-1 mt-1">
+                            <div class="<%= color.bar %> h-1 rounded-full" style="width: <%= Math.min(100, reply * 2) %>%"></div>
                           </div>
-                        <% }); %>
+                        </div>
+                        <!-- Days to meeting -->
+                        <div class="bg-slate-50 rounded p-2.5">
+                          <div class="text-[10px] uppercase tracking-wide text-slate-500 font-semibold">Days &rarr; meet</div>
+                          <div class="text-xl font-bold tabular-nums text-slate-900">
+                            <%= m.predicted_days_to_meeting != null ? m.predicted_days_to_meeting + 'd' : '—' %>
+                          </div>
+                          <div class="text-[10px] text-slate-400 mt-1">if booked</div>
+                        </div>
+                        <!-- Effort -->
+                        <div class="bg-slate-50 rounded p-2.5">
+                          <div class="text-[10px] uppercase tracking-wide text-slate-500 font-semibold">Effort</div>
+                          <div class="flex items-baseline gap-1">
+                            <div class="text-xl font-bold text-slate-900"><%= effortLabel(effort) %></div>
+                            <div class="text-[10px] text-slate-500"><%= ['','<30min','1hr','½ day','1 day','multi-day'][effort] || '' %></div>
+                          </div>
+                          <div class="flex gap-0.5 mt-1">
+                            <% for (let e = 1; e <= 5; e++) { %>
+                              <div class="flex-1 h-1 rounded-full <%= e <= effort ? color.bar : 'bg-slate-200' %>"></div>
+                            <% } %>
+                          </div>
+                        </div>
+                        <!-- Confidence -->
+                        <div class="bg-slate-50 rounded p-2.5">
+                          <div class="text-[10px] uppercase tracking-wide text-slate-500 font-semibold">Confidence</div>
+                          <div class="text-xl font-bold tabular-nums text-slate-900"><%= conf %><span class="text-xs text-slate-500">/10</span></div>
+                          <div class="w-full bg-slate-200 rounded-full h-1 mt-1">
+                            <div class="<%= color.bar %> h-1 rounded-full" style="width: <%= conf * 10 %>%"></div>
+                          </div>
+                        </div>
                       </div>
 
-                      <!-- Outcomes -->
-                      <div class="grid grid-cols-2 gap-2 text-[11px] mb-3">
-                        <div class="bg-white rounded p-2 border border-emerald-200">
-                          <div class="font-semibold text-emerald-700 uppercase tracking-wide mb-0.5">Best case</div>
-                          <div class="text-slate-700"><%= p.best_case?.description || '—' %></div>
-                          <% if (p.best_case?.likelihood) { %>
-                            <div class="mt-1 <%= likelihoodColor(p.best_case.likelihood) %> font-semibold">
-                              Likelihood: <%= p.best_case.likelihood %>
+                      <!-- Sequence timeline: dot chain -->
+                      <div class="mb-4">
+                        <div class="text-[10px] uppercase tracking-wide text-slate-500 font-semibold mb-2">Sequence</div>
+                        <div class="flex items-start gap-1 overflow-x-auto">
+                          <% (p.steps || []).forEach(function(step, si) { %>
+                            <% if (si > 0) { %>
+                              <div class="h-px bg-slate-300 flex-1 mt-3 min-w-[12px]"></div>
+                            <% } %>
+                            <div class="flex flex-col items-center shrink-0" title="<%= step.action %>">
+                              <div class="w-6 h-6 rounded-full <%= channelColor(step.channel) %> flex items-center justify-center text-[11px] font-bold"><%= channelIcon(step.channel) %></div>
+                              <div class="text-[9px] text-slate-500 mt-1">D<%= step.day %></div>
+                              <div class="text-[9px] text-slate-700 font-medium"><%= step.channel %></div>
                             </div>
-                          <% } %>
-                        </div>
-                        <div class="bg-white rounded p-2 border border-red-200">
-                          <div class="font-semibold text-red-700 uppercase tracking-wide mb-0.5">Worst case</div>
-                          <div class="text-slate-700"><%= p.worst_case?.description || '—' %></div>
-                          <% if (p.worst_case?.likelihood) { %>
-                            <div class="mt-1 <%= likelihoodColor(p.worst_case.likelihood) %> font-semibold">
-                              Likelihood: <%= p.worst_case.likelihood %>
-                            </div>
-                          <% } %>
+                          <% }); %>
                         </div>
                       </div>
 
-                      <% if (p.rationale) { %>
-                        <div class="text-[11px] text-slate-500 italic mb-3"><%= p.rationale %></div>
+                      <!-- Best / worst: one-line each, side-by-side -->
+                      <div class="grid grid-cols-2 gap-2 mb-3 text-[11px]">
+                        <div class="bg-emerald-50 border border-emerald-200 rounded p-2">
+                          <div class="text-[10px] uppercase tracking-wide text-emerald-700 font-semibold">Best</div>
+                          <div class="text-slate-700 leading-snug"><%= p.best_case || '—' %></div>
+                        </div>
+                        <div class="bg-red-50 border border-red-200 rounded p-2">
+                          <div class="text-[10px] uppercase tracking-wide text-red-700 font-semibold">Worst</div>
+                          <div class="text-slate-700 leading-snug"><%= p.worst_case || '—' %></div>
+                        </div>
+                      </div>
+
+                      <!-- Key variable -->
+                      <% if (p.key_variable) { %>
+                        <div class="text-[11px] text-slate-500 mb-3">
+                          <span class="font-semibold text-slate-600">Hinges on:</span> <%= p.key_variable %>
+                        </div>
                       <% } %>
 
-                      <!-- Select button -->
+                      <!-- Drafts — collapsed, no dead weight on the card -->
+                      <% if ((p.steps || []).some(s => s.draft_message)) { %>
+                        <details class="mb-3 text-xs">
+                          <summary class="cursor-pointer text-slate-600 hover:text-slate-900 select-none font-medium">&#9662; Show drafts (<%= (p.steps || []).filter(s => s.draft_message).length %>)</summary>
+                          <div class="mt-2 space-y-2">
+                            <% (p.steps || []).forEach(function(step) { if (step.draft_message) { %>
+                              <div class="bg-slate-50 border-l-2 <%= color.border %> pl-3 py-2 pr-2">
+                                <div class="text-[10px] uppercase tracking-wide text-slate-500 font-semibold">
+                                  Day <%= step.day %> &middot; <%= step.channel %> &middot; <%= step.action %>
+                                </div>
+                                <div class="text-slate-700 mt-1 whitespace-pre-wrap"><%= step.draft_message %></div>
+                              </div>
+                            <% } }); %>
+                          </div>
+                        </details>
+                      <% } %>
+
+                      <!-- Select -->
                       <% if (ps.selected_path == null) { %>
                         <form method="POST" action="/revisit/paths/<%= ps.id %>/select" class="mt-auto">
                           <input type="hidden" name="path_index" value="<%= pi %>" />
                           <button type="submit"
-                                  class="w-full text-xs font-medium py-2 rounded border-2 <%= color.border %> text-slate-700 hover:bg-white transition">
-                            Select this path
+                                  class="w-full text-xs font-semibold py-2 rounded <%= color.selectBtn %> transition">
+                            Select this hypothesis
                           </button>
                         </form>
                       <% } %>
@@ -304,7 +416,7 @@
                 <% }); %>
               </div>
 
-              <!-- Outcome tracker — shown after a path is selected -->
+              <!-- Outcome tracker -->
               <% if (ps.selected_path != null && !ps.outcome) { %>
                 <div class="mt-4 bg-slate-50 border border-slate-200 rounded-lg p-4">
                   <div class="text-sm font-semibold text-slate-700 mb-2">How did it go?</div>
