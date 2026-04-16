@@ -99,6 +99,21 @@
   const outcomeLabels = { won: 'Won', lost: 'Lost', no_response: 'No response', in_progress: 'In progress' };
   const outcomeColors = { won: 'bg-emerald-100 text-emerald-800', lost: 'bg-red-100 text-red-800', no_response: 'bg-slate-100 text-slate-700', in_progress: 'bg-amber-100 text-amber-800' };
   const effortLabel = (s) => ({1:'XS',2:'S',3:'M',4:'L',5:'XL'}[s] || '?');
+  // ---------- Dossier coach ----------
+  // coach_result is a JSONB object with four string arrays + rationale +
+  // sources. Any field may be empty/missing; render defensively.
+  const coachStatus = dossier?.coach_status;
+  const isCoaching  = coachStatus === 'running';
+  const coach = (coachStatus === 'completed' && dossier?.coach_result && typeof dossier.coach_result === 'object')
+    ? dossier.coach_result : null;
+  const coachBullets = (field) => (coach && Array.isArray(coach[field])) ? coach[field] : [];
+  const hasCoachSuggestions = coach && (
+    coachBullets('footprint').length ||
+    coachBullets('destination').length ||
+    coachBullets('stack_competitive').length ||
+    coachBullets('open_questions').length ||
+    coach.rationale
+  );
 %>
 
 <div class="mb-2 text-sm text-slate-500">
@@ -155,6 +170,94 @@
 <% } %>
 
 <!-- ---------- Dossier editor ---------- -->
+<div id="dossier" class="flex items-center justify-between mb-3">
+  <h2 class="text-sm font-semibold text-slate-700">Dossier</h2>
+  <div class="flex items-center gap-3">
+    <% if (coach) { %>
+      <form method="POST" action="/expand/<%= account.id %>/coach/clear" class="inline">
+        <button type="submit" class="text-xs text-slate-500 hover:text-slate-900 underline">
+          Dismiss suggestions
+        </button>
+      </form>
+    <% } %>
+    <form method="POST" action="/expand/<%= account.id %>/coach" class="inline">
+      <button type="submit"
+              class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 px-3 py-1.5 rounded font-medium disabled:opacity-50"
+              <% if (isCoaching) { %>disabled<% } %>>
+        <% if (isCoaching) { %>
+          Thinking&hellip;
+        <% } else if (coach) { %>
+          Refresh suggestions
+        <% } else { %>
+          Suggest what to fill in &rarr;
+        <% } %>
+      </button>
+    </form>
+  </div>
+</div>
+
+<% if (isCoaching) { %>
+  <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4 flex items-center gap-3 text-sm text-blue-900">
+    <span class="inline-block w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span>
+    <div class="flex-1">
+      Claude is reading what you've got, pulling in external context on <%= account.account_name %>, and figuring out what you should ask. Usually 30&ndash;90 seconds.
+    </div>
+  </div>
+  <script>setTimeout(function(){ location.reload(); }, 10000);</script>
+<% } else if (coachStatus === 'failed') { %>
+  <div class="bg-red-50 border border-red-200 rounded-lg p-3 mb-4 text-sm text-red-900">
+    <strong>Coach failed.</strong>
+    <% if (dossier?.coach_error) { %><span class="ml-1 font-mono text-xs"><%= dossier.coach_error %></span><% } %>
+  </div>
+<% } %>
+
+<% if (hasCoachSuggestions && coach.rationale) { %>
+  <div class="bg-slate-50 border border-slate-200 rounded-lg p-4 mb-4 text-sm">
+    <div class="text-[10px] uppercase tracking-wide text-slate-500 font-semibold mb-1">Where Claude would start</div>
+    <div class="text-slate-700"><%= coach.rationale %></div>
+    <% if (Array.isArray(coach.sources) && coach.sources.length) { %>
+      <details class="mt-2 text-xs">
+        <summary class="cursor-pointer text-slate-500 hover:text-slate-700 select-none">Sources (<%= coach.sources.length %>)</summary>
+        <ul class="mt-1 space-y-0.5">
+          <% coach.sources.forEach(function(s) { %>
+            <li>
+              <a href="<%= s.url %>" target="_blank" rel="noopener" class="text-slate-600 hover:text-slate-900 underline">
+                <%= s.title || s.url %> &nearr;
+              </a>
+            </li>
+          <% }); %>
+        </ul>
+      </details>
+    <% } %>
+  </div>
+<% } %>
+
+<%
+  // Reusable partial-style helper so each field's suggestion block renders
+  // the same way. EJS doesn't have local functions cleanly, so this is a
+  // plain function that returns HTML as a string. Guard against empty.
+  function renderSuggestions(bullets, variant) {
+    if (!Array.isArray(bullets) || bullets.length === 0) return '';
+    const pillClass = variant === 'questions'
+      ? 'bg-blue-50 border-blue-200 text-blue-900'
+      : 'bg-emerald-50 border-emerald-200 text-emerald-900';
+    const dotClass = variant === 'questions' ? 'bg-blue-400' : 'bg-emerald-500';
+    const bulletsHtml = bullets.map(function(b) {
+      // Escape the bullet text manually since we're returning raw HTML.
+      const escaped = String(b)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+      return `<li class="flex items-start gap-2"><span class="inline-block w-1 h-1 rounded-full ${dotClass} mt-2 shrink-0"></span><span>${escaped}</span></li>`;
+    }).join('');
+    return `
+      <div class="mt-2 border ${pillClass} rounded p-3 text-xs">
+        <div class="text-[10px] uppercase tracking-wide font-semibold opacity-70 mb-1">AI suggestions &middot; copy what's useful</div>
+        <ul class="space-y-1 leading-snug">${bulletsHtml}</ul>
+      </div>
+    `;
+  }
+%>
+
 <form method="POST" action="/expand/<%= account.id %>/dossier" class="space-y-5 mb-8">
   <div class="bg-white border border-slate-200 rounded-lg p-5">
     <label class="block">
@@ -165,6 +268,7 @@
       <textarea name="footprint" rows="5" maxlength="8000"
                 class="w-full text-sm border border-slate-300 rounded p-2 focus:outline-none focus:border-slate-500 font-mono"
                 placeholder="- SMB — True Champions program, healthy&#10;- Mid-Market — upsell attach + upstack 50+ accounts&#10;- GOV — rollout in progress&#10;- ENT — coaching rollout starting"><%= dossier?.footprint || '' %></textarea>
+      <%- renderSuggestions(coachBullets('footprint'), 'declarative') %>
     </label>
   </div>
 
@@ -178,6 +282,7 @@
       <textarea name="destination" rows="5" maxlength="8000"
                 class="w-full text-sm border border-slate-300 rounded p-2 focus:outline-none focus:border-slate-500 font-mono"
                 placeholder="- AI real-time coaching — Enablement Exec — Sept onsite&#10;- MM upsell attach-rate lift — Mid-Market Team — Q3&#10;- Upstack 50+ deals — Mid-Market Team — ongoing&#10;- Agile templates tied to product launches — Enablement — Q3"><%= dossier?.destination || '' %></textarea>
+      <%- renderSuggestions(coachBullets('destination'), 'declarative') %>
     </label>
   </div>
 
@@ -190,6 +295,7 @@
       <textarea name="stack_competitive" rows="4" maxlength="8000"
                 class="w-full text-sm border border-slate-300 rounded p-2 focus:outline-none focus:border-slate-500 font-mono"
                 placeholder="- Gong, Highspot, Salesforce, HR tools all in stack&#10;- Live objection: 'what's unique about Ambition vs Gong+SFDC?'&#10;- Threat: Gong real-time-coaching overlap"><%= dossier?.stack_competitive || '' %></textarea>
+      <%- renderSuggestions(coachBullets('stack_competitive'), 'declarative') %>
     </label>
   </div>
 
@@ -202,6 +308,7 @@
       <textarea name="open_questions" rows="4" maxlength="8000"
                 class="w-full text-sm border border-slate-300 rounded p-2 focus:outline-none focus:border-slate-500 font-mono"
                 placeholder="- How do comparable F500s structure coaching?&#10;- What did other Gong+Ambition customers do about the overlap?&#10;- What AI can we demo live at Ohio?&#10;- How is MM measuring attach today?"><%= dossier?.open_questions || '' %></textarea>
+      <%- renderSuggestions(coachBullets('open_questions'), 'questions') %>
     </label>
   </div>
 

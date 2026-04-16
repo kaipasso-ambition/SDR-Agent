@@ -59,6 +59,10 @@ import {
   setScanRunning as setExpansionScanRunning,
   setScanResult as setExpansionScanResult,
   setScanFailed as setExpansionScanFailed,
+  setCoachRunning as setDossierCoachRunning,
+  setCoachResult as setDossierCoachResult,
+  setCoachFailed as setDossierCoachFailed,
+  clearCoachResult as clearDossierCoachResult,
   createExpansionPaths,
   getExpansionPathsById,
   listExpansionPathsForAccount,
@@ -66,6 +70,7 @@ import {
   setExpansionOutcome,
 } from '../db/expansions.js';
 import { scanCustomer, buildExpansionPaths } from '../agents/expansion_scanner.js';
+import { coachDossier } from '../agents/dossier_coach.js';
 import {
   getSignalsForBrief,
   getSignalById,
@@ -1336,6 +1341,78 @@ webRouter.post('/expand/paths/:id/select', requireAuth, async (req, res, next) =
     }
     await selectExpansionPath(pathSet.id, idx);
     res.redirect(`/expand/${pathSet.account_id}#paths-${pathSet.id}`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Ask Claude what the AE should be filling into the dossier. Fire-and-forget
+// so the editor can keep rendering; the GET route reads coach_status +
+// coach_result and renders whatever the background job produced.
+//
+// Works against an empty dossier — we upsert a blank row first if needed so
+// the coach has somewhere to write its running/completed state.
+webRouter.post('/expand/:account_id/coach', requireAuth, async (req, res, next) => {
+  try {
+    const accountId = req.params.account_id;
+    if (!UUID_RE.test(accountId)) return res.redirect('/expand');
+    const [bundle, contacts] = await Promise.all([
+      getAccountBundle(accountId),
+      listContactsForAccount(accountId),
+    ]);
+    if (!bundle || bundle.account.status !== 'customer') {
+      return res.redirect('/expand');
+    }
+
+    // Ensure a dossier row exists so the UPDATE below actually persists.
+    // upsertDossier is idempotent — it only overwrites what was submitted
+    // and leaves the existing values otherwise.
+    let dossier = await getDossier(accountId);
+    if (!dossier) {
+      dossier = await upsertDossier(accountId, {
+        footprint: null, destination: null, stack_competitive: null, open_questions: null,
+      });
+    }
+    if (dossier.coach_status === 'running') {
+      return res.redirect(`/expand/${accountId}#dossier`);
+    }
+
+    await setDossierCoachRunning(accountId);
+
+    const notes = await listExpansionNotes(accountId);
+
+    Promise.resolve()
+      .then(async () => {
+        const result = await coachDossier(bundle.account, { dossier, notes, contacts });
+        if (result.skipped || !result.suggestions) {
+          await setDossierCoachFailed(accountId, { error: result.skipped || 'no suggestions' });
+          return;
+        }
+        await setDossierCoachResult(accountId, { suggestions: result.suggestions });
+        console.log(`[expand] coached dossier for ${accountId} — ${result.searches} searches, ${result.elapsed_ms}ms`);
+      })
+      .catch(async (err) => {
+        console.error(`[expand] coach ${accountId} failed:`, err);
+        try {
+          await setDossierCoachFailed(accountId, { error: err.message || String(err) });
+        } catch (_) { /* best effort */ }
+      });
+
+    res.redirect(`/expand/${accountId}#dossier`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// AE dismisses the suggestions block once they've acted on it (or decided
+// it's noise). Clears coach_result so the editor goes back to the default
+// "Suggest what to fill in" CTA.
+webRouter.post('/expand/:account_id/coach/clear', requireAuth, async (req, res, next) => {
+  try {
+    const accountId = req.params.account_id;
+    if (!UUID_RE.test(accountId)) return res.redirect('/expand');
+    await clearDossierCoachResult(accountId);
+    res.redirect(`/expand/${accountId}#dossier`);
   } catch (err) {
     next(err);
   }

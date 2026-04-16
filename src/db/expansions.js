@@ -118,6 +118,55 @@ export async function setScanFailed(accountId, { error, searches }) {
   );
 }
 
+// ---------- Coach (dossier suggestions) ----------
+//
+// The coach writes to a parallel set of columns so it never touches the
+// AE's actual dossier text. The editor reads coach_result and renders it as
+// advisory bullets next to each field.
+
+export async function setCoachRunning(accountId) {
+  await query(
+    `UPDATE account_expansion_dossier
+        SET coach_status     = 'running',
+            coach_started_at = NOW(),
+            coach_error      = NULL
+      WHERE account_id = $1`,
+    [accountId]
+  );
+}
+
+export async function setCoachResult(accountId, { suggestions }) {
+  await query(
+    `UPDATE account_expansion_dossier
+        SET coach_status = 'completed',
+            coach_result = $2::jsonb,
+            coach_error  = NULL
+      WHERE account_id = $1`,
+    [accountId, JSON.stringify(suggestions || {})]
+  );
+}
+
+export async function setCoachFailed(accountId, { error }) {
+  await query(
+    `UPDATE account_expansion_dossier
+        SET coach_status = 'failed',
+            coach_error  = $2
+      WHERE account_id = $1`,
+    [accountId, (error || '').slice(0, 1000)]
+  );
+}
+
+export async function clearCoachResult(accountId) {
+  await query(
+    `UPDATE account_expansion_dossier
+        SET coach_status = NULL,
+            coach_result = NULL,
+            coach_error  = NULL
+      WHERE account_id = $1`,
+    [accountId]
+  );
+}
+
 // ---------- Paths ----------
 
 export async function createExpansionPaths({ account_id, trigger_index, trigger_title, trigger_snapshot, paths }) {

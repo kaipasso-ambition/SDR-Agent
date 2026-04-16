@@ -762,6 +762,15 @@ ALTER TABLE account_expansion_dossier ADD COLUMN IF NOT EXISTS last_scan_result 
 ALTER TABLE account_expansion_dossier ADD COLUMN IF NOT EXISTS last_scan_searches INT;
 ALTER TABLE account_expansion_dossier ADD COLUMN IF NOT EXISTS last_scan_error TEXT;
 
+-- Dossier coach state. The coach runs BEFORE the scanner, when the AE
+-- doesn't know what to put in the four fields. Stores the latest
+-- suggestions as JSONB so the editor can render them inline without
+-- re-calling Claude on every page load.
+ALTER TABLE account_expansion_dossier ADD COLUMN IF NOT EXISTS coach_status TEXT;
+ALTER TABLE account_expansion_dossier ADD COLUMN IF NOT EXISTS coach_started_at TIMESTAMPTZ;
+ALTER TABLE account_expansion_dossier ADD COLUMN IF NOT EXISTS coach_result JSONB;
+ALTER TABLE account_expansion_dossier ADD COLUMN IF NOT EXISTS coach_error TEXT;
+
 -- Expansion paths — three moves per trigger. Same shape as revisit_paths:
 -- array of 3 path objects as JSONB, the AE picks one, we log outcome. Keyed
 -- by (account_id, trigger_index) against the current dossier.last_scan_result
