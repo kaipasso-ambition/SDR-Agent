@@ -20,6 +20,12 @@
 
 import PptxGenJS from 'pptxgenjs';
 
+// LAYOUT_WIDE dimensions. Keep these as the single source of truth — the
+// row/col math below references them so nothing drifts off-slide.
+const SLIDE_W = 13.333;
+const SLIDE_H = 7.5;
+const MARGIN  = 0.6;
+
 const COLORS = {
   ink:        '0F172A',   // slate-900
   body:       '334155',   // slate-700
@@ -221,29 +227,20 @@ function addPlaySlide(pptx, { play, account, exp, moves, currentStepIdx }) {
     return;
   }
 
-  // First row: up to 4 steps. Second row: next 4. Overflow collapses
-  // into a "+N more" pill.
+  // First row: up to 4 steps. Second row: next 4. Overflow (9+ moves)
+  // collapses into a "+N more" pill — drawn ONCE in the top-right corner,
+  // between the title and the brand mark, so a full row2 can't push it
+  // off-slide (which it did when the pill followed the last box).
   const row1 = moves.slice(0, 4);
   const row2 = moves.slice(4, 8);
   const overflow = moves.slice(8);
 
-  drawStepRow(s, {
-    moves: row1,
-    startIdx: 0,
-    y: 1.85,
-    currentStepIdx,
-    overflowCount: overflow.length,
-    overflowOnThisRow: row2.length === 0,
-  });
+  drawStepRow(s, { moves: row1, startIdx: 0, y: 1.85, currentStepIdx });
   if (row2.length > 0) {
-    drawStepRow(s, {
-      moves: row2,
-      startIdx: 4,
-      y: 3.55,
-      currentStepIdx,
-      overflowCount: overflow.length,
-      overflowOnThisRow: true,
-    });
+    drawStepRow(s, { moves: row2, startIdx: 4, y: 3.55, currentStepIdx });
+  }
+  if (overflow.length > 0) {
+    drawOverflowBadge(s, overflow.length);
   }
 
   const current = currentStepIdx >= 0 ? moves[currentStepIdx] : null;
@@ -252,7 +249,25 @@ function addPlaySlide(pptx, { play, account, exp, moves, currentStepIdx }) {
   addFooter(s, {});
 }
 
-function drawStepRow(s, { moves, startIdx, y, currentStepIdx, overflowCount, overflowOnThisRow }) {
+// "+N more steps" sits top-right between the title (ends ~x=9.6) and the
+// brand mark (starts x=11.2). Fixed position, never overlaps the play rows.
+function drawOverflowBadge(s, count) {
+  const pillW = 1.55;
+  const pillH = 0.34;
+  const pillX = 9.65;
+  const pillY = 0.55;
+  s.addShape('roundRect', {
+    x: pillX, y: pillY, w: pillW, h: pillH,
+    fill: { color: COLORS.surface }, line: { color: COLORS.rule, width: 1 },
+    rectRadius: 0.17,
+  });
+  s.addText(`+${count} more step${count === 1 ? '' : 's'}`, {
+    x: pillX, y: pillY, w: pillW, h: pillH,
+    color: COLORS.muted, fontSize: 11, bold: true, align: 'center', valign: 'middle', fontFace: 'Calibri',
+  });
+}
+
+function drawStepRow(s, { moves, startIdx, y, currentStepIdx }) {
   const boxW = 2.75;
   const gap = 0.25;
   const startX = 0.6;
@@ -324,19 +339,6 @@ function drawStepRow(s, { moves, startIdx, y, currentStepIdx, overflowCount, ove
       });
     }
   });
-
-  if (overflowOnThisRow && overflowCount > 0) {
-    const lastX = startX + moves.length * (boxW + gap);
-    s.addShape('roundRect', {
-      x: lastX, y: y + 0.45, w: 1.6, h: 0.6,
-      fill: { color: COLORS.surface }, line: { color: COLORS.rule, width: 1 },
-      rectRadius: 0.3,
-    });
-    s.addText(`+${overflowCount} more`, {
-      x: lastX, y: y + 0.45, w: 1.6, h: 0.6,
-      color: COLORS.muted, fontSize: 12, bold: true, align: 'center', valign: 'middle', fontFace: 'Calibri',
-    });
-  }
 }
 
 function drawBallCallout(s, { current, currentStepIdx, totalSteps }) {
@@ -416,24 +418,42 @@ function addOrgSlide(pptx, { account, contacts, pathResolved }) {
   const top = 1.9;
   const bottom = 6.4;
   const tierH = (bottom - top) / Math.max(tiers.length, 1);
-  const boxW = 2.35;
-  const boxH = Math.min(1.15, tierH - 0.3);
-  const usableW = 12.2;
-  const startX = 0.6;
+  // Per-tier width: shrink the box to the slot when the tier is crowded
+  // (6 boxes at 2.35" each overlapped — same box w > slot w caused the
+  // leftmost box to also spill past the left margin). Clamp to a floor so
+  // sparse tiers don't blow up to a single giant box.
+  const usableW = SLIDE_W - 2 * MARGIN;
+  const startX = MARGIN;
+  const boxH = Math.max(0.85, Math.min(1.15, tierH - 0.3));
+  const boxWForTier = (n) => {
+    const slotW = usableW / Math.max(1, n);
+    return Math.max(1.6, Math.min(2.35, slotW - 0.15));
+  };
+  const boxXForSlot = (slotW, colIdx, boxW) =>
+    startX + colIdx * slotW + (slotW - boxW) / 2;
+  const boxYForTier = (rowIdx) =>
+    top + rowIdx * tierH + (tierH - boxH) / 2;
 
   // Draw connector lines FIRST so they sit behind the boxes.
   tiers.forEach((tier, rowIdx) => {
     const slotW = usableW / tier.length;
+    const boxW = boxWForTier(tier.length);
     tier.forEach((c, colIdx) => {
       if (!c.reports_to_contact_id) return;
-      const parentPos = locateContact(tiers, c.reports_to_contact_id, { top, tierH, usableW, startX, boxW, boxH });
+      const parentPos = locateContact(tiers, c.reports_to_contact_id, {
+        top, tierH, usableW, startX, boxH, boxWForTier,
+      });
       if (!parentPos) return;
-      const cx = startX + colIdx * slotW + (slotW - boxW) / 2;
-      const cy = top + rowIdx * tierH + (tierH - boxH) / 2;
+      const cx = boxXForSlot(slotW, colIdx, boxW);
+      const cy = boxYForTier(rowIdx);
+      // Skip if the child somehow ends up at or above the parent — pptxgenjs
+      // lines with zero/negative delta render as dots or inverted segments.
+      const dx = (cx + boxW / 2) - (parentPos.x + parentPos.boxW / 2);
+      const dy = cy - (parentPos.y + boxH);
+      if (dy <= 0) return;
       s.addShape('line', {
-        x: parentPos.x + boxW / 2, y: parentPos.y + boxH,
-        w: (cx + boxW / 2) - (parentPos.x + boxW / 2),
-        h: cy - (parentPos.y + boxH),
+        x: parentPos.x + parentPos.boxW / 2, y: parentPos.y + boxH,
+        w: dx, h: dy,
         line: { color: COLORS.rule, width: 1.25 },
       });
     });
@@ -442,9 +462,10 @@ function addOrgSlide(pptx, { account, contacts, pathResolved }) {
   // Draw boxes
   tiers.forEach((tier, rowIdx) => {
     const slotW = usableW / tier.length;
+    const boxW = boxWForTier(tier.length);
     tier.forEach((c, colIdx) => {
-      const cx = startX + colIdx * slotW + (slotW - boxW) / 2;
-      const cy = top + rowIdx * tierH + (tierH - boxH) / 2;
+      const cx = boxXForSlot(slotW, colIdx, boxW);
+      const cy = boxYForTier(rowIdx);
       drawContactBox(s, {
         x: cx, y: cy, w: boxW, h: boxH,
         contact: c,
@@ -567,15 +588,17 @@ function buildTiers(contacts) {
   return Array.from(buckets.keys()).sort().map((k) => buckets.get(k).slice(0, 6));
 }
 
-function locateContact(tiers, contactId, { top, tierH, usableW, startX, boxW, boxH }) {
+function locateContact(tiers, contactId, { top, tierH, usableW, startX, boxH, boxWForTier }) {
   for (let rowIdx = 0; rowIdx < tiers.length; rowIdx++) {
     const tier = tiers[rowIdx];
     const idx = tier.findIndex((c) => c.id === contactId);
     if (idx === -1) continue;
     const slotW = usableW / tier.length;
+    const boxW = boxWForTier(tier.length);
     return {
       x: startX + idx * slotW + (slotW - boxW) / 2,
       y: top + rowIdx * tierH + (tierH - boxH) / 2,
+      boxW,
     };
   }
   return null;
