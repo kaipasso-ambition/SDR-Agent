@@ -63,6 +63,10 @@ import {
   setCoachResult as setDossierCoachResult,
   setCoachFailed as setDossierCoachFailed,
   clearCoachResult as clearDossierCoachResult,
+  setPlanRunning as setDossierPlanRunning,
+  setPlanResult as setDossierPlanResult,
+  setPlanFailed as setDossierPlanFailed,
+  clearPlanResult as clearDossierPlanResult,
   createExpansionPaths,
   getExpansionPathsById,
   listExpansionPathsForAccount,
@@ -71,6 +75,7 @@ import {
 } from '../db/expansions.js';
 import { scanCustomer, buildExpansionPaths } from '../agents/expansion_scanner.js';
 import { coachDossier } from '../agents/dossier_coach.js';
+import { planDossier } from '../agents/dossier_planner.js';
 import {
   getSignalsForBrief,
   getSignalById,
@@ -1412,6 +1417,77 @@ webRouter.post('/expand/:account_id/coach/clear', requireAuth, async (req, res, 
     const accountId = req.params.account_id;
     if (!UUID_RE.test(accountId)) return res.redirect('/expand');
     await clearDossierCoachResult(accountId);
+    res.redirect(`/expand/${accountId}#dossier`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Generate the strategic plan from the current dossier + notes + people map.
+// Fire-and-forget: plan_status flips to 'running' synchronously, the HTTP
+// handler returns, the planner runs for ~15-30s, then writes plan_result.
+// The view polls by auto-reloading while status==='running'.
+webRouter.post('/expand/:account_id/plan', requireAuth, async (req, res, next) => {
+  try {
+    const accountId = req.params.account_id;
+    if (!UUID_RE.test(accountId)) return res.redirect('/expand');
+    const [bundle, contacts] = await Promise.all([
+      getAccountBundle(accountId),
+      listContactsForAccount(accountId),
+    ]);
+    if (!bundle || bundle.account.status !== 'customer') {
+      return res.redirect('/expand');
+    }
+
+    // The planner needs at least SOMETHING in the dossier. Unlike the coach
+    // (which synthesizes from zero), the planner is supposed to produce
+    // evidence-anchored hypotheses — no dossier, no evidence, no plan.
+    const dossier = await getDossier(accountId);
+    const hasAnyField = dossier && (
+      dossier.footprint || dossier.destination ||
+      dossier.stack_competitive || dossier.open_questions
+    );
+    if (!hasAnyField) {
+      return res.redirect(`/expand/${accountId}#dossier`);
+    }
+    if (dossier.plan_status === 'running') {
+      return res.redirect(`/expand/${accountId}#plan`);
+    }
+
+    await setDossierPlanRunning(accountId);
+
+    const notes = await listExpansionNotes(accountId);
+
+    Promise.resolve()
+      .then(async () => {
+        const result = await planDossier(bundle.account, { dossier, notes, contacts });
+        if (result.skipped || !result.plan) {
+          await setDossierPlanFailed(accountId, { error: result.skipped || 'no plan' });
+          return;
+        }
+        await setDossierPlanResult(accountId, { plan: result.plan });
+        console.log(`[expand] planned dossier for ${accountId} — ${result.plan.hypotheses.length} hypotheses, ${result.elapsed_ms}ms`);
+      })
+      .catch(async (err) => {
+        console.error(`[expand] plan ${accountId} failed:`, err);
+        try {
+          await setDossierPlanFailed(accountId, { error: err.message || String(err) });
+        } catch (_) { /* best effort */ }
+      });
+
+    res.redirect(`/expand/${accountId}#plan`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// AE dismisses the plan (e.g. dossier just changed materially and the plan is
+// stale). Clears plan_result so the section collapses back to the CTA.
+webRouter.post('/expand/:account_id/plan/clear', requireAuth, async (req, res, next) => {
+  try {
+    const accountId = req.params.account_id;
+    if (!UUID_RE.test(accountId)) return res.redirect('/expand');
+    await clearDossierPlanResult(accountId);
     res.redirect(`/expand/${accountId}#dossier`);
   } catch (err) {
     next(err);

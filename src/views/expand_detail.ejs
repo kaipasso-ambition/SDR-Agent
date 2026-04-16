@@ -114,6 +114,60 @@
     coachBullets('open_questions').length ||
     coach.rationale
   );
+  // ---------- Strategic plan ----------
+  // plan_result is a JSONB object: {hypotheses:[...], rationale, ranking_notes}.
+  // The planner synthesizes 3-5 expansion bets from dossier+notes+people alone.
+  const planStatus    = dossier?.plan_status;
+  const isPlanning    = planStatus === 'running';
+  const plan          = (planStatus === 'completed' && dossier?.plan_result && typeof dossier.plan_result === 'object')
+    ? dossier.plan_result : null;
+  const hypotheses    = plan && Array.isArray(plan.hypotheses) ? plan.hypotheses : [];
+  // Any of the four dossier fields filled = planner is allowed to run.
+  const hasAnyDossierField = Boolean(
+    dossier && (dossier.footprint || dossier.destination ||
+                dossier.stack_competitive || dossier.open_questions)
+  );
+  // Colour scale for odds — red for low (risky), amber mid, emerald high.
+  const oddsColor = (o) => {
+    if (o == null) return 'bg-slate-200 text-slate-600';
+    if (o >= 50)   return 'bg-emerald-100 text-emerald-800 border-emerald-300';
+    if (o >= 30)   return 'bg-amber-100 text-amber-800 border-amber-300';
+    return 'bg-red-100 text-red-800 border-red-300';
+  };
+  const oddsBar = (o) => {
+    if (o == null) return 'bg-slate-300';
+    if (o >= 50)   return 'bg-emerald-500';
+    if (o >= 30)   return 'bg-amber-500';
+    return 'bg-red-500';
+  };
+  const strategicLabel = {
+    hub_consolidation:       'Hub consolidation',
+    new_motion:              'New motion',
+    defense_against_churn:   'Defense',
+    competitive_displacement: 'Displacement',
+    stretch_upsell:          'Stretch upsell',
+    seat_upstack:            'Seat upstack',
+  };
+  const strategicColor = {
+    hub_consolidation:        'bg-purple-100 text-purple-800',
+    new_motion:               'bg-blue-100 text-blue-800',
+    defense_against_churn:    'bg-red-100 text-red-800',
+    competitive_displacement: 'bg-fuchsia-100 text-fuchsia-800',
+    stretch_upsell:           'bg-emerald-100 text-emerald-800',
+    seat_upstack:             'bg-slate-100 text-slate-700',
+  };
+  const fmtUsd = (n) => {
+    if (!Number.isFinite(n)) return null;
+    if (n >= 1_000_000) return '$' + (n / 1_000_000).toFixed(n % 1_000_000 === 0 ? 0 : 1) + 'M';
+    if (n >= 1_000)     return '$' + Math.round(n / 1_000) + 'K';
+    return '$' + n;
+  };
+  const fmtTimeframe = (d) => {
+    if (!Number.isFinite(d)) return null;
+    if (d >= 365) return (d / 365).toFixed(1).replace(/\.0$/, '') + 'y';
+    if (d >= 30)  return Math.round(d / 30) + 'mo';
+    return d + 'd';
+  };
 %>
 
 <div class="mb-2 text-sm text-slate-500">
@@ -321,6 +375,297 @@
     </button>
   </div>
 </form>
+
+<!-- ---------- Strategic plan (hypotheses from dossier) ---------- -->
+<div id="plan" class="mb-8">
+  <div class="flex items-baseline justify-between mb-3">
+    <div>
+      <h2 class="text-sm font-semibold text-slate-700">
+        Strategic plan
+        <span class="text-xs text-slate-400 font-normal">&middot; where to expand, odds &times; impact</span>
+      </h2>
+      <% if (plan?.rationale || plan?.ranking_notes) { %>
+        <div class="text-xs text-slate-500 mt-1">Synthesized from dossier + notes + people map. Not scanner output.</div>
+      <% } %>
+    </div>
+    <div class="flex items-center gap-3">
+      <% if (plan) { %>
+        <form method="POST" action="/expand/<%= account.id %>/plan/clear" class="inline">
+          <button type="submit" class="text-xs text-slate-500 hover:text-slate-900 underline">
+            Dismiss plan
+          </button>
+        </form>
+      <% } %>
+      <% if (hasAnyDossierField) { %>
+        <form method="POST" action="/expand/<%= account.id %>/plan" class="inline">
+          <button type="submit"
+                  class="text-xs bg-slate-900 hover:bg-slate-800 text-white px-3 py-1.5 rounded font-medium disabled:opacity-50"
+                  <% if (isPlanning) { %>disabled<% } %>>
+            <% if (isPlanning) { %>
+              Thinking&hellip;
+            <% } else if (plan) { %>
+              Regenerate plan
+            <% } else { %>
+              Generate plan &rarr;
+            <% } %>
+          </button>
+        </form>
+      <% } %>
+    </div>
+  </div>
+
+  <% if (!hasAnyDossierField && !plan) { %>
+    <div class="bg-slate-50 border border-slate-200 rounded-lg p-5 text-sm text-slate-500 text-center">
+      Fill in any dossier field above &mdash; the planner uses your footprint, destination, stack, and open questions as evidence.
+    </div>
+  <% } else if (isPlanning) { %>
+    <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-center gap-3 text-sm text-blue-900">
+      <span class="inline-block w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span>
+      <div class="flex-1">
+        Synthesizing 3&ndash;5 expansion hypotheses from the dossier. Each one gets an honest odds and impact. ~15&ndash;45 sec.
+      </div>
+    </div>
+    <script>setTimeout(function(){ location.reload(); }, 8000);</script>
+  <% } else if (planStatus === 'failed') { %>
+    <div class="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-900">
+      <strong>Plan generation failed.</strong>
+      <% if (dossier?.plan_error) { %><span class="ml-1 font-mono text-xs"><%= dossier.plan_error %></span><% } %>
+    </div>
+  <% } else if (plan && hypotheses.length === 0) { %>
+    <div class="bg-slate-50 border border-slate-200 rounded-lg p-5 text-sm text-slate-500">
+      The planner returned no hypotheses. Usually this means the dossier is too thin &mdash; add specifics to destination, people map, or notes and try again.
+    </div>
+  <% } else if (plan && hypotheses.length > 0) { %>
+
+    <% if (plan.rationale) { %>
+      <div class="bg-slate-900 text-white rounded-lg p-4 mb-4">
+        <div class="text-[10px] uppercase tracking-wider text-slate-400 font-semibold mb-1">Where this account is heading</div>
+        <div class="text-sm leading-relaxed"><%= plan.rationale %></div>
+        <% if (plan.ranking_notes) { %>
+          <div class="text-xs text-slate-400 mt-2 italic"><%= plan.ranking_notes %></div>
+        <% } %>
+      </div>
+    <% } %>
+
+    <!-- Hypothesis comparison table — quick at-a-glance ranking -->
+    <div class="bg-white border border-slate-200 rounded-lg overflow-hidden mb-4">
+      <table class="w-full text-sm">
+        <thead class="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500">
+          <tr>
+            <th class="text-left px-3 py-2 font-semibold">#</th>
+            <th class="text-left px-3 py-2 font-semibold">Move</th>
+            <th class="text-left px-3 py-2 font-semibold">Type</th>
+            <th class="text-right px-3 py-2 font-semibold">Odds</th>
+            <th class="text-right px-3 py-2 font-semibold">Impact (ARR)</th>
+            <th class="text-right px-3 py-2 font-semibold">Timeframe</th>
+            <th class="text-right px-3 py-2 font-semibold">Effort</th>
+            <th class="text-right px-3 py-2 font-semibold">Conf.</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% hypotheses.forEach(function(h, hi) {
+            const strat = h?.impact?.strategic_value;
+          %>
+            <tr class="border-t border-slate-100">
+              <td class="px-3 py-2 text-slate-400 tabular-nums"><%= hi + 1 %></td>
+              <td class="px-3 py-2">
+                <a href="#hypothesis-<%= hi %>" class="font-medium text-slate-800 hover:text-slate-900"><%= h.move_name %></a>
+              </td>
+              <td class="px-3 py-2">
+                <% if (strat && strategicLabel[strat]) { %>
+                  <span class="pill <%= strategicColor[strat] %> text-[10px]"><%= strategicLabel[strat] %></span>
+                <% } else { %>
+                  <span class="text-slate-400 text-xs">&mdash;</span>
+                <% } %>
+              </td>
+              <td class="px-3 py-2 text-right tabular-nums">
+                <% if (h.odds != null) { %>
+                  <span class="pill <%= oddsColor(h.odds) %> border font-semibold"><%= h.odds %>%</span>
+                <% } else { %><span class="text-slate-400">&mdash;</span><% } %>
+              </td>
+              <td class="px-3 py-2 text-right tabular-nums text-slate-700">
+                <%= fmtUsd(h?.impact?.arr_delta_usd) || '—' %>
+              </td>
+              <td class="px-3 py-2 text-right tabular-nums text-slate-700">
+                <%= fmtTimeframe(h?.impact?.timeframe_days) || '—' %>
+              </td>
+              <td class="px-3 py-2 text-right tabular-nums text-slate-700">
+                <%= h.effort_score != null ? effortLabel(h.effort_score) : '—' %>
+              </td>
+              <td class="px-3 py-2 text-right tabular-nums text-slate-700">
+                <%= h.confidence != null ? h.confidence + '/10' : '—' %>
+              </td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Hypothesis detail cards -->
+    <div class="space-y-4">
+      <% hypotheses.forEach(function(h, hi) {
+        const strat = h?.impact?.strategic_value;
+        const arr   = fmtUsd(h?.impact?.arr_delta_usd);
+        const tf    = fmtTimeframe(h?.impact?.timeframe_days);
+        const odds  = h.odds;
+        const isTop = hi === 0;
+      %>
+        <div id="hypothesis-<%= hi %>"
+             class="bg-white border-2 rounded-lg overflow-hidden <%= isTop ? 'border-slate-900' : 'border-slate-200' %>">
+          <!-- Header: rank + name + strategic badge + odds -->
+          <div class="<%= isTop ? 'bg-slate-900 text-white' : 'bg-slate-50 border-b border-slate-200' %> px-5 py-3">
+            <div class="flex items-center justify-between gap-3 flex-wrap">
+              <div class="flex items-center gap-3 min-w-0">
+                <span class="text-xs font-bold <%= isTop ? 'text-slate-400' : 'text-slate-400' %>">#<%= hi + 1 %><% if (isTop) { %> &middot; TOP BET<% } %></span>
+                <span class="text-base font-semibold truncate"><%= h.move_name %></span>
+              </div>
+              <div class="flex items-center gap-2 shrink-0">
+                <% if (strat && strategicLabel[strat]) { %>
+                  <span class="pill <%= strategicColor[strat] %> text-[10px]"><%= strategicLabel[strat] %></span>
+                <% } %>
+                <% if (odds != null) { %>
+                  <span class="pill <%= oddsColor(odds) %> border font-bold"><%= odds %>% odds</span>
+                <% } %>
+              </div>
+            </div>
+          </div>
+
+          <div class="p-5">
+            <!-- Falsifiable claim -->
+            <% if (h.hypothesis) { %>
+              <div class="text-sm text-slate-700 italic leading-relaxed mb-4">&ldquo;<%= h.hypothesis %>&rdquo;</div>
+            <% } %>
+
+            <% if (h.destination_link) { %>
+              <div class="mb-4 text-xs">
+                <span class="text-slate-500 uppercase tracking-wide font-semibold text-[10px]">Advances:</span>
+                <% if (h.destination_link === 'net-new') { %>
+                  <span class="pill bg-amber-100 text-amber-800 text-[10px] ml-1">net-new destination</span>
+                <% } else { %>
+                  <span class="text-slate-700 ml-1"><%= h.destination_link %></span>
+                <% } %>
+              </div>
+            <% } %>
+
+            <!-- Odds bar + impact row -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
+              <!-- Odds -->
+              <div class="bg-slate-50 rounded p-3">
+                <div class="text-[10px] uppercase tracking-wide text-slate-500 font-semibold">Odds of landing</div>
+                <div class="text-2xl font-bold tabular-nums text-slate-900 mt-0.5"><%= odds != null ? odds + '%' : '—' %></div>
+                <% if (odds != null) { %>
+                  <div class="w-full bg-slate-200 rounded-full h-1.5 mt-1.5 overflow-hidden">
+                    <div class="<%= oddsBar(odds) %> h-1.5" style="width: <%= odds %>%"></div>
+                  </div>
+                <% } %>
+                <% if (h.odds_reasoning) { %>
+                  <div class="text-[11px] text-slate-500 mt-2 leading-snug"><%= h.odds_reasoning %></div>
+                <% } %>
+              </div>
+
+              <!-- ARR impact -->
+              <div class="bg-slate-50 rounded p-3">
+                <div class="text-[10px] uppercase tracking-wide text-slate-500 font-semibold">ARR impact</div>
+                <div class="text-2xl font-bold tabular-nums text-emerald-700 mt-0.5"><%= arr || '—' %></div>
+                <% if (h?.impact?.seats_delta) { %>
+                  <div class="text-[11px] text-slate-600 mt-1"><%= h.impact.seats_delta %></div>
+                <% } %>
+              </div>
+
+              <!-- Timeframe + effort -->
+              <div class="bg-slate-50 rounded p-3">
+                <div class="text-[10px] uppercase tracking-wide text-slate-500 font-semibold">Timeframe</div>
+                <div class="text-2xl font-bold tabular-nums text-slate-900 mt-0.5"><%= tf || '—' %></div>
+                <div class="text-[11px] text-slate-500 mt-1">
+                  Effort: <span class="font-semibold text-slate-700"><%= h.effort_score != null ? effortLabel(h.effort_score) : '—' %></span>
+                </div>
+              </div>
+
+              <!-- Confidence -->
+              <div class="bg-slate-50 rounded p-3">
+                <div class="text-[10px] uppercase tracking-wide text-slate-500 font-semibold">Confidence</div>
+                <div class="text-2xl font-bold tabular-nums text-slate-900 mt-0.5">
+                  <%= h.confidence != null ? h.confidence : '—' %><% if (h.confidence != null) { %><span class="text-xs text-slate-500">/10</span><% } %>
+                </div>
+                <% if (h.confidence != null) { %>
+                  <div class="w-full bg-slate-200 rounded-full h-1.5 mt-1.5 overflow-hidden">
+                    <div class="bg-slate-700 h-1.5" style="width: <%= h.confidence * 10 %>%"></div>
+                  </div>
+                <% } %>
+              </div>
+            </div>
+
+            <!-- Key moves -->
+            <% if (Array.isArray(h.key_moves) && h.key_moves.length > 0) { %>
+              <div class="mb-4">
+                <div class="text-[10px] uppercase tracking-wide text-slate-500 font-semibold mb-2">Key moves</div>
+                <ol class="space-y-2">
+                  <% h.key_moves.forEach(function(km, ki) { %>
+                    <li class="flex items-start gap-3 text-sm">
+                      <span class="shrink-0 w-5 h-5 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center text-[10px] font-bold"><%= ki + 1 %></span>
+                      <div class="flex-1 min-w-0">
+                        <div class="flex items-baseline gap-2 flex-wrap">
+                          <% if (km.actor && actorLabel[km.actor]) { %>
+                            <span class="pill <%= actorColor[km.actor] %> text-[10px]"><%= actorLabel[km.actor] %></span>
+                          <% } %>
+                          <span class="text-slate-800 font-medium"><%= km.what %></span>
+                        </div>
+                        <% if (km.why) { %>
+                          <div class="text-xs text-slate-500 mt-0.5 leading-snug"><%= km.why %></div>
+                        <% } %>
+                      </div>
+                    </li>
+                  <% }); %>
+                </ol>
+              </div>
+            <% } %>
+
+            <!-- Champion needed -->
+            <% if (h.champion_needed) {
+              const cn = h.champion_needed;
+              const pillCls = cn.from_people_map
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                : 'bg-amber-50 border-amber-200 text-amber-900';
+            %>
+              <div class="border <%= pillCls %> rounded p-3 mb-4">
+                <div class="text-[10px] uppercase tracking-wide font-semibold opacity-70 mb-1">
+                  <%= cn.from_people_map ? 'Champion in people map' : 'Champion needs to be recruited' %>
+                </div>
+                <% if (cn.who) { %>
+                  <div class="text-sm font-semibold"><%= cn.who %></div>
+                <% } %>
+                <% if (cn.ask) { %>
+                  <div class="text-xs opacity-80 mt-1 leading-snug"><strong>Ask:</strong> <%= cn.ask %></div>
+                <% } %>
+              </div>
+            <% } %>
+
+            <!-- Key variable + open question -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+              <% if (h.key_variable) { %>
+                <div class="bg-red-50 border border-red-200 rounded p-2.5">
+                  <div class="text-[10px] uppercase tracking-wide text-red-700 font-semibold">Hinges on</div>
+                  <div class="text-slate-700 leading-snug mt-1"><%= h.key_variable %></div>
+                </div>
+              <% } %>
+              <% if (h.open_question) { %>
+                <div class="bg-blue-50 border border-blue-200 rounded p-2.5">
+                  <div class="text-[10px] uppercase tracking-wide text-blue-700 font-semibold">Answer first</div>
+                  <div class="text-slate-700 leading-snug mt-1"><%= h.open_question %></div>
+                </div>
+              <% } %>
+            </div>
+          </div>
+        </div>
+      <% }); %>
+    </div>
+
+  <% } else if (hasAnyDossierField && !plan) { %>
+    <div class="bg-white border border-slate-200 rounded-lg p-5 text-sm text-slate-500 text-center">
+      Click <strong class="text-slate-800">Generate plan</strong> to turn the dossier into 3&ndash;5 ranked expansion bets with odds and ARR impact.
+    </div>
+  <% } %>
+</div>
 
 <!-- ---------- Next step (state-aware CTA) ---------- -->
 <%

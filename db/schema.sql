@@ -771,6 +771,15 @@ ALTER TABLE account_expansion_dossier ADD COLUMN IF NOT EXISTS coach_started_at 
 ALTER TABLE account_expansion_dossier ADD COLUMN IF NOT EXISTS coach_result JSONB;
 ALTER TABLE account_expansion_dossier ADD COLUMN IF NOT EXISTS coach_error TEXT;
 
+-- Strategic plan state. The planner synthesizes 3-5 expansion hypotheses
+-- from the dossier + notes + people map (no web_search) — the quarter-scale
+-- bets, ranked by odds × impact. Sits between the dossier (static data) and
+-- the scanner (tactical triggers). Regenerating overwrites.
+ALTER TABLE account_expansion_dossier ADD COLUMN IF NOT EXISTS plan_status TEXT;
+ALTER TABLE account_expansion_dossier ADD COLUMN IF NOT EXISTS plan_started_at TIMESTAMPTZ;
+ALTER TABLE account_expansion_dossier ADD COLUMN IF NOT EXISTS plan_result JSONB;
+ALTER TABLE account_expansion_dossier ADD COLUMN IF NOT EXISTS plan_error TEXT;
+
 -- Expansion paths — three moves per trigger. Same shape as revisit_paths:
 -- array of 3 path objects as JSONB, the AE picks one, we log outcome. Keyed
 -- by (account_id, trigger_index) against the current dossier.last_scan_result

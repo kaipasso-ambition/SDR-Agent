@@ -167,6 +167,55 @@ export async function clearCoachResult(accountId) {
   );
 }
 
+// ---------- Strategic plan (dossier-level hypotheses) ----------
+//
+// Sibling of the coach columns. plan_result stores the full planner output —
+// {hypotheses:[...], rationale, ranking_notes}. One plan at a time per
+// customer; regenerating overwrites.
+
+export async function setPlanRunning(accountId) {
+  await query(
+    `UPDATE account_expansion_dossier
+        SET plan_status     = 'running',
+            plan_started_at = NOW(),
+            plan_error      = NULL
+      WHERE account_id = $1`,
+    [accountId]
+  );
+}
+
+export async function setPlanResult(accountId, { plan }) {
+  await query(
+    `UPDATE account_expansion_dossier
+        SET plan_status = 'completed',
+            plan_result = $2::jsonb,
+            plan_error  = NULL
+      WHERE account_id = $1`,
+    [accountId, JSON.stringify(plan || {})]
+  );
+}
+
+export async function setPlanFailed(accountId, { error }) {
+  await query(
+    `UPDATE account_expansion_dossier
+        SET plan_status = 'failed',
+            plan_error  = $2
+      WHERE account_id = $1`,
+    [accountId, (error || '').slice(0, 1000)]
+  );
+}
+
+export async function clearPlanResult(accountId) {
+  await query(
+    `UPDATE account_expansion_dossier
+        SET plan_status = NULL,
+            plan_result = NULL,
+            plan_error  = NULL
+      WHERE account_id = $1`,
+    [accountId]
+  );
+}
+
 // ---------- Paths ----------
 
 export async function createExpansionPaths({ account_id, trigger_index, trigger_title, trigger_snapshot, paths }) {
