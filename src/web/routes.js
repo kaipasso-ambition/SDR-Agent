@@ -49,6 +49,15 @@ import {
   deleteRevisitNote,
 } from '../db/revisit_plans.js';
 import {
+  getDossier,
+  upsertDossier,
+  addExpansionNote,
+  listExpansionNotes,
+  getExpansionNote,
+  deleteExpansionNote,
+  listExpansionPortfolio,
+} from '../db/expansions.js';
+import {
   getSignalsForBrief,
   getSignalById,
   acknowledgeSignal,
@@ -1111,6 +1120,99 @@ webRouter.post('/revisit/notes/:id/delete', requireAuth, async (req, res, next) 
     await deleteRevisitNote(req.params.id);
     if (oppId) return res.redirect(`/revisit/${encodeURIComponent(oppId)}#notes`);
     res.redirect('/revisit');
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------- Expand (Customer growth) ----------
+//
+// /expand is /revisit's mirror image for active customers. Instead of asking
+// "what would neutralize the loss reason?" it asks "where are we today, where
+// do they want us next, and what move proves the deepening narrative?" Phase 1
+// is just the dossier + notes — a place to drop everything you know so the
+// Phase 2 scanner + path generator have something to reason over.
+
+webRouter.get('/expand', requireAuth, async (req, res, next) => {
+  try {
+    const customers = await listExpansionPortfolio();
+    res.render('expand', { title: 'Expand', customers });
+  } catch (err) {
+    next(err);
+  }
+});
+
+webRouter.get('/expand/:account_id', requireAuth, async (req, res, next) => {
+  try {
+    if (!UUID_RE.test(req.params.account_id)) return res.redirect('/expand');
+    // The People Map reuses game_plan_contacts so /expand and /accounts/:id/plan
+    // stay in sync — one canonical org chart per account.
+    const [bundle, dossier, notes, contacts] = await Promise.all([
+      getAccountBundle(req.params.account_id),
+      getDossier(req.params.account_id),
+      listExpansionNotes(req.params.account_id),
+      listContactsForAccount(req.params.account_id),
+    ]);
+    if (!bundle) return res.redirect('/expand');
+    // Only customers get the /expand treatment. Churned accounts belong in
+    // /revisit (they land there as dead_deals with account_type_at_close =
+    // Customer - Churned). Silent redirect keeps the URL space tidy.
+    if (bundle.account.status !== 'customer') {
+      return res.redirect(`/accounts/${req.params.account_id}`);
+    }
+    res.render('expand_detail', {
+      title: bundle.account.account_name,
+      account: bundle.account,
+      dossier,
+      notes,
+      contacts,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+webRouter.post('/expand/:account_id/dossier', requireAuth, async (req, res, next) => {
+  try {
+    if (!UUID_RE.test(req.params.account_id)) return res.redirect('/expand');
+    // 8000-char cap per field — anything larger is a document, not a field,
+    // and will blow the eventual scanner's prompt budget.
+    const clip = (s) => typeof s === 'string' ? s.slice(0, 8000) : '';
+    await upsertDossier(req.params.account_id, {
+      footprint: clip(req.body?.footprint),
+      destination: clip(req.body?.destination),
+      stack_competitive: clip(req.body?.stack_competitive),
+      open_questions: clip(req.body?.open_questions),
+    });
+    res.redirect(`/expand/${req.params.account_id}`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+webRouter.post('/expand/:account_id/notes', requireAuth, async (req, res, next) => {
+  try {
+    if (!UUID_RE.test(req.params.account_id)) return res.redirect('/expand');
+    const note = (req.body?.note || '').trim();
+    if (!note) return res.redirect(`/expand/${req.params.account_id}#notes`);
+    await addExpansionNote({
+      account_id: req.params.account_id,
+      note: note.slice(0, 8000),
+      user_id: req.session.userId,
+    });
+    res.redirect(`/expand/${req.params.account_id}#notes`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+webRouter.post('/expand/notes/:id/delete', requireAuth, async (req, res, next) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.redirect('/expand');
+    const n = await getExpansionNote(req.params.id);
+    await deleteExpansionNote(req.params.id);
+    if (n?.account_id) return res.redirect(`/expand/${n.account_id}#notes`);
+    res.redirect('/expand');
   } catch (err) {
     next(err);
   }

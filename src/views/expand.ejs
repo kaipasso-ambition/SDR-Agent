@@ -1,0 +1,104 @@
+<%
+  function fmtDate(d) {
+    if (!d) return '—';
+    const dt = d instanceof Date ? d : new Date(d);
+    if (isNaN(dt)) return '—';
+    return dt.toISOString().slice(0, 10);
+  }
+  function fmtRelative(d) {
+    if (!d) return '—';
+    const ms = Date.now() - new Date(d).getTime();
+    const min = Math.floor(ms / 60000);
+    if (min < 1) return 'just now';
+    if (min < 60) return min + 'm ago';
+    const hr = Math.floor(min / 60);
+    if (hr < 24) return hr + 'h ago';
+    return Math.floor(hr / 24) + 'd ago';
+  }
+  // Bucket each customer by dossier state so the portfolio reads at a glance:
+  //   ACTIVE    — dossier populated + at least one note (recent or not)
+  //   STARTED   — dossier populated, no notes
+  //   UNTOUCHED — no dossier yet
+  const active    = customers.filter(c => c.has_dossier && c.note_count > 0);
+  const started   = customers.filter(c => c.has_dossier && c.note_count === 0);
+  const untouched = customers.filter(c => !c.has_dossier);
+%>
+
+<div class="mb-6">
+  <h1 class="text-2xl font-semibold">Expand — Customer growth</h1>
+  <p class="text-sm text-slate-500 mt-1 max-w-3xl">
+    One dossier per active customer. Drop what you know about where you are today, where they want to go next,
+    who your champion is, what else is in the stack, and what you don't know yet.
+    Phase 2 will layer a web scanner + path generator on top that reasons over all of it.
+  </p>
+</div>
+
+<!-- Roll-up -->
+<div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+  <div class="bg-white border border-emerald-200 rounded-lg p-4">
+    <div class="text-[11px] uppercase tracking-wide text-emerald-700">Active plays</div>
+    <div class="text-2xl font-semibold mt-1 text-emerald-700"><%= active.length %></div>
+    <div class="text-[11px] text-emerald-600 mt-0.5">dossier + notes</div>
+  </div>
+  <div class="bg-white border border-slate-200 rounded-lg p-4">
+    <div class="text-[11px] uppercase tracking-wide text-slate-500">Started</div>
+    <div class="text-2xl font-semibold mt-1 text-slate-700"><%= started.length %></div>
+    <div class="text-[11px] text-slate-400 mt-0.5">dossier saved, no notes yet</div>
+  </div>
+  <div class="bg-white border border-slate-200 rounded-lg p-4">
+    <div class="text-[11px] uppercase tracking-wide text-slate-500">Untouched</div>
+    <div class="text-2xl font-semibold mt-1 text-slate-700"><%= untouched.length %></div>
+    <div class="text-[11px] text-slate-400 mt-0.5">no dossier yet</div>
+  </div>
+  <div class="bg-white border border-slate-200 rounded-lg p-4">
+    <div class="text-[11px] uppercase tracking-wide text-slate-500">Total customers</div>
+    <div class="text-2xl font-semibold mt-1 text-slate-900"><%= customers.length %></div>
+  </div>
+</div>
+
+<% if (customers.length === 0) { %>
+  <div class="bg-white border border-slate-200 rounded-lg p-8 text-sm text-slate-500 text-center">
+    <div class="text-base text-slate-700 mb-1">No customer accounts in your book yet.</div>
+    Import via <a href="/accounts" class="underline text-slate-700 hover:text-slate-900">/accounts</a>.
+  </div>
+<% } else { %>
+  <div class="bg-white border border-slate-200 rounded-lg overflow-hidden">
+    <table class="w-full text-sm">
+      <thead class="bg-slate-50 border-b border-slate-200 text-[11px] uppercase tracking-wide text-slate-500">
+        <tr>
+          <th class="text-left px-4 py-2 font-semibold">Customer</th>
+          <th class="text-left px-4 py-2 font-semibold w-32">State</th>
+          <th class="text-left px-4 py-2 font-semibold w-24">Notes</th>
+          <th class="text-left px-4 py-2 font-semibold w-32">Last activity</th>
+          <th class="text-right px-4 py-2 font-semibold"></th>
+        </tr>
+      </thead>
+      <tbody>
+        <% customers.forEach(function(c) {
+          let state;
+          if (c.has_dossier && c.note_count > 0) state = { cls: 'bg-emerald-100 text-emerald-800', label: 'active' };
+          else if (c.has_dossier)                state = { cls: 'bg-slate-100 text-slate-700', label: 'started' };
+          else                                   state = { cls: 'bg-slate-100 text-slate-500', label: 'untouched' };
+          const lastActivity = c.last_note_at || c.dossier_updated_at;
+        %>
+          <tr class="border-b border-slate-100 hover:bg-slate-50">
+            <td class="px-4 py-2.5">
+              <a href="/expand/<%= c.id %>" class="font-medium text-slate-900 hover:underline"><%= c.account_name %></a>
+              <% if (c.domain) { %>
+                <div class="text-[11px] text-slate-400"><%= c.domain %></div>
+              <% } %>
+            </td>
+            <td class="px-4 py-2.5"><span class="pill <%= state.cls %>"><%= state.label %></span></td>
+            <td class="px-4 py-2.5 tabular-nums text-slate-700"><%= c.note_count %></td>
+            <td class="px-4 py-2.5 text-xs text-slate-500"><%= fmtRelative(lastActivity) %></td>
+            <td class="px-4 py-2.5 text-right">
+              <a href="/expand/<%= c.id %>" class="text-xs text-slate-600 hover:text-slate-900 underline">
+                <% if (c.has_dossier) { %>Open &rarr;<% } else { %>Start dossier &rarr;<% } %>
+              </a>
+            </td>
+          </tr>
+        <% }); %>
+      </tbody>
+    </table>
+  </div>
+<% } %>

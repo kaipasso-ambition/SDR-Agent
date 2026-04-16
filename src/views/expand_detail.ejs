@@ -1,0 +1,240 @@
+<%
+  function fmtDate(d) {
+    if (!d) return '—';
+    const dt = d instanceof Date ? d : new Date(d);
+    if (isNaN(dt)) return '—';
+    return dt.toISOString().slice(0, 10);
+  }
+  const roleLabel = {
+    economic_buyer: 'Decider',
+    champion:       'Champion',
+    coach:          'Coach',
+    influencer:     'Influencer',
+    blocker:        'Blocker',
+    user:           'User',
+    unknown:        '—',
+  };
+  const roleColor = {
+    economic_buyer: 'bg-purple-100 text-purple-800',
+    champion:       'bg-emerald-100 text-emerald-800',
+    coach:          'bg-blue-100 text-blue-800',
+    influencer:     'bg-slate-100 text-slate-700',
+    blocker:        'bg-red-100 text-red-800',
+    user:           'bg-slate-100 text-slate-600',
+    unknown:        'bg-slate-100 text-slate-500',
+  };
+  const stanceColor = {
+    hot:     'text-emerald-700',
+    warm:    'text-emerald-600',
+    neutral: 'text-slate-500',
+    cold:    'text-amber-600',
+    hostile: 'text-red-600',
+  };
+  // Show deciders + champions + blockers first; everyone else compressed.
+  const primaryContacts = contacts.filter(c =>
+    ['economic_buyer', 'champion', 'blocker', 'coach'].includes(c.deal_role)
+  );
+  const otherContacts = contacts.filter(c =>
+    !['economic_buyer', 'champion', 'blocker', 'coach'].includes(c.deal_role)
+  );
+%>
+
+<div class="mb-2 text-sm text-slate-500">
+  <a href="/expand" class="hover:text-slate-900">&larr; Expand</a>
+</div>
+
+<div class="flex items-start justify-between gap-4 mb-6">
+  <div>
+    <h1 class="text-2xl font-semibold"><%= account.account_name %></h1>
+    <div class="text-sm text-slate-500 mt-1">
+      Active customer
+      <% if (account.industry) { %> &middot; <%= account.industry %><% } %>
+      <% if (account.domain) { %> &middot; <%= account.domain %><% } %>
+    </div>
+    <% if (dossier?.updated_at) { %>
+      <div class="text-[11px] text-slate-400 mt-1">dossier updated <%= fmtDate(dossier.updated_at) %></div>
+    <% } %>
+  </div>
+  <a href="/accounts/<%= account.id %>/plan"
+     class="text-xs text-slate-600 hover:text-slate-900 underline shrink-0 mt-2">
+    Open Plan (org chart) &rarr;
+  </a>
+</div>
+
+<!-- Phase 2 placeholder -->
+<div class="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6 text-sm text-amber-900">
+  <strong>Phase 1.</strong> Dossier + notes live here so you have somewhere to drop what you know.
+  Phase 2 adds a web scanner (what's happening externally that unlocks your destination goals?)
+  and a path generator (3 moves per trigger, warm-intro-via-champion base rates).
+</div>
+
+<!-- ---------- Dossier editor ---------- -->
+<form method="POST" action="/expand/<%= account.id %>/dossier" class="space-y-5 mb-8">
+  <div class="bg-white border border-slate-200 rounded-lg p-5">
+    <label class="block">
+      <div class="text-sm font-semibold text-slate-700">Footprint</div>
+      <div class="text-xs text-slate-500 mb-2">
+        Team &times; seats &times; health &times; one-line. Where you are in the account today.
+      </div>
+      <textarea name="footprint" rows="5" maxlength="8000"
+                class="w-full text-sm border border-slate-300 rounded p-2 focus:outline-none focus:border-slate-500 font-mono"
+                placeholder="- SMB — True Champions program, healthy&#10;- Mid-Market — upsell attach + upstack 50+ accounts&#10;- GOV — rollout in progress&#10;- ENT — coaching rollout starting"><%= dossier?.footprint || '' %></textarea>
+    </label>
+  </div>
+
+  <div class="bg-white border border-slate-200 rounded-lg p-5">
+    <label class="block">
+      <div class="text-sm font-semibold text-slate-700">Destination</div>
+      <div class="text-xs text-slate-500 mb-2">
+        What they've told you they want next. Stated goal &times; sponsor &times; timing cue.
+        Feeds the Phase-2 scanner's search priorities.
+      </div>
+      <textarea name="destination" rows="5" maxlength="8000"
+                class="w-full text-sm border border-slate-300 rounded p-2 focus:outline-none focus:border-slate-500 font-mono"
+                placeholder="- AI real-time coaching — Enablement Exec — Sept onsite&#10;- MM upsell attach-rate lift — Mid-Market Team — Q3&#10;- Upstack 50+ deals — Mid-Market Team — ongoing&#10;- Agile templates tied to product launches — Enablement — Q3"><%= dossier?.destination || '' %></textarea>
+    </label>
+  </div>
+
+  <div class="bg-white border border-slate-200 rounded-lg p-5">
+    <label class="block">
+      <div class="text-sm font-semibold text-slate-700">Stack &amp; competitive</div>
+      <div class="text-xs text-slate-500 mb-2">
+        What else is deployed in the account + known objections. The competitive narrative you need to win.
+      </div>
+      <textarea name="stack_competitive" rows="4" maxlength="8000"
+                class="w-full text-sm border border-slate-300 rounded p-2 focus:outline-none focus:border-slate-500 font-mono"
+                placeholder="- Gong, Highspot, Salesforce, HR tools all in stack&#10;- Live objection: 'what's unique about Ambition vs Gong+SFDC?'&#10;- Threat: Gong real-time-coaching overlap"><%= dossier?.stack_competitive || '' %></textarea>
+    </label>
+  </div>
+
+  <div class="bg-white border border-slate-200 rounded-lg p-5">
+    <label class="block">
+      <div class="text-sm font-semibold text-slate-700">Open questions</div>
+      <div class="text-xs text-slate-500 mb-2">
+        What you don't know yet. Each line becomes a search priority when the scanner runs.
+      </div>
+      <textarea name="open_questions" rows="4" maxlength="8000"
+                class="w-full text-sm border border-slate-300 rounded p-2 focus:outline-none focus:border-slate-500 font-mono"
+                placeholder="- How do comparable F500s structure coaching?&#10;- What did other Gong+Ambition customers do about the overlap?&#10;- What AI can we demo live at Ohio?&#10;- How is MM measuring attach today?"><%= dossier?.open_questions || '' %></textarea>
+    </label>
+  </div>
+
+  <div class="flex items-center justify-between">
+    <div class="text-xs text-slate-500">
+      Saves the whole dossier in one go. 8000 chars max per field.
+    </div>
+    <button type="submit" class="text-sm bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded font-medium">
+      Save dossier
+    </button>
+  </div>
+</form>
+
+<!-- ---------- People map (reused from /accounts/:id/plan) ---------- -->
+<div class="bg-white border border-slate-200 rounded-lg p-5 mb-8">
+  <div class="flex items-baseline justify-between mb-3">
+    <div>
+      <h2 class="text-sm font-semibold text-slate-700">People map</h2>
+      <div class="text-xs text-slate-500">
+        Single source of truth — edit on the Plan page so both views stay in sync.
+      </div>
+    </div>
+    <a href="/accounts/<%= account.id %>/plan"
+       class="text-xs text-slate-600 hover:text-slate-900 underline">
+      Manage on Plan &rarr;
+    </a>
+  </div>
+
+  <% if (contacts.length === 0) { %>
+    <div class="text-xs text-slate-400 text-center py-4">
+      No contacts yet. Add them on
+      <a href="/accounts/<%= account.id %>/plan" class="underline">the Plan page</a>
+      — they'll show up here too.
+    </div>
+  <% } else { %>
+    <% if (primaryContacts.length > 0) { %>
+      <div class="space-y-2 mb-3">
+        <% primaryContacts.forEach(function(c) { %>
+          <div class="flex items-start gap-3 text-sm border-l-2 border-slate-200 pl-3 py-1">
+            <div class="flex-1">
+              <div class="font-medium text-slate-900"><%= c.name %></div>
+              <% if (c.title) { %><div class="text-xs text-slate-500"><%= c.title %></div><% } %>
+              <% if (c.notes) { %><div class="text-xs text-slate-600 mt-1 whitespace-pre-wrap"><%= c.notes %></div><% } %>
+            </div>
+            <div class="shrink-0 flex flex-col items-end gap-1">
+              <span class="pill <%= roleColor[c.deal_role] || roleColor.unknown %>">
+                <%= roleLabel[c.deal_role] || c.deal_role %>
+              </span>
+              <span class="text-[11px] <%= stanceColor[c.stance] || 'text-slate-500' %>">
+                <%= c.stance %>
+              </span>
+            </div>
+          </div>
+        <% }); %>
+      </div>
+    <% } %>
+
+    <% if (otherContacts.length > 0) { %>
+      <details class="text-xs">
+        <summary class="cursor-pointer text-slate-500 hover:text-slate-700 select-none">
+          <%= otherContacts.length %> other contact<%= otherContacts.length === 1 ? '' : 's' %>
+        </summary>
+        <ul class="mt-2 space-y-1">
+          <% otherContacts.forEach(function(c) { %>
+            <li class="flex items-center gap-2 text-slate-600">
+              <span class="pill <%= roleColor[c.deal_role] || roleColor.unknown %> text-[10px]">
+                <%= roleLabel[c.deal_role] || c.deal_role %>
+              </span>
+              <span><%= c.name %></span>
+              <% if (c.title) { %><span class="text-slate-400">&middot; <%= c.title %></span><% } %>
+            </li>
+          <% }); %>
+        </ul>
+      </details>
+    <% } %>
+  <% } %>
+</div>
+
+<!-- ---------- Notes (chronological) ---------- -->
+<div id="notes" class="bg-white border border-slate-200 rounded-lg p-5 mb-8">
+  <div class="flex items-baseline justify-between mb-3">
+    <h2 class="text-sm font-semibold text-slate-700">Notes
+      <span class="text-xs text-slate-400 font-normal">&middot; meeting recaps, Slack chatter, late-arriving intel</span>
+    </h2>
+    <span class="text-xs text-slate-400"><%= (notes || []).length %></span>
+  </div>
+
+  <form method="POST" action="/expand/<%= account.id %>/notes" class="mb-4">
+    <textarea name="note" rows="3" maxlength="8000" required
+              placeholder="Drop a meeting recap, a Slack update, a hallway conversation — anything that'd matter to the next expansion move."
+              class="w-full text-sm border border-slate-300 rounded p-2 focus:outline-none focus:border-slate-500"></textarea>
+    <div class="flex justify-end mt-2">
+      <button type="submit" class="text-xs bg-slate-900 hover:bg-slate-800 text-white px-3 py-1.5 rounded font-medium">
+        Add note
+      </button>
+    </div>
+  </form>
+
+  <% if ((notes || []).length === 0) { %>
+    <div class="text-xs text-slate-400 text-center py-2">
+      Nothing yet. The Verizon-style meeting recap you'd paste in Slack is the right unit of entry.
+    </div>
+  <% } else { %>
+    <ul class="space-y-3">
+      <% (notes || []).forEach(function(n) { %>
+        <li class="flex items-start gap-3 text-sm border-l-2 border-slate-200 pl-3 py-1">
+          <div class="flex-1">
+            <div class="text-slate-700 whitespace-pre-wrap"><%= n.note %></div>
+            <div class="text-[11px] text-slate-400 mt-1">
+              <%= fmtDate(n.created_at) %>
+              <% if (n.created_by_name) { %> &middot; <%= n.created_by_name %><% } %>
+            </div>
+          </div>
+          <form method="POST" action="/expand/notes/<%= n.id %>/delete"
+                onsubmit="return confirm('Delete this note?');" class="shrink-0">
+            <button type="submit" class="text-[11px] text-slate-400 hover:text-red-600">delete</button>
+          </form>
+        </li>
+      <% }); %>
+    </ul>
+  <% } %>
+</div>

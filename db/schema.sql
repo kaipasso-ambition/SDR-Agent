@@ -724,3 +724,31 @@ CREATE TABLE IF NOT EXISTS revisit_notes (
 );
 CREATE INDEX IF NOT EXISTS revisit_notes_opp_idx ON revisit_notes(opportunity_id, created_at DESC);
 
+-- Account expansion dossier — one row per active customer we're trying to
+-- grow. Free-text fields so the AE can dump what they know as it comes
+-- (bullets, prose, pasted meeting recaps). The shape is deliberately loose
+-- in Phase 1; if a field turns out to need real structure we promote it
+-- later. People-map lives in game_plan_contacts so it stays in sync with
+-- the /accounts/:id/plan chess-board view.
+CREATE TABLE IF NOT EXISTS account_expansion_dossier (
+  account_id UUID PRIMARY KEY REFERENCES accounts_registry(id) ON DELETE CASCADE,
+  footprint TEXT,             -- teams × seats × health × 1-line
+  destination TEXT,           -- stated goals × sponsor × timing
+  stack_competitive TEXT,     -- other tools in play + live objections
+  open_questions TEXT,        -- what we don't know yet — feeds the scanner
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Expansion notes — chronological scraps per customer (meeting recaps,
+-- Slack chatter, exec-dinner takeaways). Same pattern as revisit_notes;
+-- Phase 2's scanner + path generator will read these as additional context.
+CREATE TABLE IF NOT EXISTS expansion_notes (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  account_id UUID NOT NULL REFERENCES accounts_registry(id) ON DELETE CASCADE,
+  note TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS expansion_notes_account_idx ON expansion_notes(account_id, created_at DESC);
+
