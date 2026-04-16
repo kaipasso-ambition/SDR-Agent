@@ -15,85 +15,287 @@
     if (hr < 24) return hr + 'h ago';
     return Math.floor(hr / 24) + 'd ago';
   }
+  function daysAgo(d) {
+    if (!d) return null;
+    const ms = Date.now() - new Date(d).getTime();
+    return Math.floor(ms / 86400000);
+  }
+
   const total = deals.length;
   const scanned = deals.filter(d => d.last_scan_status === 'completed').length;
   const withTriggers = deals.filter(d => d.last_scan_status === 'completed' && d.trigger_count > 0).length;
+  const neverScanned = deals.filter(d => !d.last_scan_status || d.last_scan_status === null).length;
+
+  // Hit rate: won / (won + lost + no_response). in_progress excluded.
+  const completedOutcomes = (stats.won || 0) + (stats.lost || 0) + (stats.no_response || 0);
+  const hitRate = completedOutcomes > 0 ? Math.round((stats.won / completedOutcomes) * 100) : null;
+
+  // Triggers scanned but never converted into a built path set — these
+  // are opportunities sitting idle that the AE should either action or dismiss.
+  const triggersAwaitingPaths = deals
+    .filter(d => d.last_scan_status === 'completed' && d.trigger_count > 0)
+    .reduce((n, d) => n + (d.trigger_count || 0), 0);
+
+  const outcomeLabels = { won: 'Won', lost: 'Lost', no_response: 'No response', in_progress: 'In progress' };
+  const outcomeColors = {
+    won:         'bg-emerald-100 text-emerald-800',
+    lost:        'bg-red-100 text-red-800',
+    no_response: 'bg-slate-100 text-slate-700',
+    in_progress: 'bg-amber-100 text-amber-800',
+  };
 %>
 
 <div class="mb-6">
-  <h1 class="text-2xl font-semibold">Revisit — Closed Lost &amp; Churn</h1>
+  <h1 class="text-2xl font-semibold">Revisit — Portfolio</h1>
   <p class="text-sm text-slate-500 mt-1 max-w-3xl">
-    Pick a dead deal and scan the web for what has changed since close_date that might neutralise the original loss reason.
-    Each scan uses ~6 web searches and takes 1–3 minutes. Triggers are not auto-acted on — they're for you to read and judge.
+    Every re-entry play you have in market, where you're moving the needle, and where deals are going cold.
+    New dead deals live at the bottom — scan, build paths, pick one, track the outcome.
   </p>
 </div>
 
-<div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+<!-- ---------- Roll-up stats ---------- -->
+<div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
   <div class="bg-white border border-slate-200 rounded-lg p-4">
-    <div class="text-xs uppercase tracking-wide text-slate-500">Dead deals</div>
-    <div class="text-2xl font-semibold mt-1"><%= total %></div>
-  </div>
-  <div class="bg-white border border-slate-200 rounded-lg p-4">
-    <div class="text-xs uppercase tracking-wide text-slate-500">Scanned</div>
-    <div class="text-2xl font-semibold mt-1"><%= scanned %></div>
+    <div class="text-[11px] uppercase tracking-wide text-slate-500">In flight</div>
+    <div class="text-2xl font-semibold mt-1 text-slate-900"><%= stats.in_flight || 0 %></div>
+    <div class="text-[11px] text-slate-400 mt-0.5">paths you're running</div>
   </div>
   <div class="bg-white border border-emerald-200 rounded-lg p-4">
-    <div class="text-xs uppercase tracking-wide text-emerald-700">With triggers</div>
-    <div class="text-2xl font-semibold mt-1 text-emerald-700"><%= withTriggers %></div>
+    <div class="text-[11px] uppercase tracking-wide text-emerald-700">Won</div>
+    <div class="text-2xl font-semibold mt-1 text-emerald-700"><%= stats.won || 0 %></div>
+    <div class="text-[11px] text-emerald-600 mt-0.5">
+      <% if (hitRate !== null) { %>
+        <%= hitRate %>% hit rate
+      <% } else { %>
+        no outcomes yet
+      <% } %>
+    </div>
+  </div>
+  <div class="bg-white border border-amber-200 rounded-lg p-4">
+    <div class="text-[11px] uppercase tracking-wide text-amber-700">Stalled</div>
+    <div class="text-2xl font-semibold mt-1 text-amber-700"><%= stats.stalled || 0 %></div>
+    <div class="text-[11px] text-amber-600 mt-0.5">selected &gt;21d, no outcome</div>
+  </div>
+  <div class="bg-white border border-slate-200 rounded-lg p-4">
+    <div class="text-[11px] uppercase tracking-wide text-slate-500">Built, not selected</div>
+    <div class="text-2xl font-semibold mt-1 text-slate-700"><%= stats.built_not_selected || 0 %></div>
+    <div class="text-[11px] text-slate-400 mt-0.5">path sets awaiting a pick</div>
+  </div>
+  <div class="bg-white border border-slate-200 rounded-lg p-4">
+    <div class="text-[11px] uppercase tracking-wide text-slate-500">Never scanned</div>
+    <div class="text-2xl font-semibold mt-1 text-slate-700"><%= neverScanned %></div>
+    <div class="text-[11px] text-slate-400 mt-0.5">dead deals untouched</div>
   </div>
 </div>
 
-<% if (total === 0) { %>
-  <div class="bg-white border border-slate-200 rounded-lg p-8 text-sm text-slate-500 text-center">
-    <div class="text-base text-slate-700 mb-1">No dead deals imported yet.</div>
-    Run <code class="text-xs bg-slate-100 px-1 py-0.5 rounded">npm run import:dead-deals -- &lt;file&gt;</code> to bring in your Closed Lost / Churn export.
+<!-- ---------- In-flight plays ---------- -->
+<div class="mb-8">
+  <div class="flex items-baseline justify-between mb-3">
+    <h2 class="text-lg font-semibold">In flight</h2>
+    <div class="text-xs text-slate-500"><%= inFlight.length %> selected path<%= inFlight.length === 1 ? '' : 's' %> working right now</div>
   </div>
-<% } else { %>
-  <div class="bg-white border border-slate-200 rounded-lg overflow-hidden">
-    <table class="w-full text-sm">
-      <thead class="bg-slate-50 border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
-        <tr>
-          <th class="text-left px-4 py-2 font-semibold">Account</th>
-          <th class="text-left px-4 py-2 font-semibold">Type</th>
-          <th class="text-left px-4 py-2 font-semibold">Closed</th>
-          <th class="text-left px-4 py-2 font-semibold">Loss reason</th>
-          <th class="text-left px-4 py-2 font-semibold">Last scan</th>
-          <th class="text-right px-4 py-2 font-semibold"></th>
-        </tr>
-      </thead>
-      <tbody>
-        <% deals.forEach(function(d) {
-          const status = d.last_scan_status;
-          let pill = null;
-          if (status === 'running') pill = { cls: 'bg-amber-100 text-amber-800', label: 'scanning…' };
-          else if (status === 'failed') pill = { cls: 'bg-red-100 text-red-800', label: 'failed' };
-          else if (status === 'completed' && d.trigger_count > 0) pill = { cls: 'bg-emerald-100 text-emerald-800', label: d.trigger_count + ' trigger' + (d.trigger_count === 1 ? '' : 's') };
-          else if (status === 'completed') pill = { cls: 'bg-slate-100 text-slate-600', label: 'no triggers' };
-        %>
-          <tr class="border-b border-slate-100 hover:bg-slate-50">
-            <td class="px-4 py-2.5">
-              <a href="/revisit/<%= encodeURIComponent(d.opportunity_id) %>" class="font-medium text-slate-900 hover:underline"><%= d.account_name %></a>
-              <div class="text-[11px] text-slate-400"><%= d.opportunity_id %></div>
-            </td>
-            <td class="px-4 py-2.5 text-slate-600 text-xs"><%= d.account_type_at_close || '—' %></td>
-            <td class="px-4 py-2.5 text-slate-600 text-xs"><%= fmtDate(d.close_date) %></td>
-            <td class="px-4 py-2.5 text-slate-700"><%= d.loss_reason || '—' %></td>
-            <td class="px-4 py-2.5">
-              <% if (pill) { %>
-                <span class="pill <%= pill.cls %>"><%= pill.label %></span>
-                <% if (d.last_signal_scan_at && status === 'completed') { %>
-                  <span class="text-[11px] text-slate-400 ml-1"><%= fmtRelative(d.last_signal_scan_at) %></span>
-                <% } %>
-              <% } else { %>
-                <span class="text-xs text-slate-400">never</span>
-              <% } %>
-            </td>
-            <td class="px-4 py-2.5 text-right">
-              <a href="/revisit/<%= encodeURIComponent(d.opportunity_id) %>" class="text-xs text-slate-600 hover:text-slate-900 underline">Open →</a>
-            </td>
+  <% if (inFlight.length === 0) { %>
+    <div class="bg-white border border-slate-200 rounded-lg p-6 text-sm text-slate-500 text-center">
+      Nothing selected yet. Scan a dead deal below, build paths for a trigger, pick one, and it'll show up here.
+    </div>
+  <% } else { %>
+    <div class="bg-white border border-slate-200 rounded-lg overflow-hidden">
+      <table class="w-full text-sm">
+        <thead class="bg-slate-50 border-b border-slate-200 text-[11px] uppercase tracking-wide text-slate-500">
+          <tr>
+            <th class="text-left px-4 py-2 font-semibold">Account</th>
+            <th class="text-left px-4 py-2 font-semibold">Hypothesis</th>
+            <th class="text-left px-4 py-2 font-semibold w-20">Reply %</th>
+            <th class="text-left px-4 py-2 font-semibold w-20">Conf.</th>
+            <th class="text-left px-4 py-2 font-semibold w-24">Selected</th>
+            <th class="text-left px-4 py-2 font-semibold w-28">Pace</th>
+            <th class="text-right px-4 py-2 font-semibold"></th>
           </tr>
-        <% }); %>
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          <% inFlight.forEach(function(p) {
+            const paths = Array.isArray(p.paths) ? p.paths : [];
+            const chosen = (p.selected_path != null && paths[p.selected_path]) ? paths[p.selected_path] : null;
+            const metrics = chosen?.metrics || {};
+            const predictedDays = Number.isFinite(metrics.predicted_days_to_meeting) ? metrics.predicted_days_to_meeting : null;
+            const daysElapsed = Number.isFinite(p.days_since_selected) ? p.days_since_selected : 0;
+            // Pace flag: past the model's own prediction → call it "overdue".
+            // No prediction → fall back to simple bucket.
+            let pace;
+            if (predictedDays != null) {
+              if (daysElapsed > predictedDays) {
+                pace = { cls: 'bg-red-100 text-red-800', label: `overdue ${daysElapsed - predictedDays}d` };
+              } else if (daysElapsed >= predictedDays * 0.75) {
+                pace = { cls: 'bg-amber-100 text-amber-800', label: `${daysElapsed}d / ${predictedDays}d` };
+              } else {
+                pace = { cls: 'bg-emerald-100 text-emerald-800', label: `${daysElapsed}d / ${predictedDays}d` };
+              }
+            } else {
+              pace = { cls: 'bg-slate-100 text-slate-700', label: `${daysElapsed}d` };
+            }
+          %>
+            <tr class="border-b border-slate-100 hover:bg-slate-50">
+              <td class="px-4 py-2.5 align-top">
+                <a href="/revisit/<%= encodeURIComponent(p.opportunity_id) %>#paths-<%= p.id %>"
+                   class="font-medium text-slate-900 hover:underline"><%= p.account_name %></a>
+                <div class="text-[11px] text-slate-400"><%= p.owner_name || '—' %></div>
+              </td>
+              <td class="px-4 py-2.5 align-top">
+                <div class="text-slate-700 text-[13px] leading-snug max-w-xl">
+                  <% if (chosen) { %>
+                    <span class="font-medium text-slate-900"><%= chosen.path_name || 'Path ' + (p.selected_path + 1) %></span>
+                    <span class="text-slate-400"> · </span><%= chosen.hypothesis || '' %>
+                  <% } else { %>
+                    <span class="text-slate-400">path missing</span>
+                  <% } %>
+                </div>
+                <% if (p.trigger_title) { %>
+                  <div class="text-[11px] text-slate-400 mt-1">trigger: <%= p.trigger_title %></div>
+                <% } %>
+              </td>
+              <td class="px-4 py-2.5 align-top text-slate-700 tabular-nums">
+                <% if (Number.isFinite(metrics.predicted_reply_rate)) { %>
+                  <%= metrics.predicted_reply_rate %>%
+                <% } else { %>—<% } %>
+              </td>
+              <td class="px-4 py-2.5 align-top text-slate-700 tabular-nums">
+                <% if (Number.isFinite(metrics.confidence)) { %>
+                  <%= metrics.confidence %>/10
+                <% } else { %>—<% } %>
+              </td>
+              <td class="px-4 py-2.5 align-top text-slate-500 text-xs"><%= fmtRelative(p.selected_at) %></td>
+              <td class="px-4 py-2.5 align-top">
+                <span class="pill <%= pace.cls %>"><%= pace.label %></span>
+              </td>
+              <td class="px-4 py-2.5 align-top text-right">
+                <a href="/revisit/<%= encodeURIComponent(p.opportunity_id) %>#paths-<%= p.id %>"
+                   class="text-xs text-slate-600 hover:text-slate-900 underline">Open →</a>
+              </td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+</div>
+
+<!-- ---------- Recent outcomes (the learning signal) ---------- -->
+<% if (recentOutcomes.length > 0) { %>
+  <div class="mb-8">
+    <div class="flex items-baseline justify-between mb-3">
+      <h2 class="text-lg font-semibold">Recent outcomes</h2>
+      <div class="text-xs text-slate-500">the signal that calibrates future predictions</div>
+    </div>
+    <div class="bg-white border border-slate-200 rounded-lg overflow-hidden">
+      <table class="w-full text-sm">
+        <thead class="bg-slate-50 border-b border-slate-200 text-[11px] uppercase tracking-wide text-slate-500">
+          <tr>
+            <th class="text-left px-4 py-2 font-semibold">Account</th>
+            <th class="text-left px-4 py-2 font-semibold">Path</th>
+            <th class="text-left px-4 py-2 font-semibold w-28">Predicted reply</th>
+            <th class="text-left px-4 py-2 font-semibold w-24">Outcome</th>
+            <th class="text-left px-4 py-2 font-semibold w-24">Closed</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% recentOutcomes.forEach(function(o) {
+            const paths = Array.isArray(o.paths) ? o.paths : [];
+            const chosen = (o.selected_path != null && paths[o.selected_path]) ? paths[o.selected_path] : null;
+            const predictedReply = chosen?.metrics?.predicted_reply_rate;
+          %>
+            <tr class="border-b border-slate-100 hover:bg-slate-50">
+              <td class="px-4 py-2.5 align-top">
+                <a href="/revisit/<%= encodeURIComponent(o.opportunity_id) %>#paths-<%= o.id %>"
+                   class="font-medium text-slate-900 hover:underline"><%= o.account_name %></a>
+              </td>
+              <td class="px-4 py-2.5 align-top text-slate-700 text-[13px] max-w-xl">
+                <% if (chosen) { %>
+                  <span class="font-medium"><%= chosen.path_name || 'Path ' + (o.selected_path + 1) %></span>
+                  <% if (o.trigger_title) { %>
+                    <span class="text-slate-400"> · <%= o.trigger_title %></span>
+                  <% } %>
+                <% } else { %>
+                  <span class="text-slate-400">path missing</span>
+                <% } %>
+              </td>
+              <td class="px-4 py-2.5 align-top tabular-nums text-slate-700">
+                <% if (Number.isFinite(predictedReply)) { %>
+                  <%= predictedReply %>%
+                <% } else { %>—<% } %>
+              </td>
+              <td class="px-4 py-2.5 align-top">
+                <span class="pill <%= outcomeColors[o.outcome] || 'bg-slate-100 text-slate-700' %>">
+                  <%= outcomeLabels[o.outcome] || o.outcome %>
+                </span>
+              </td>
+              <td class="px-4 py-2.5 align-top text-xs text-slate-500"><%= fmtRelative(o.outcome_at) %></td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    </div>
   </div>
 <% } %>
+
+<!-- ---------- Full dead-deal list ---------- -->
+<div class="mt-10">
+  <div class="flex items-baseline justify-between mb-3">
+    <h2 class="text-lg font-semibold">All dead deals</h2>
+    <div class="text-xs text-slate-500"><%= total %> total · <%= scanned %> scanned · <%= withTriggers %> with triggers · <%= triggersAwaitingPaths %> triggers awaiting paths</div>
+  </div>
+
+  <% if (total === 0) { %>
+    <div class="bg-white border border-slate-200 rounded-lg p-8 text-sm text-slate-500 text-center">
+      <div class="text-base text-slate-700 mb-1">No dead deals imported yet.</div>
+      Run <code class="text-xs bg-slate-100 px-1 py-0.5 rounded">npm run import:dead-deals -- &lt;file&gt;</code> to bring in your Closed Lost / Churn export.
+    </div>
+  <% } else { %>
+    <div class="bg-white border border-slate-200 rounded-lg overflow-hidden">
+      <table class="w-full text-sm">
+        <thead class="bg-slate-50 border-b border-slate-200 text-[11px] uppercase tracking-wide text-slate-500">
+          <tr>
+            <th class="text-left px-4 py-2 font-semibold">Account</th>
+            <th class="text-left px-4 py-2 font-semibold">Type</th>
+            <th class="text-left px-4 py-2 font-semibold">Closed</th>
+            <th class="text-left px-4 py-2 font-semibold">Loss reason</th>
+            <th class="text-left px-4 py-2 font-semibold">Last scan</th>
+            <th class="text-right px-4 py-2 font-semibold"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <% deals.forEach(function(d) {
+            const status = d.last_scan_status;
+            let pill = null;
+            if (status === 'running') pill = { cls: 'bg-amber-100 text-amber-800', label: 'scanning…' };
+            else if (status === 'failed') pill = { cls: 'bg-red-100 text-red-800', label: 'failed' };
+            else if (status === 'completed' && d.trigger_count > 0) pill = { cls: 'bg-emerald-100 text-emerald-800', label: d.trigger_count + ' trigger' + (d.trigger_count === 1 ? '' : 's') };
+            else if (status === 'completed') pill = { cls: 'bg-slate-100 text-slate-600', label: 'no triggers' };
+          %>
+            <tr class="border-b border-slate-100 hover:bg-slate-50">
+              <td class="px-4 py-2.5">
+                <a href="/revisit/<%= encodeURIComponent(d.opportunity_id) %>" class="font-medium text-slate-900 hover:underline"><%= d.account_name %></a>
+                <div class="text-[11px] text-slate-400"><%= d.opportunity_id %></div>
+              </td>
+              <td class="px-4 py-2.5 text-slate-600 text-xs"><%= d.account_type_at_close || '—' %></td>
+              <td class="px-4 py-2.5 text-slate-600 text-xs"><%= fmtDate(d.close_date) %></td>
+              <td class="px-4 py-2.5 text-slate-700"><%= d.loss_reason || '—' %></td>
+              <td class="px-4 py-2.5">
+                <% if (pill) { %>
+                  <span class="pill <%= pill.cls %>"><%= pill.label %></span>
+                  <% if (d.last_signal_scan_at && status === 'completed') { %>
+                    <span class="text-[11px] text-slate-400 ml-1"><%= fmtRelative(d.last_signal_scan_at) %></span>
+                  <% } %>
+                <% } else { %>
+                  <span class="text-xs text-slate-400">never</span>
+                <% } %>
+              </td>
+              <td class="px-4 py-2.5 text-right">
+                <a href="/revisit/<%= encodeURIComponent(d.opportunity_id) %>" class="text-xs text-slate-600 hover:text-slate-900 underline">Open →</a>
+              </td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+</div>

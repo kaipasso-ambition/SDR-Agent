@@ -41,6 +41,9 @@ import {
   getPathsById,
   selectPath,
   setOutcome,
+  getPortfolioStats,
+  listInFlightPaths,
+  listRecentOutcomes,
 } from '../db/revisit_plans.js';
 import {
   getSignalsForBrief,
@@ -928,8 +931,22 @@ webRouter.post('/accounts/:id/notes', requireAuth, async (req, res, next) => {
 
 webRouter.get('/revisit', requireAuth, async (req, res, next) => {
   try {
-    const deals = await listDeadDealsWithScan({ limit: 300 });
-    res.render('revisit', { title: 'Revisit', deals });
+    // Portfolio dashboard — four parallel queries. The page has to be
+    // snappy since this is the AE's "where am I moving the needle"
+    // landing view; sequential would double the wall time.
+    const [stats, inFlight, recentOutcomes, deals] = await Promise.all([
+      getPortfolioStats(),
+      listInFlightPaths(),
+      listRecentOutcomes({ limit: 10 }),
+      listDeadDealsWithScan({ limit: 300 }),
+    ]);
+    res.render('revisit', {
+      title: 'Revisit',
+      stats,
+      inFlight,
+      recentOutcomes,
+      deals,
+    });
   } catch (err) {
     next(err);
   }
