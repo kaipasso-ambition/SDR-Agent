@@ -77,15 +77,14 @@ import { scanCustomer, buildExpansionPaths } from '../agents/expansion_scanner.j
 import { coachDossier } from '../agents/dossier_coach.js';
 import { planDossier } from '../agents/dossier_planner.js';
 import {
-  getSignalsForBrief,
   getSignalById,
   acknowledgeSignal,
   dismissSignal,
   setSignalPlaying,
   restoreSignal,
-  getSignalCounts,
   getLastScanForAccount,
 } from '../db/signals.js';
+import { listUnifiedBrief, getUnifiedCounts } from '../db/today.js';
 import {
   getPresenceFeed,
   getPresenceStats,
@@ -1693,19 +1692,45 @@ webRouter.post('/expand/paths/:id/outcome', requireAuth, async (req, res, next) 
 // Monday Brief — top 5 ranked unacked signals for the current user.
 // Ranked risk-first (defense > offense > neutral), severity-weighted,
 // recency as tiebreak. See src/db/signals.js for the exact SQL ordering.
+// /brief is the unified "today" inbox. Mixes customer_signal + expansion +
+// revisit triggers into one ranked feed so the AE has exactly one place to
+// decide what to act on first. Filter tab (?kind=customers|expansion|revisit)
+// narrows to a single source when the AE wants focused work. No filter =
+// everything, ranked by composite score.
 webRouter.get('/brief', requireAuth, async (req, res, next) => {
   try {
-    const [signals, counts, activeJobRow] = await Promise.all([
-      getSignalsForBrief(req.session.userId, { limit: 100 }),
-      getSignalCounts(req.session.userId),
+    const allowedKinds = ['customer_signal', 'expansion', 'revisit'];
+    const kindParam = (req.query?.kind || '').trim();
+    const kindMap = {
+      customers: 'customer_signal',
+      expansion: 'expansion',
+      revisit: 'revisit',
+    };
+    const kindFilter = kindMap[kindParam] || (allowedKinds.includes(kindParam) ? kindParam : null);
+
+    const [allItems, counts, activeJobRow] = await Promise.all([
+      listUnifiedBrief(req.session.userId, { limit: 100 }),
+      getUnifiedCounts(req.session.userId),
       query(`SELECT * FROM account_signal_jobs ORDER BY started_at DESC LIMIT 1`),
     ]);
+
+    const items = kindFilter
+      ? allItems.filter((r) => r.kind === kindFilter)
+      : allItems;
+
     const activeJob = activeJobRow.rows[0] || null;
     const runningJob = activeJob && activeJob.status === 'running';
     res.render('brief', {
-      title: 'Monday Brief',
-      signals,
+      title: 'Today',
+      items,
       counts,
+      kindFilter: kindParam || null,
+      kindTotals: {
+        all: allItems.length,
+        customer_signal: allItems.filter((r) => r.kind === 'customer_signal').length,
+        expansion: allItems.filter((r) => r.kind === 'expansion').length,
+        revisit: allItems.filter((r) => r.kind === 'revisit').length,
+      },
       activeJob,
       runningJob,
     });
@@ -2710,12 +2735,14 @@ webRouter.post('/accounts/:id/signals/rescan', requireAuth, async (req, res, nex
 // ---------- Helpers ----------
 
 async function getCounts(userId = null) {
-  const [drafts, replies, researched, sent, sigCounts, playCounts] = await Promise.all([
+  const [drafts, replies, researched, sent, unifiedCounts, playCounts] = await Promise.all([
     query(`SELECT COUNT(*)::int AS n FROM approval_queue WHERE status = 'pending';`),
     query(`SELECT COUNT(*)::int AS n FROM reply_queue WHERE status = 'pending';`),
     query(`SELECT COUNT(*)::int AS n FROM prospects WHERE researched_at >= date_trunc('day', NOW());`),
     query(`SELECT COUNT(*)::int AS n FROM sent_messages WHERE sent_at >= date_trunc('week', NOW());`),
-    userId ? getSignalCounts(userId) : Promise.resolve({ this_week: 0, defense: 0, offense: 0, unacked_total: 0 }),
+    userId
+      ? getUnifiedCounts(userId)
+      : Promise.resolve({ this_week: 0, defense: 0, offense: 0, growth: 0, revisit: 0, unacked_total: 0 }),
     userId ? countActivePlays(userId) : Promise.resolve({ active: 0, due_soon: 0 }),
   ]);
   return {
@@ -2723,10 +2750,16 @@ async function getCounts(userId = null) {
     pendingReplies: replies.rows[0].n,
     researchedToday: researched.rows[0].n,
     sentThisWeek: sent.rows[0].n,
-    signalsThisWeek: sigCounts.this_week,
-    signalsDefense: sigCounts.defense,
-    signalsOffense: sigCounts.offense,
-    signalsUnacked: sigCounts.unacked_total,
+    // signalsThisWeek is now the unified count across all three scanner
+    // sources — customer signals + expansion triggers + revisit triggers —
+    // so the dashboard card and nav badge reflect total work, not just one
+    // lane. Individual lane counts remain available for per-lane chips.
+    signalsThisWeek: unifiedCounts.this_week,
+    signalsDefense: unifiedCounts.defense,
+    signalsOffense: unifiedCounts.offense,
+    signalsGrowth: unifiedCounts.growth,
+    signalsRevisit: unifiedCounts.revisit,
+    signalsUnacked: unifiedCounts.unacked_total,
     playsActive: playCounts.active,
     playsDueSoon: playCounts.due_soon,
   };
