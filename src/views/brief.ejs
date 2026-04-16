@@ -121,10 +121,13 @@
                 <% } %>
               </div>
               <div class="flex items-center gap-2">
-                <a href="/accounts/<%= s.account_id %>/plan?new_play=1&signal=<%= s.id %>#play-composer"
-                   class="text-xs bg-slate-900 hover:bg-slate-800 text-white px-3 py-1.5 rounded font-medium">
-                  Build a play →
-                </a>
+                <form method="POST" action="/signals/<%= s.id %>/play" class="inline"
+                      onsubmit="this.querySelector('button').disabled=true;this.querySelector('button').textContent='Building play…';">
+                  <input type="hidden" name="action" value="build_play" />
+                  <button type="submit" class="text-xs bg-slate-900 hover:bg-slate-800 disabled:bg-slate-500 disabled:cursor-wait text-white px-3 py-1.5 rounded font-medium">
+                    Build a play →
+                  </button>
+                </form>
                 <form method="POST" action="/signals/<%= s.id %>/ack" class="inline">
                   <button type="submit" class="text-xs border border-slate-300 text-slate-700 hover:bg-slate-50 px-3 py-1.5 rounded font-medium">
                     Acknowledge

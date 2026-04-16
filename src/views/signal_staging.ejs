@@ -49,40 +49,57 @@
   </div>
 <% } %>
 
-<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-  <form method="POST" action="/signals/<%= signal.id %>/play" class="bg-white border border-slate-200 rounded-lg p-5 flex flex-col">
-    <input type="hidden" name="action" value="draft_outbound" />
-    <div class="text-sm font-semibold mb-1">Draft outbound</div>
-    <div class="text-xs text-slate-500 mb-4 flex-1">
-      Generate a 3-touch sequence that leads Touch 1 with this signal as the fresh trigger. Uses the Ambition 2.0 lexicon. Goes to your Drafts queue.
+<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+  <form method="POST" action="/signals/<%= signal.id %>/play" class="bg-white border-2 border-slate-900 rounded-lg p-5 flex flex-col"
+        onsubmit="this.querySelector('button').disabled=true;this.querySelector('button').textContent='Building play… (10–15s)';">
+    <input type="hidden" name="action" value="build_play" />
+    <div class="text-sm font-semibold mb-1 flex items-center gap-2">
+      Build a play
+      <span class="pill bg-slate-900 text-white" style="text-transform: none; letter-spacing: 0;">recommended</span>
     </div>
-    <button type="submit" class="bg-slate-900 hover:bg-slate-800 text-white text-sm px-4 py-2 rounded font-medium">
-      Draft now →
+    <div class="text-xs text-slate-500 mb-4 flex-1">
+      Turn this signal into a tracked play on the account: instinct seeded from the recommended move, Claude expands into 2–5 sequenced moves, champion/contact path, stakeholder narratives. The artifact your team can see and iterate on.
+    </div>
+    <button type="submit" class="bg-slate-900 hover:bg-slate-800 disabled:bg-slate-500 disabled:cursor-wait text-white text-sm px-4 py-2 rounded font-medium">
+      Build the play →
     </button>
   </form>
 
-  <form method="POST" action="/signals/<%= signal.id %>/play" class="bg-white border border-slate-200 rounded-lg p-5 flex flex-col opacity-80">
-    <input type="hidden" name="action" value="internal_intro" />
-    <div class="text-sm font-semibold mb-1">Draft internal intro
-      <span class="pill bg-slate-100 text-slate-600 ml-1" style="text-transform: none; letter-spacing: 0;">soon</span>
-    </div>
+  <form method="POST" action="/signals/<%= signal.id %>/play" class="bg-white border border-slate-200 rounded-lg p-5 flex flex-col">
+    <input type="hidden" name="action" value="draft_outbound" />
+    <div class="text-sm font-semibold mb-1">Draft outbound only</div>
     <div class="text-xs text-slate-500 mb-4 flex-1">
-      Warm intro path via a champion or CS — walks the graph for the fastest human path into the signal's audience. Coming in Sprint 3.
+      Shortcut: skip the play wrapper and generate a 3-touch message sequence straight into your Drafts queue. Use this when you just need a reply-worthy touch and don't plan to work the account more broadly off this signal.
     </div>
     <button type="submit" class="border border-slate-300 text-slate-700 hover:bg-slate-50 text-sm px-4 py-2 rounded font-medium">
+      Draft now →
+    </button>
+  </form>
+</div>
+
+<div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+  <form method="POST" action="/signals/<%= signal.id %>/play" class="bg-white border border-slate-200 rounded-lg p-4 flex items-center justify-between gap-3 opacity-70">
+    <input type="hidden" name="action" value="internal_intro" />
+    <div class="flex-1">
+      <div class="text-sm font-semibold">Draft internal intro
+        <span class="pill bg-slate-100 text-slate-600 ml-1" style="text-transform: none; letter-spacing: 0;">soon</span>
+      </div>
+      <div class="text-xs text-slate-500 mt-0.5">Warm intro path via a champion or CS. Sprint 3.</div>
+    </div>
+    <button type="submit" class="border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs px-3 py-1.5 rounded font-medium whitespace-nowrap">
       Mark as playing
     </button>
   </form>
 
-  <form method="POST" action="/signals/<%= signal.id %>/play" class="bg-white border border-slate-200 rounded-lg p-5 flex flex-col opacity-80">
+  <form method="POST" action="/signals/<%= signal.id %>/play" class="bg-white border border-slate-200 rounded-lg p-4 flex items-center justify-between gap-3 opacity-70">
     <input type="hidden" name="action" value="meeting_prep" />
-    <div class="text-sm font-semibold mb-1">Add to meeting prep
-      <span class="pill bg-slate-100 text-slate-600 ml-1" style="text-transform: none; letter-spacing: 0;">soon</span>
+    <div class="flex-1">
+      <div class="text-sm font-semibold">Add to meeting prep
+        <span class="pill bg-slate-100 text-slate-600 ml-1" style="text-transform: none; letter-spacing: 0;">soon</span>
+      </div>
+      <div class="text-xs text-slate-500 mt-0.5">Park in a pre-read for the next meeting. Sprint 3.</div>
     </div>
-    <div class="text-xs text-slate-500 mb-4 flex-1">
-      Park this signal in a pre-read for the next meeting on this account. Coming in Sprint 3.
-    </div>
-    <button type="submit" class="border border-slate-300 text-slate-700 hover:bg-slate-50 text-sm px-4 py-2 rounded font-medium">
+    <button type="submit" class="border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs px-3 py-1.5 rounded font-medium whitespace-nowrap">
       Mark as playing
     </button>
   </form>

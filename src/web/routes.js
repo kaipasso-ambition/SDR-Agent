@@ -1590,15 +1590,71 @@ webRouter.post('/signals/:id/restore', requireAuth, async (req, res, next) => {
   }
 });
 
-// "Play" handler — branches on the action. draft_outbound is the only
-// end-to-end wire; the others are Sprint 3 placeholders that mark the
-// signal as 'playing' so the AE knows they chose a direction.
+// "Play" handler — branches on the action.
+//   build_play     → primary: spawns an account_plays row with the signal as
+//                    its trigger, runs buildPlay to expand instinct into a
+//                    sequenced play, redirects to /accounts/:aid/plan#play-<id>.
+//   draft_outbound → secondary: jumps straight to a message draft in the
+//                    approval queue without a play wrapper.
+//   internal_intro / meeting_prep → Sprint 3 stubs; just mark playing.
 webRouter.post('/signals/:id/play', requireAuth, async (req, res, next) => {
   try {
     if (!UUID_RE.test(req.params.id)) return res.redirect('/brief');
-    const action = (req.body?.action || '').trim();
+    const action = (req.body?.action || '').trim() || 'build_play';
     const signal = await getSignalById(req.params.id);
     if (!signal) return res.redirect('/brief');
+
+    if (action === 'build_play') {
+      // Seed the AE's instinct from the signal's interpretation. Falls back
+      // through recommended_move → so_what → title so we always have a
+      // non-empty instinct (required by buildPlay).
+      const seed =
+        (signal.recommended_move && signal.recommended_move.trim()) ||
+        (signal.so_what && signal.so_what.trim()) ||
+        `Act on: ${signal.title}`;
+      const instinct = `Triggered by signal — ${signal.title}\n\n${seed}`;
+
+      const play = await createPlay({
+        account_id: signal.account_id,
+        triggered_by_signal_id: signal.id,
+        author_user_id: req.session.userId,
+        instinct,
+        status: 'drafting',
+      });
+
+      // Fire buildPlay synchronously (same pattern as POST /accounts/:id/plays).
+      // If it throws, the play persists as 'drafting' and the plan view shows
+      // a "Rebuild expansion" button.
+      try {
+        const [account, priorPlays] = await Promise.all([
+          (async () => (await getAccountBundle(signal.account_id))?.account)(),
+          listPlaysForAccount(signal.account_id),
+        ]);
+        const { expansion } = await buildPlay({
+          account,
+          instinct,
+          hypothesis: null,
+          contact_path_resolved: [],
+          triggering_signal: signal,
+          event: null,
+          personal_invites: [],
+          prior_plays: priorPlays
+            .filter((p) => p.id !== play.id)
+            .map((p) => ({
+              named_play: p.ai_expansion?.named_play || null,
+              status: p.status,
+            })),
+        });
+        if (expansion) {
+          await updatePlay(play.id, { ai_expansion: expansion, status: 'active' });
+        }
+      } catch (err) {
+        console.error('[signals/play build_play] expansion failed:', err.message);
+      }
+
+      await setSignalPlaying(signal.id).catch(() => {});
+      return res.redirect(`/accounts/${signal.account_id}/plan#play-${play.id}`);
+    }
 
     if (action === 'draft_outbound') {
       await setSignalPlaying(signal.id);
