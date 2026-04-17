@@ -5,7 +5,7 @@
 
 import { query } from './index.js';
 
-export const INTEL_KINDS = ['use_case_fit', 'industry_insight', 'hypotheses_gen'];
+export const INTEL_KINDS = ['use_case_fit', 'industry_insight', 'hypotheses_gen', 'prospect_scan'];
 
 export async function getAccountIntel(accountId) {
   const { rows } = await query(

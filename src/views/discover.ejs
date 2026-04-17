@@ -5,16 +5,33 @@
     prospect: 'bg-sky-100 text-sky-800',
     churned:  'bg-amber-100 text-amber-800',
   };
+  const strengthColor = {
+    hot:  'bg-red-100 text-red-800',
+    warm: 'bg-amber-100 text-amber-800',
+    cool: 'bg-slate-100 text-slate-600',
+  };
+  const roleFitLabel = {
+    economic_buyer: 'Econ buyer',
+    technical_evaluator: 'Tech eval',
+    champion: 'Champion',
+    end_user: 'End user',
+    advocate: 'Advocate',
+  };
   function daysAgo(d) {
     if (!d) return null;
     return Math.floor((Date.now() - new Date(d).getTime()) / 86400000);
   }
+  const anyRunning = accounts.some(function(a) { return a.prospect_scan_status === 'running'; });
 %>
+
+<% if (anyRunning) { %>
+  <script>setTimeout(function(){ location.reload(); }, 8000);</script>
+<% } %>
 
 <div class="mb-6">
   <h1 class="text-2xl font-semibold">Discover</h1>
   <p class="text-sm text-slate-500 mt-1">
-    Your account book — sorted by who needs research next. Scan accounts to surface timing, intent, and signals.
+    Find the right people at each account with timing + intent signals. Click <strong>Scan</strong> to search the web for prospects.
   </p>
 </div>
 
@@ -38,73 +55,117 @@
     No accounts yet. <a href="/accounts" class="underline text-slate-700">Import your book</a> to get started.
   </div>
 <% } else { %>
-  <div class="bg-white border border-slate-200 rounded-lg overflow-hidden">
-    <table class="w-full text-sm">
-      <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-        <tr>
-          <th class="text-left p-3">Account</th>
-          <th class="text-left p-3">Status</th>
-          <th class="text-left p-3">Signals</th>
-          <th class="text-left p-3">FY / Budget</th>
-          <th class="text-left p-3">Last scanned</th>
-          <th class="text-right p-3">Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        <% accounts.forEach(function(a) {
-          const ago = daysAgo(a.last_scan_at);
-          const stale = ago === null || ago > 14;
-        %>
-          <tr class="border-t border-slate-100 hover:bg-slate-50">
-            <td class="p-3">
-              <a href="/accounts/<%= a.id %>" class="font-medium text-slate-900 hover:text-emerald-700"><%= a.account_name %></a>
-              <% if (a.industry) { %>
-                <div class="text-[11px] text-slate-500"><%= a.industry %></div>
-              <% } %>
-            </td>
-            <td class="p-3">
-              <span class="pill <%= statusColor[a.status] || 'bg-slate-100 text-slate-700' %>"><%= a.status %></span>
-            </td>
-            <td class="p-3">
-              <% if (a.signal_count > 0) { %>
-                <span class="font-semibold text-slate-900"><%= a.signal_count %></span>
-              <% } else { %>
-                <span class="text-slate-400">—</span>
-              <% } %>
-            </td>
-            <td class="p-3 text-xs">
-              <% if (a.fiscal_year_end) { %>
-                <span class="text-slate-700">FY ends <%= FY_MONTHS[a.fiscal_year_end] %></span>
-              <% } %>
-              <% if (a.budget_start_month) { %>
-                <span class="text-slate-500">· budget <%= FY_MONTHS[a.budget_start_month] %></span>
-              <% } %>
-              <% if (!a.fiscal_year_end && !a.budget_start_month) { %>
-                <span class="text-slate-400">—</span>
-              <% } %>
-            </td>
-            <td class="p-3 text-xs">
-              <% if (ago !== null) { %>
-                <span class="<%= stale ? 'text-amber-700' : 'text-slate-500' %>">
-                  <%= ago === 0 ? 'today' : ago === 1 ? 'yesterday' : ago + 'd ago' %>
-                </span>
-              <% } else { %>
-                <span class="text-slate-400">never</span>
-              <% } %>
-            </td>
-            <td class="p-3 text-right">
-              <div class="flex items-center justify-end gap-2">
-                <% if (!a.fiscal_year_end) { %>
-                  <form method="POST" action="/accounts/<%= a.id %>/fields/lookup-fiscal-year" class="inline">
-                    <button type="submit" class="text-[11px] text-slate-500 hover:text-slate-900 underline" title="Look up fiscal year + budget cycle">FY lookup</button>
-                  </form>
-                <% } %>
-                <a href="/accounts/<%= a.id %>" class="text-xs text-slate-600 hover:text-slate-900">Open →</a>
+  <div class="space-y-4">
+    <% accounts.forEach(function(a) {
+      const ps = a.prospect_scan_result;
+      const psStatus = a.prospect_scan_status;
+      const isRunning = psStatus === 'running';
+      const hasResults = psStatus === 'completed' && ps && ps.prospects && ps.prospects.length > 0;
+      const ago = daysAgo(a.prospect_scan_at);
+    %>
+      <div class="bg-white border border-slate-200 rounded-lg overflow-hidden">
+        <div class="px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
+          <div class="flex items-center gap-3 min-w-0 flex-1">
+            <a href="/accounts/<%= a.id %>" class="font-medium text-slate-900 hover:text-emerald-700 truncate"><%= a.account_name %></a>
+            <span class="pill <%= statusColor[a.status] || 'bg-slate-100 text-slate-700' %> shrink-0"><%= a.status %></span>
+            <% if (hasResults) { %>
+              <span class="pill <%= strengthColor[ps.opportunity_strength] || strengthColor.cool %> shrink-0"><%= ps.opportunity_strength %></span>
+            <% } %>
+            <% if (a.industry) { %>
+              <span class="text-xs text-slate-500 hidden sm:inline"><%= a.industry %></span>
+            <% } %>
+          </div>
+          <div class="flex items-center gap-3 shrink-0">
+            <% if (a.fiscal_year_end) { %>
+              <span class="text-[11px] text-slate-500">FY <%= FY_MONTHS[a.fiscal_year_end] %></span>
+            <% } %>
+            <% if (a.budget_start_month) { %>
+              <span class="text-[11px] text-slate-500">budget <%= FY_MONTHS[a.budget_start_month] %></span>
+            <% } %>
+            <% if (!a.fiscal_year_end) { %>
+              <form method="POST" action="/accounts/<%= a.id %>/fields/lookup-fiscal-year" class="inline">
+                <button type="submit" class="text-[11px] text-slate-500 hover:text-slate-900 underline">FY lookup</button>
+              </form>
+            <% } %>
+            <form method="POST" action="/accounts/<%= a.id %>/intel/prospects" class="inline">
+              <input type="hidden" name="_from" value="discover" />
+              <button type="submit"
+                      class="text-xs bg-slate-900 hover:bg-slate-800 text-white px-3 py-1.5 rounded font-medium disabled:bg-slate-400 disabled:cursor-wait"
+                      <% if (isRunning) { %>disabled<% } %>>
+                <% if (isRunning) { %>Scanning…<% } else if (hasResults) { %>Re-scan<% } else { %>Scan<% } %>
+              </button>
+            </form>
+          </div>
+        </div>
+
+        <% if (isRunning) { %>
+          <div class="px-4 py-3 border-t border-slate-100 text-sm text-slate-500 flex items-center gap-2">
+            <span class="inline-block w-2 h-2 bg-slate-400 rounded-full animate-pulse"></span>
+            Searching the web for key people, timing signals, and intent data… (~30-60s)
+          </div>
+        <% } else if (hasResults) { %>
+          <div class="border-t border-slate-100">
+            <% if (ps.opportunity_thesis) { %>
+              <div class="px-4 py-2 bg-slate-50 text-sm text-slate-800 font-medium border-b border-slate-100">
+                <%= ps.opportunity_thesis %>
               </div>
-            </td>
-          </tr>
-        <% }); %>
-      </tbody>
-    </table>
+            <% } %>
+            <% if (ps.timing_summary) { %>
+              <div class="px-4 py-2 text-xs text-slate-600 border-b border-slate-100">
+                <span class="uppercase tracking-wide text-[10px] text-slate-500 font-semibold">Timing:</span>
+                <%= ps.timing_summary %>
+              </div>
+            <% } %>
+            <table class="w-full text-xs">
+              <thead class="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500">
+                <tr>
+                  <th class="text-left px-4 py-2">Person</th>
+                  <th class="text-left px-4 py-2">Role fit</th>
+                  <th class="text-left px-4 py-2">Timing signal</th>
+                  <th class="text-left px-4 py-2">Intent signal</th>
+                  <th class="text-left px-4 py-2">Source</th>
+                </tr>
+              </thead>
+              <tbody>
+                <% ps.prospects.forEach(function(p) { %>
+                  <tr class="border-t border-slate-100">
+                    <td class="px-4 py-2">
+                      <div class="font-medium text-slate-900"><%= p.name %></div>
+                      <div class="text-slate-500"><%= p.title %></div>
+                    </td>
+                    <td class="px-4 py-2">
+                      <span class="pill bg-sky-50 text-sky-800"><%= roleFitLabel[p.role_fit] || p.role_fit %></span>
+                    </td>
+                    <td class="px-4 py-2 text-slate-700 max-w-xs">
+                      <%= p.timing_signal || '—' %>
+                    </td>
+                    <td class="px-4 py-2 text-slate-700 max-w-xs">
+                      <%= p.intent_signal || '—' %>
+                    </td>
+                    <td class="px-4 py-2">
+                      <% if (p.source_url) { %>
+                        <a href="<%= p.source_url %>" target="_blank" rel="noopener" class="text-slate-500 hover:text-slate-900 underline"><%= p.source || 'Link' %> ↗</a>
+                      <% } else { %>
+                        <%= p.source || '—' %>
+                      <% } %>
+                    </td>
+                  </tr>
+                <% }); %>
+              </tbody>
+            </table>
+            <% if (a.prospect_scan_at) { %>
+              <div class="px-4 py-2 text-[10px] text-slate-400 border-t border-slate-100">
+                Scanned <%= ago === 0 ? 'today' : ago === 1 ? 'yesterday' : ago + ' days ago' %>
+                · <%= ps.searches || 0 %> web searches
+              </div>
+            <% } %>
+          </div>
+        <% } else if (psStatus === 'failed') { %>
+          <div class="px-4 py-2 border-t border-slate-100 text-xs text-red-700">
+            Scan failed. Click <strong>Scan</strong> to try again.
+          </div>
+        <% } %>
+      </div>
+    <% }); %>
   </div>
 <% } %>

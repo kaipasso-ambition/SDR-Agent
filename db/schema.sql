@@ -849,7 +849,7 @@ ALTER TABLE revisit_paths ADD COLUMN IF NOT EXISTS trigger_snapshot JSONB;
 
 CREATE TABLE IF NOT EXISTS account_intel (
   account_id UUID NOT NULL REFERENCES accounts_registry(id) ON DELETE CASCADE,
-  kind TEXT NOT NULL CHECK (kind IN ('use_case_fit', 'industry_insight', 'hypotheses_gen')),
+  kind TEXT NOT NULL CHECK (kind IN ('use_case_fit', 'industry_insight', 'hypotheses_gen', 'prospect_scan')),
   status TEXT NOT NULL DEFAULT 'idle' CHECK (status IN ('idle', 'running', 'completed', 'failed')),
   result JSONB,
   error TEXT,
@@ -874,10 +874,10 @@ BEGIN
      AND c.contype = 'c'
      AND pg_get_constraintdef(c.oid) ILIKE '%use_case_fit%'
    LIMIT 1;
-  IF cname IS NOT NULL AND cdef NOT ILIKE '%hypotheses_gen%' THEN
+  IF cname IS NOT NULL AND cdef NOT ILIKE '%prospect_scan%' THEN
     EXECUTE 'ALTER TABLE account_intel DROP CONSTRAINT ' || quote_ident(cname);
     ALTER TABLE account_intel
       ADD CONSTRAINT account_intel_kind_check
-      CHECK (kind IN ('use_case_fit', 'industry_insight', 'hypotheses_gen'));
+      CHECK (kind IN ('use_case_fit', 'industry_insight', 'hypotheses_gen', 'prospect_scan'));
   END IF;
 END$$;

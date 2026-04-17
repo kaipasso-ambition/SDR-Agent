@@ -84,6 +84,7 @@ import { fitUseCase } from '../agents/use_case_fit.js';
 import { pullIndustryInsight } from '../agents/industry_insight.js';
 import { generateHypotheses } from '../agents/hypothesis_generator.js';
 import { lookupFiscalYear } from '../agents/fiscal_lookup.js';
+import { scanProspects } from '../agents/prospect_scanner.js';
 import {
   getAccountIntel,
   setIntelRunning,
@@ -291,9 +292,13 @@ webRouter.get('/discover', requireAuth, async (req, res, next) => {
               (SELECT MAX(s.detected_at) FROM account_signals s
                 WHERE s.account_id = a.id) AS last_signal_at_live,
               (SELECT MAX(s.detected_at) FROM account_signals s
-                WHERE s.account_id = a.id) AS last_scan_at
+                WHERE s.account_id = a.id) AS last_scan_at,
+              ps.status AS prospect_scan_status,
+              ps.result AS prospect_scan_result,
+              ps.completed_at AS prospect_scan_at
          FROM accounts_registry a
          LEFT JOIN users u ON u.id = a.owner_user_id
+         LEFT JOIN account_intel ps ON ps.account_id = a.id AND ps.kind = 'prospect_scan'
         WHERE a.status IN ('prospect','customer','churned')
         ORDER BY
           CASE a.status WHEN 'prospect' THEN 1 WHEN 'customer' THEN 2 WHEN 'churned' THEN 3 ELSE 4 END,
@@ -2163,6 +2168,46 @@ webRouter.post('/accounts/:id/intel/industry', requireAuth, async (req, res, nex
       });
 
     res.redirect(`/accounts/${accountId}/plan#intel`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Prospect scan — web_search for key people at an account with timing +
+// intent signals. Fire-and-forget; results stored in account_intel as
+// kind='prospect_scan'. Accessible from /discover and account detail.
+webRouter.post('/accounts/:id/intel/prospects', requireAuth, async (req, res, next) => {
+  try {
+    const accountId = req.params.id;
+    if (!UUID_RE.test(accountId)) return res.redirect('/accounts');
+    const bundle = await getAccountBundle(accountId);
+    if (!bundle) return res.redirect('/accounts');
+
+    const intel = await getAccountIntel(accountId);
+    if (intel.prospect_scan?.status === 'running') {
+      return res.redirect(req.body?._from === 'discover'
+        ? '/discover' : `/accounts/${accountId}#prospects`);
+    }
+
+    await setIntelRunning(accountId, 'prospect_scan');
+
+    Promise.resolve()
+      .then(async () => {
+        const out = await scanProspects(bundle.account);
+        if (out.error || !out.result) {
+          await setIntelFailed(accountId, 'prospect_scan', out.error || 'no_result');
+          return;
+        }
+        await setIntelResult(accountId, 'prospect_scan', out.result);
+        console.log(`[intel] prospect scan for ${accountId} — ${out.result.prospects.length} prospects, ${out.searches} searches, ${out.elapsed_ms}ms`);
+      })
+      .catch(async (err) => {
+        console.error(`[intel] prospect scan ${accountId} failed:`, err);
+        try { await setIntelFailed(accountId, 'prospect_scan', err.message || String(err)); } catch (_) {}
+      });
+
+    res.redirect(req.body?._from === 'discover'
+      ? '/discover' : `/accounts/${accountId}#prospects`);
   } catch (err) {
     next(err);
   }
