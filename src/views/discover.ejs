@@ -10,12 +10,14 @@
     warm: 'bg-amber-100 text-amber-800',
     cool: 'bg-slate-100 text-slate-600',
   };
-  const roleFitLabel = {
-    economic_buyer: 'Econ buyer',
-    technical_evaluator: 'Tech eval',
-    champion: 'Champion',
-    end_user: 'End user',
-    advocate: 'Advocate',
+  const signalTypeLabel = {
+    linkedin_post: 'LinkedIn',
+    press_quote: 'Press',
+    conference: 'Conference',
+    job_posting: 'Job posting',
+    podcast: 'Podcast',
+    blog: 'Blog',
+    other: 'Web',
   };
   function daysAgo(d) {
     if (!d) return null;
@@ -31,7 +33,7 @@
 <div class="mb-6">
   <h1 class="text-2xl font-semibold">Discover</h1>
   <p class="text-sm text-slate-500 mt-1">
-    Find the right people at each account with timing + intent signals. Click <strong>Scan</strong> to search the web for prospects.
+    Find the 2-3 people at each account who've said or done something that signals buying intent for sales performance + coaching.
   </p>
 </div>
 
@@ -61,6 +63,7 @@
       const psStatus = a.prospect_scan_status;
       const isRunning = psStatus === 'running';
       const hasResults = psStatus === 'completed' && ps && ps.prospects && ps.prospects.length > 0;
+      const noSignals = psStatus === 'completed' && ps && (!ps.prospects || ps.prospects.length === 0);
       const ago = daysAgo(a.prospect_scan_at);
     %>
       <div class="bg-white border border-slate-200 rounded-lg overflow-hidden">
@@ -92,7 +95,7 @@
               <button type="submit"
                       class="text-xs bg-slate-900 hover:bg-slate-800 text-white px-3 py-1.5 rounded font-medium disabled:bg-slate-400 disabled:cursor-wait"
                       <% if (isRunning) { %>disabled<% } %>>
-                <% if (isRunning) { %>Scanning…<% } else if (hasResults) { %>Re-scan<% } else { %>Scan<% } %>
+                <% if (isRunning) { %>Scanning…<% } else if (hasResults || noSignals) { %>Re-scan<% } else { %>Scan<% } %>
               </button>
             </form>
           </div>
@@ -101,64 +104,47 @@
         <% if (isRunning) { %>
           <div class="px-4 py-3 border-t border-slate-100 text-sm text-slate-500 flex items-center gap-2">
             <span class="inline-block w-2 h-2 bg-slate-400 rounded-full animate-pulse"></span>
-            Searching the web for key people, timing signals, and intent data… (~30-60s)
+            Searching for people at <%= a.account_name %> showing buying signals… (~30-60s)
           </div>
         <% } else if (hasResults) { %>
           <div class="border-t border-slate-100">
             <% if (ps.opportunity_thesis) { %>
-              <div class="px-4 py-2 bg-slate-50 text-sm text-slate-800 font-medium border-b border-slate-100">
+              <div class="px-4 py-2.5 bg-slate-50 text-sm text-slate-800 font-medium border-b border-slate-100">
                 <%= ps.opportunity_thesis %>
               </div>
             <% } %>
-            <% if (ps.timing_summary) { %>
-              <div class="px-4 py-2 text-xs text-slate-600 border-b border-slate-100">
-                <span class="uppercase tracking-wide text-[10px] text-slate-500 font-semibold">Timing:</span>
-                <%= ps.timing_summary %>
-              </div>
-            <% } %>
-            <table class="w-full text-xs">
-              <thead class="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500">
-                <tr>
-                  <th class="text-left px-4 py-2">Person</th>
-                  <th class="text-left px-4 py-2">Role fit</th>
-                  <th class="text-left px-4 py-2">Timing signal</th>
-                  <th class="text-left px-4 py-2">Intent signal</th>
-                  <th class="text-left px-4 py-2">Source</th>
-                </tr>
-              </thead>
-              <tbody>
-                <% ps.prospects.forEach(function(p) { %>
-                  <tr class="border-t border-slate-100">
-                    <td class="px-4 py-2">
-                      <div class="font-medium text-slate-900"><%= p.name %></div>
-                      <div class="text-slate-500"><%= p.title %></div>
-                    </td>
-                    <td class="px-4 py-2">
-                      <span class="pill bg-sky-50 text-sky-800"><%= roleFitLabel[p.role_fit] || p.role_fit %></span>
-                    </td>
-                    <td class="px-4 py-2 text-slate-700 max-w-xs">
-                      <%= p.timing_signal || '—' %>
-                    </td>
-                    <td class="px-4 py-2 text-slate-700 max-w-xs">
-                      <%= p.intent_signal || '—' %>
-                    </td>
-                    <td class="px-4 py-2">
-                      <% if (p.source_url) { %>
-                        <a href="<%= p.source_url %>" target="_blank" rel="noopener" class="text-slate-500 hover:text-slate-900 underline"><%= p.source || 'Link' %> ↗</a>
-                      <% } else { %>
-                        <%= p.source || '—' %>
+            <div class="divide-y divide-slate-100">
+              <% ps.prospects.forEach(function(p) { %>
+                <div class="px-4 py-3">
+                  <div class="flex items-start justify-between gap-3">
+                    <div class="min-w-0 flex-1">
+                      <div class="flex items-center gap-2 flex-wrap">
+                        <span class="font-medium text-slate-900"><%= p.name %></span>
+                        <span class="text-xs text-slate-500"><%= p.title %></span>
+                        <span class="pill bg-sky-50 text-sky-800"><%= signalTypeLabel[p.signal_type] || p.signal_type %></span>
+                        <% if (p.signal_date) { %><span class="text-[11px] text-slate-400"><%= p.signal_date %></span><% } %>
+                      </div>
+                      <div class="text-sm text-slate-800 mt-1"><%= p.signal %></div>
+                      <% if (p.why_it_matters) { %>
+                        <div class="text-xs text-slate-500 mt-1 italic"><%= p.why_it_matters %></div>
                       <% } %>
-                    </td>
-                  </tr>
-                <% }); %>
-              </tbody>
-            </table>
+                    </div>
+                    <% if (p.source_url) { %>
+                      <a href="<%= p.source_url %>" target="_blank" rel="noopener" class="text-xs text-slate-500 hover:text-slate-900 underline shrink-0">Source ↗</a>
+                    <% } %>
+                  </div>
+                </div>
+              <% }); %>
+            </div>
             <% if (a.prospect_scan_at) { %>
               <div class="px-4 py-2 text-[10px] text-slate-400 border-t border-slate-100">
                 Scanned <%= ago === 0 ? 'today' : ago === 1 ? 'yesterday' : ago + ' days ago' %>
-                · <%= ps.searches || 0 %> web searches
               </div>
             <% } %>
+          </div>
+        <% } else if (noSignals) { %>
+          <div class="px-4 py-3 border-t border-slate-100 text-xs text-slate-500">
+            No active signals found at <%= a.account_name %>. <% if (ps && ps.opportunity_thesis) { %><%= ps.opportunity_thesis %><% } %>
           </div>
         <% } else if (psStatus === 'failed') { %>
           <div class="px-4 py-2 border-t border-slate-100 text-xs text-red-700">
