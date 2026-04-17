@@ -502,9 +502,13 @@ CREATE TABLE IF NOT EXISTS account_plays (
   )),
   next_action TEXT,
   next_action_due DATE,
+  outcome_notes TEXT,
+  closed_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+ALTER TABLE account_plays ADD COLUMN IF NOT EXISTS outcome_notes TEXT;
+ALTER TABLE account_plays ADD COLUMN IF NOT EXISTS closed_at TIMESTAMPTZ;
 CREATE INDEX IF NOT EXISTS account_plays_account_idx
   ON account_plays(account_id);
 CREATE INDEX IF NOT EXISTS account_plays_status_idx

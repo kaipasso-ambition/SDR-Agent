@@ -406,6 +406,7 @@ export async function updatePlay(id, patch) {
     'hypothesis_id', 'event_id', 'instinct', 'contact_path',
     'personal_invite_contact_ids', 'status',
     'next_action', 'next_action_due',
+    'outcome_notes', 'closed_at',
   ];
   const uuidArrayCols = new Set(['contact_path', 'personal_invite_contact_ids']);
   for (const k of editable) {

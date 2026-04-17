@@ -2374,6 +2374,15 @@ webRouter.post('/plays/:id', requireAuth, async (req, res, next) => {
       const v = req.body.event_id;
       patch.event_id = v && UUID_RE.test(v) ? v : null;
     }
+    if (req.body?.outcome_notes !== undefined) {
+      patch.outcome_notes = (req.body.outcome_notes || '').trim() || null;
+    }
+    const TERMINAL = new Set(['won', 'lost', 'abandoned']);
+    if (patch.status && TERMINAL.has(patch.status) && !play.closed_at) {
+      patch.closed_at = new Date().toISOString();
+    } else if (patch.status && !TERMINAL.has(patch.status) && play.closed_at) {
+      patch.closed_at = null;
+    }
     await updatePlay(play.id, patch);
     res.redirect(`/accounts/${play.account_id}/plan#play-${play.id}`);
   } catch (err) {

@@ -112,6 +112,12 @@
                     <span class="text-xs text-slate-500 uppercase tracking-wide font-semibold">Instinct ·</span>
                     <%= p.instinct %>
                   </div>
+                  <% if (p.outcome_notes && ['won', 'lost', 'abandoned'].includes(p.status)) { %>
+                    <div class="text-xs text-slate-600 mt-1 bg-slate-50 border-l-2 border-slate-300 rounded px-2 py-1">
+                      <span class="uppercase tracking-wide text-[10px] text-slate-500 font-semibold">Results:</span>
+                      <span class="line-clamp-2"><%= p.outcome_notes %></span>
+                    </div>
+                  <% } %>
                   <div class="text-xs text-slate-500 mt-1 flex items-center gap-2 flex-wrap">
                     <% if (p.next_action) { %>
                       <span><strong class="text-slate-700">Next:</strong> <%= p.next_action %><% if (p.next_action_due) { %> <span class="text-amber-700">· due <%= shortDate(p.next_action_due) %></span><% } %></span>
