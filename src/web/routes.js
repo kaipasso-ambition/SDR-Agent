@@ -290,9 +290,8 @@ webRouter.get('/discover', requireAuth, async (req, res, next) => {
                   AND s.status IN ('new','acknowledged','playing')) AS signal_count,
               (SELECT MAX(s.detected_at) FROM account_signals s
                 WHERE s.account_id = a.id) AS last_signal_at_live,
-              (SELECT j.started_at FROM account_signal_jobs j
-                WHERE j.account_id = a.id
-                ORDER BY j.started_at DESC LIMIT 1) AS last_scan_at
+              (SELECT MAX(s.detected_at) FROM account_signals s
+                WHERE s.account_id = a.id) AS last_scan_at
          FROM accounts_registry a
          LEFT JOIN users u ON u.id = a.owner_user_id
         WHERE a.status IN ('prospect','customer','churned')
