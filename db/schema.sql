@@ -123,6 +123,7 @@ END$$;
 CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON "session" ("expire");
 
 ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'member';
+UPDATE users SET role = 'admin' WHERE LOWER(email) = 'kai@ambition.com' AND (role IS NULL OR role != 'admin');
 
 -- Campaigns — themed outreach plays (events, product launches, ABM pushes).
 -- Roster is provided by Marketing (or the operator); research/discovery is
