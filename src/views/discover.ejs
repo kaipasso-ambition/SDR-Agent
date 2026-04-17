@@ -1,0 +1,110 @@
+<%
+  const FY_MONTHS = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const statusColor = {
+    customer: 'bg-emerald-100 text-emerald-800',
+    prospect: 'bg-sky-100 text-sky-800',
+    churned:  'bg-amber-100 text-amber-800',
+  };
+  function daysAgo(d) {
+    if (!d) return null;
+    return Math.floor((Date.now() - new Date(d).getTime()) / 86400000);
+  }
+%>
+
+<div class="mb-6">
+  <h1 class="text-2xl font-semibold">Discover</h1>
+  <p class="text-sm text-slate-500 mt-1">
+    Your account book — sorted by who needs research next. Scan accounts to surface timing, intent, and signals.
+  </p>
+</div>
+
+<div class="grid grid-cols-3 gap-4 mb-6">
+  <div class="bg-white border border-slate-200 rounded-lg p-4">
+    <div class="text-xs uppercase tracking-wide text-slate-500">Prospects</div>
+    <div class="text-2xl font-semibold mt-1 text-sky-700"><%= counts.prospect %></div>
+  </div>
+  <div class="bg-white border border-slate-200 rounded-lg p-4">
+    <div class="text-xs uppercase tracking-wide text-slate-500">Customers</div>
+    <div class="text-2xl font-semibold mt-1 text-emerald-700"><%= counts.customer %></div>
+  </div>
+  <div class="bg-white border border-slate-200 rounded-lg p-4">
+    <div class="text-xs uppercase tracking-wide text-slate-500">Churned</div>
+    <div class="text-2xl font-semibold mt-1 text-amber-700"><%= counts.churned %></div>
+  </div>
+</div>
+
+<% if (accounts.length === 0) { %>
+  <div class="bg-white border border-slate-200 rounded-lg p-8 text-center text-slate-500">
+    No accounts yet. <a href="/accounts" class="underline text-slate-700">Import your book</a> to get started.
+  </div>
+<% } else { %>
+  <div class="bg-white border border-slate-200 rounded-lg overflow-hidden">
+    <table class="w-full text-sm">
+      <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+        <tr>
+          <th class="text-left p-3">Account</th>
+          <th class="text-left p-3">Status</th>
+          <th class="text-left p-3">Signals</th>
+          <th class="text-left p-3">FY / Budget</th>
+          <th class="text-left p-3">Last scanned</th>
+          <th class="text-right p-3">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% accounts.forEach(function(a) {
+          const ago = daysAgo(a.last_scan_at);
+          const stale = ago === null || ago > 14;
+        %>
+          <tr class="border-t border-slate-100 hover:bg-slate-50">
+            <td class="p-3">
+              <a href="/accounts/<%= a.id %>" class="font-medium text-slate-900 hover:text-emerald-700"><%= a.account_name %></a>
+              <% if (a.industry) { %>
+                <div class="text-[11px] text-slate-500"><%= a.industry %></div>
+              <% } %>
+            </td>
+            <td class="p-3">
+              <span class="pill <%= statusColor[a.status] || 'bg-slate-100 text-slate-700' %>"><%= a.status %></span>
+            </td>
+            <td class="p-3">
+              <% if (a.signal_count > 0) { %>
+                <span class="font-semibold text-slate-900"><%= a.signal_count %></span>
+              <% } else { %>
+                <span class="text-slate-400">—</span>
+              <% } %>
+            </td>
+            <td class="p-3 text-xs">
+              <% if (a.fiscal_year_end) { %>
+                <span class="text-slate-700">FY ends <%= FY_MONTHS[a.fiscal_year_end] %></span>
+              <% } %>
+              <% if (a.budget_start_month) { %>
+                <span class="text-slate-500">· budget <%= FY_MONTHS[a.budget_start_month] %></span>
+              <% } %>
+              <% if (!a.fiscal_year_end && !a.budget_start_month) { %>
+                <span class="text-slate-400">—</span>
+              <% } %>
+            </td>
+            <td class="p-3 text-xs">
+              <% if (ago !== null) { %>
+                <span class="<%= stale ? 'text-amber-700' : 'text-slate-500' %>">
+                  <%= ago === 0 ? 'today' : ago === 1 ? 'yesterday' : ago + 'd ago' %>
+                </span>
+              <% } else { %>
+                <span class="text-slate-400">never</span>
+              <% } %>
+            </td>
+            <td class="p-3 text-right">
+              <div class="flex items-center justify-end gap-2">
+                <% if (!a.fiscal_year_end) { %>
+                  <form method="POST" action="/accounts/<%= a.id %>/fields/lookup-fiscal-year" class="inline">
+                    <button type="submit" class="text-[11px] text-slate-500 hover:text-slate-900 underline" title="Look up fiscal year + budget cycle">FY lookup</button>
+                  </form>
+                <% } %>
+                <a href="/accounts/<%= a.id %>" class="text-xs text-slate-600 hover:text-slate-900">Open →</a>
+              </div>
+            </td>
+          </tr>
+        <% }); %>
+      </tbody>
+    </table>
+  </div>
+<% } %>

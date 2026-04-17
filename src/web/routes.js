@@ -275,6 +275,40 @@ webRouter.post('/prospects/new', requireAuth, async (req, res) => {
   }
 });
 
+// GET /discover — prospecting command center. Shows the full account
+// book (prospects first, then customers, then churned) with signal
+// count, fiscal year, budget timing, and last scan. Surfaces which
+// accounts need research next.
+webRouter.get('/discover', requireAuth, async (req, res, next) => {
+  try {
+    const { rows } = await query(
+      `SELECT a.*,
+              u.name  AS owner_name,
+              u.email AS owner_email,
+              (SELECT COUNT(*)::int FROM account_signals s
+                WHERE s.account_id = a.id
+                  AND s.status IN ('new','acknowledged','playing')) AS signal_count,
+              (SELECT MAX(s.detected_at) FROM account_signals s
+                WHERE s.account_id = a.id) AS last_signal_at_live,
+              (SELECT j.started_at FROM account_signal_jobs j
+                WHERE j.account_id = a.id
+                ORDER BY j.started_at DESC LIMIT 1) AS last_scan_at
+         FROM accounts_registry a
+         LEFT JOIN users u ON u.id = a.owner_user_id
+        WHERE a.status IN ('prospect','customer','churned')
+        ORDER BY
+          CASE a.status WHEN 'prospect' THEN 1 WHEN 'customer' THEN 2 WHEN 'churned' THEN 3 ELSE 4 END,
+          a.last_signal_at ASC NULLS FIRST,
+          a.account_name ASC`
+    );
+    const counts = { prospect: 0, customer: 0, churned: 0 };
+    rows.forEach((r) => { if (counts[r.status] !== undefined) counts[r.status]++; });
+    res.render('discover', { title: 'Discover', accounts: rows, counts });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // Trigger an autonomous discovery cycle. Creates a discovery_jobs row so
 // progress is visible from any page (dashboard/drafts/replies), not just
 // the one that triggered it. Work runs in the background; the HTTP
