@@ -83,6 +83,7 @@ import { planDossier } from '../agents/dossier_planner.js';
 import { fitUseCase } from '../agents/use_case_fit.js';
 import { pullIndustryInsight } from '../agents/industry_insight.js';
 import { generateHypotheses } from '../agents/hypothesis_generator.js';
+import { lookupFiscalYear } from '../agents/fiscal_lookup.js';
 import {
   getAccountIntel,
   setIntelRunning,
@@ -1024,6 +1025,21 @@ webRouter.post('/accounts/:id/fields', requireAuth, async (req, res, next) => {
       fields.sales_perf_topics = (req.body.sales_perf_topics || '').trim().slice(0, 4000) || null;
     }
     await updateAccountFields(req.params.id, fields);
+    res.redirect(`/accounts/${req.params.id}`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+webRouter.post('/accounts/:id/fields/lookup-fiscal-year', requireAuth, async (req, res, next) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.redirect('/accounts');
+    const bundle = await getAccountBundle(req.params.id);
+    if (!bundle) return res.redirect('/accounts');
+    const result = await lookupFiscalYear(bundle.account);
+    if (result.month) {
+      await updateAccountFields(req.params.id, { fiscal_year_end: result.month });
+    }
     res.redirect(`/accounts/${req.params.id}`);
   } catch (err) {
     next(err);

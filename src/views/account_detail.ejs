@@ -83,20 +83,31 @@
         </form>
       </details>
 
-      <details class="mt-3 max-w-2xl">
+      <details class="mt-3 max-w-2xl" <% if (!account.fiscal_year_end && !account.buyer_timing && !account.sales_perf_topics) { %>open<% } %>>
         <summary class="text-xs text-slate-500 hover:text-slate-900 cursor-pointer select-none">
           Fiscal calendar, buyer timing & sales-perf topics
         </summary>
+        <% if (!account.fiscal_year_end) { %>
+          <form method="POST" action="/accounts/<%= account.id %>/fields/lookup-fiscal-year" class="mt-2 mb-2">
+            <button type="submit"
+                    class="text-xs bg-slate-900 hover:bg-slate-800 text-white px-3 py-1.5 rounded font-medium">
+              Look up fiscal year (AI)
+            </button>
+            <span class="text-[11px] text-slate-400 ml-2">Uses Haiku — fast + cheap</span>
+          </form>
+        <% } %>
         <form method="POST" action="/accounts/<%= account.id %>/fields" class="mt-2 space-y-3 text-xs">
           <div class="grid grid-cols-2 gap-3">
             <div>
               <label class="text-[10px] uppercase tracking-wide text-slate-500 font-semibold">Fiscal year ends</label>
-              <select name="fiscal_year_end" class="block w-full border border-slate-300 rounded px-2 py-1 mt-0.5">
-                <option value="">Unknown</option>
-                <% for (let m = 1; m <= 12; m++) { %>
-                  <option value="<%= m %>" <%= account.fiscal_year_end === m ? 'selected' : '' %>><%= FY_MONTHS[m] %></option>
-                <% } %>
-              </select>
+              <div class="flex items-center gap-1 mt-0.5">
+                <select name="fiscal_year_end" class="flex-1 border border-slate-300 rounded px-2 py-1">
+                  <option value="">Unknown</option>
+                  <% for (let m = 1; m <= 12; m++) { %>
+                    <option value="<%= m %>" <%= account.fiscal_year_end === m ? 'selected' : '' %>><%= FY_MONTHS[m] %></option>
+                  <% } %>
+                </select>
+              </div>
             </div>
             <div>
               <label class="text-[10px] uppercase tracking-wide text-slate-500 font-semibold">Buyer timing</label>
