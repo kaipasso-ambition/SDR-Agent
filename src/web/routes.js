@@ -1018,6 +1018,10 @@ webRouter.post('/accounts/:id/fields', requireAuth, async (req, res, next) => {
       const v = parseInt(req.body.fiscal_year_end, 10);
       fields.fiscal_year_end = (v >= 1 && v <= 12) ? v : null;
     }
+    if (req.body?.budget_start_month !== undefined) {
+      const v = parseInt(req.body.budget_start_month, 10);
+      fields.budget_start_month = (v >= 1 && v <= 12) ? v : null;
+    }
     if (req.body?.buyer_timing !== undefined) {
       fields.buyer_timing = (req.body.buyer_timing || '').trim().slice(0, 2000) || null;
     }
@@ -1037,8 +1041,14 @@ webRouter.post('/accounts/:id/fields/lookup-fiscal-year', requireAuth, async (re
     const bundle = await getAccountBundle(req.params.id);
     if (!bundle) return res.redirect('/accounts');
     const result = await lookupFiscalYear(bundle.account);
-    if (result.month) {
-      await updateAccountFields(req.params.id, { fiscal_year_end: result.month });
+    const patch = {};
+    if (result.month) patch.fiscal_year_end = result.month;
+    if (result.budgetStartMonth) patch.budget_start_month = result.budgetStartMonth;
+    if (result.budgetNote && !bundle.account.buyer_timing) {
+      patch.buyer_timing = result.budgetNote;
+    }
+    if (Object.keys(patch).length > 0) {
+      await updateAccountFields(req.params.id, patch);
     }
     res.redirect(`/accounts/${req.params.id}`);
   } catch (err) {

@@ -59,8 +59,11 @@
         <% if (account.fiscal_year_end) { %>
           <span>FY ends <strong class="text-slate-700"><%= FY_MONTHS[account.fiscal_year_end] %></strong></span>
         <% } %>
+        <% if (account.budget_start_month) { %>
+          <span>Budget planning starts <strong class="text-slate-700"><%= FY_MONTHS[account.budget_start_month] %></strong></span>
+        <% } %>
         <% if (account.buyer_timing) { %>
-          <span>Timing: <strong class="text-slate-700"><%= account.buyer_timing %></strong></span>
+          <span>· <strong class="text-slate-700"><%= account.buyer_timing %></strong></span>
         <% } %>
       </div>
 
@@ -87,32 +90,39 @@
         <summary class="text-xs text-slate-500 hover:text-slate-900 cursor-pointer select-none">
           Fiscal calendar, buyer timing & sales-perf topics
         </summary>
-        <% if (!account.fiscal_year_end) { %>
+        <% if (!account.fiscal_year_end || !account.budget_start_month) { %>
           <form method="POST" action="/accounts/<%= account.id %>/fields/lookup-fiscal-year" class="mt-2 mb-2">
             <button type="submit"
                     class="text-xs bg-slate-900 hover:bg-slate-800 text-white px-3 py-1.5 rounded font-medium">
-              Look up fiscal year (AI)
+              Look up fiscal year + budget cycle (AI)
             </button>
-            <span class="text-[11px] text-slate-400 ml-2">Uses Haiku — fast + cheap</span>
+            <span class="text-[11px] text-slate-400 ml-2">Haiku — fast + cheap</span>
           </form>
         <% } %>
         <form method="POST" action="/accounts/<%= account.id %>/fields" class="mt-2 space-y-3 text-xs">
-          <div class="grid grid-cols-2 gap-3">
+          <div class="grid grid-cols-3 gap-3">
             <div>
-              <label class="text-[10px] uppercase tracking-wide text-slate-500 font-semibold">Fiscal year ends</label>
-              <div class="flex items-center gap-1 mt-0.5">
-                <select name="fiscal_year_end" class="flex-1 border border-slate-300 rounded px-2 py-1">
-                  <option value="">Unknown</option>
-                  <% for (let m = 1; m <= 12; m++) { %>
-                    <option value="<%= m %>" <%= account.fiscal_year_end === m ? 'selected' : '' %>><%= FY_MONTHS[m] %></option>
-                  <% } %>
-                </select>
-              </div>
+              <label class="text-[10px] uppercase tracking-wide text-slate-500 font-semibold">FY ends</label>
+              <select name="fiscal_year_end" class="block w-full border border-slate-300 rounded px-2 py-1 mt-0.5">
+                <option value="">Unknown</option>
+                <% for (let m = 1; m <= 12; m++) { %>
+                  <option value="<%= m %>" <%= account.fiscal_year_end === m ? 'selected' : '' %>><%= FY_MONTHS[m] %></option>
+                <% } %>
+              </select>
+            </div>
+            <div>
+              <label class="text-[10px] uppercase tracking-wide text-slate-500 font-semibold">Budget planning starts</label>
+              <select name="budget_start_month" class="block w-full border border-slate-300 rounded px-2 py-1 mt-0.5">
+                <option value="">Unknown</option>
+                <% for (let m = 1; m <= 12; m++) { %>
+                  <option value="<%= m %>" <%= account.budget_start_month === m ? 'selected' : '' %>><%= FY_MONTHS[m] %></option>
+                <% } %>
+              </select>
             </div>
             <div>
               <label class="text-[10px] uppercase tracking-wide text-slate-500 font-semibold">Buyer timing</label>
               <input type="text" name="buyer_timing" value="<%= account.buyer_timing || '' %>"
-                     placeholder="e.g. Q4 budget cycle, renewal March, new CRO started Feb"
+                     placeholder="e.g. renewal March, new CRO started Feb"
                      class="block w-full border border-slate-300 rounded px-2 py-1 mt-0.5" />
             </div>
           </div>

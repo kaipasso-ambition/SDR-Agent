@@ -20,6 +20,7 @@ function buildContext(account, { selectedSignals = [], dossier = null, contacts 
     industry: account.industry || null,
     status: account.status,
     fiscal_year_end: account.fiscal_year_end || null,
+    budget_start_month: account.budget_start_month || null,
     buyer_timing: blank(account.buyer_timing),
     sales_perf_topics: blank(account.sales_perf_topics),
     selected_signals: selectedSignals.slice(0, 20).map((s) => ({

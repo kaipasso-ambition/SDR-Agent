@@ -265,6 +265,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS accounts_registry_domain_unique
 CREATE INDEX IF NOT EXISTS accounts_registry_status_idx ON accounts_registry(status);
 
 ALTER TABLE accounts_registry ADD COLUMN IF NOT EXISTS fiscal_year_end INT;
+ALTER TABLE accounts_registry ADD COLUMN IF NOT EXISTS budget_start_month INT;
 ALTER TABLE accounts_registry ADD COLUMN IF NOT EXISTS buyer_timing TEXT;
 ALTER TABLE accounts_registry ADD COLUMN IF NOT EXISTS sales_perf_topics TEXT;
 

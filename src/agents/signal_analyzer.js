@@ -33,6 +33,7 @@ ${JSON.stringify({
   buyer_timing: account.buyer_timing || null,
   sales_perf_topics: account.sales_perf_topics || null,
   fiscal_year_end: account.fiscal_year_end || null,
+  budget_start_month: account.budget_start_month || null,
 }, null, 2)}
 
 Return a JSON array of signals per the instructions.
