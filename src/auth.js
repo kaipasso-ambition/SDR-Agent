@@ -34,10 +34,30 @@ export async function verifyLogin(email, password) {
 
 export async function getUserById(id) {
   const { rows } = await query(
-    `SELECT id, email, name FROM users WHERE id = $1;`,
+    `SELECT id, email, name, role FROM users WHERE id = $1;`,
     [id]
   );
   return rows[0] || null;
+}
+
+export async function listUsers() {
+  const { rows } = await query(
+    `SELECT id, email, name, role, last_login_at, created_at FROM users ORDER BY created_at ASC;`
+  );
+  return rows;
+}
+
+export async function resetPassword(userId, newPassword) {
+  const password_hash = await bcrypt.hash(newPassword, SALT_ROUNDS);
+  await query(`UPDATE users SET password_hash = $2 WHERE id = $1;`, [userId, password_hash]);
+}
+
+export async function deleteUser(userId) {
+  await query(`DELETE FROM users WHERE id = $1;`, [userId]);
+}
+
+export async function updateUserRole(userId, role) {
+  await query(`UPDATE users SET role = $2 WHERE id = $1;`, [userId, role]);
 }
 
 // Middleware: redirect to /login if not authenticated (HTML pages)

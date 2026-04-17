@@ -1,7 +1,10 @@
 // Server-rendered web UI routes. All require auth except /login.
 
 import { Router } from 'express';
-import { verifyLogin, requireAuth } from '../auth.js';
+import {
+  verifyLogin, requireAuth, createUser, listUsers,
+  resetPassword, deleteUser, updateUserRole,
+} from '../auth.js';
 import { query } from '../db/index.js';
 import { getPendingDrafts, getPendingReplies } from '../queue/approval_queue.js';
 import { researchAndDraft, runDiscoveryCycle, runPilotBatch, draftChampionReconnect, draftLaunchIntro, draftFromSignal } from '../pipeline.js';
@@ -23,6 +26,7 @@ import {
   getCoverageByAccount,
   clearAllAccounts,
   updateAccountNotes,
+  updateAccountFields,
 } from '../db/accounts_registry.js';
 import { PERSONAS } from '../lib/personas.js';
 import { runChampionCheckCycle } from '../agents/champion_tracker.js';
@@ -530,16 +534,16 @@ webRouter.post('/discover/cancel', requireAuth, async (req, res, next) => {
   }
 });
 
-webRouter.get('/settings', requireAuth, async (_req, res, next) => {
+webRouter.get('/settings', requireAuth, async (req, res, next) => {
   try {
     const providers = await getProviders();
-    const usersRes = await query(
-      `SELECT email, name, last_login_at FROM users ORDER BY created_at ASC;`
-    );
+    const users = await listUsers();
+    const currentUser = users.find((u) => u.id === req.session.userId);
     res.render('settings', {
       title: 'Settings',
       providers,
-      users: usersRes.rows,
+      users,
+      currentUser,
       sendWindow: {
         start: process.env.SEND_WINDOW_START || 8,
         end: process.env.SEND_WINDOW_END || 17,
@@ -555,6 +559,55 @@ webRouter.get('/settings', requireAuth, async (_req, res, next) => {
 webRouter.post('/settings/disconnect/:provider', requireAuth, async (req, res, next) => {
   try {
     await query(`DELETE FROM integrations WHERE provider = $1;`, [req.params.provider]);
+    res.redirect('/settings');
+  } catch (err) {
+    next(err);
+  }
+});
+
+webRouter.post('/settings/users', requireAuth, async (req, res, next) => {
+  try {
+    const email = (req.body?.email || '').trim().toLowerCase();
+    const name = (req.body?.name || '').trim();
+    const password = (req.body?.password || '').trim();
+    const role = req.body?.role === 'admin' ? 'admin' : 'member';
+    if (!email || !password || password.length < 6) return res.redirect('/settings');
+    const user = await createUser({ email, name, password });
+    if (role === 'admin') await updateUserRole(user.id, 'admin');
+    res.redirect('/settings');
+  } catch (err) {
+    next(err);
+  }
+});
+
+webRouter.post('/settings/users/:id/reset-password', requireAuth, async (req, res, next) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.redirect('/settings');
+    const newPw = (req.body?.password || '').trim();
+    if (!newPw || newPw.length < 6) return res.redirect('/settings');
+    await resetPassword(req.params.id, newPw);
+    res.redirect('/settings');
+  } catch (err) {
+    next(err);
+  }
+});
+
+webRouter.post('/settings/users/:id/role', requireAuth, async (req, res, next) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.redirect('/settings');
+    const role = req.body?.role === 'admin' ? 'admin' : 'member';
+    await updateUserRole(req.params.id, role);
+    res.redirect('/settings');
+  } catch (err) {
+    next(err);
+  }
+});
+
+webRouter.post('/settings/users/:id/delete', requireAuth, async (req, res, next) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.redirect('/settings');
+    if (req.params.id === req.session.userId) return res.redirect('/settings');
+    await deleteUser(req.params.id);
     res.redirect('/settings');
   } catch (err) {
     next(err);
@@ -950,6 +1003,27 @@ webRouter.post('/accounts/:id/notes', requireAuth, async (req, res, next) => {
     // 4000 char soft cap — anything bigger is going to blow the prompt budget
     const clipped = notes.slice(0, 4000);
     await updateAccountNotes(req.params.id, clipped);
+    res.redirect(`/accounts/${req.params.id}`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+webRouter.post('/accounts/:id/fields', requireAuth, async (req, res, next) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.redirect('/accounts');
+    const fields = {};
+    if (req.body?.fiscal_year_end !== undefined) {
+      const v = parseInt(req.body.fiscal_year_end, 10);
+      fields.fiscal_year_end = (v >= 1 && v <= 12) ? v : null;
+    }
+    if (req.body?.buyer_timing !== undefined) {
+      fields.buyer_timing = (req.body.buyer_timing || '').trim().slice(0, 2000) || null;
+    }
+    if (req.body?.sales_perf_topics !== undefined) {
+      fields.sales_perf_topics = (req.body.sales_perf_topics || '').trim().slice(0, 4000) || null;
+    }
+    await updateAccountFields(req.params.id, fields);
     res.redirect(`/accounts/${req.params.id}`);
   } catch (err) {
     next(err);

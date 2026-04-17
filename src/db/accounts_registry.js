@@ -407,6 +407,26 @@ export async function updateAccountNotes(id, notes) {
   return rowCount > 0;
 }
 
+export async function updateAccountFields(id, fields) {
+  const allowed = ['fiscal_year_end', 'buyer_timing', 'sales_perf_topics'];
+  const sets = [];
+  const vals = [id];
+  let i = 1;
+  for (const k of allowed) {
+    if (fields[k] !== undefined) {
+      sets.push(`${k} = $${++i}`);
+      vals.push(fields[k] || null);
+    }
+  }
+  if (sets.length === 0) return false;
+  sets.push('updated_at = NOW()');
+  const { rowCount } = await query(
+    `UPDATE accounts_registry SET ${sets.join(', ')} WHERE id = $1`,
+    vals
+  );
+  return rowCount > 0;
+}
+
 // Nuke the entire accounts book. Used by the "Clear all accounts" button
 // when an operator wants to wipe imported test data before loading the real
 // roster. Nothing FKs to accounts_registry (prospects match by domain, not

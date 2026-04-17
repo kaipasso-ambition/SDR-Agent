@@ -122,6 +122,8 @@ END$$;
 
 CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON "session" ("expire");
 
+ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'member';
+
 -- Campaigns — themed outreach plays (events, product launches, ABM pushes).
 -- Roster is provided by Marketing (or the operator); research/discovery is
 -- skipped because the ICP work has already been done upstream.
@@ -260,6 +262,10 @@ CREATE TABLE IF NOT EXISTS accounts_registry (
 CREATE UNIQUE INDEX IF NOT EXISTS accounts_registry_domain_unique
   ON accounts_registry(LOWER(domain)) WHERE domain IS NOT NULL;
 CREATE INDEX IF NOT EXISTS accounts_registry_status_idx ON accounts_registry(status);
+
+ALTER TABLE accounts_registry ADD COLUMN IF NOT EXISTS fiscal_year_end INT;
+ALTER TABLE accounts_registry ADD COLUMN IF NOT EXISTS buyer_timing TEXT;
+ALTER TABLE accounts_registry ADD COLUMN IF NOT EXISTS sales_perf_topics TEXT;
 
 CREATE TABLE IF NOT EXISTS champions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
