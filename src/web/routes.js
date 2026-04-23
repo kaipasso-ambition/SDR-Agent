@@ -1811,11 +1811,16 @@ webRouter.get('/brief', requireAuth, async (req, res, next) => {
 
     const includeQuiet = req.query?.quiet === '1';
 
-    const [accounts, activeJobRow] = await Promise.all([
+    const [accounts, totalAccountRow, activeJobRow] = await Promise.all([
       listAccountTimeline(req.session.userId, {
         includeQuiet,
         statuses: statusFilter ? [statusFilter] : null,
       }),
+      query(
+        `SELECT COUNT(*)::int AS total FROM accounts_registry
+          WHERE (owner_user_id = $1 OR owner_user_id IS NULL)`,
+        [req.session.userId]
+      ),
       query(`SELECT * FROM account_signal_jobs ORDER BY started_at DESC LIMIT 1`),
     ]);
 
@@ -1836,6 +1841,7 @@ webRouter.get('/brief', requireAuth, async (req, res, next) => {
       );
     }
 
+    const totalAccounts = totalAccountRow.rows[0]?.total || 0;
     const activeJob = activeJobRow.rows[0] || null;
     const runningJob = activeJob && activeJob.status === 'running';
     const purgedParam = req.query?.purged;
@@ -1844,6 +1850,7 @@ webRouter.get('/brief', requireAuth, async (req, res, next) => {
     res.render('brief', {
       title: 'Today',
       accounts: sorted,
+      totalAccounts,
       sort,
       statusFilter,
       includeQuiet,
@@ -2222,12 +2229,16 @@ webRouter.post('/accounts/:id/intel/prospects/clear', requireAuth, async (req, r
   try {
     const accountId = req.params.id;
     if (!UUID_RE.test(accountId)) return res.redirect('/brief');
-    await query(
-      `DELETE FROM account_intel WHERE account_id = $1 AND kind = 'prospect_scan'`,
+    const { rows } = await query(
+      `SELECT result FROM account_intel
+        WHERE account_id = $1 AND kind = 'prospect_scan' AND status = 'completed'`,
       [accountId]
     );
-    // POV depends on prospects — regen in the background so the card is coherent.
-    regenerateAccountPov(accountId).catch((e) => console.error('[pov regen after clear]', e));
+    if (rows[0] && rows[0].result && Array.isArray(rows[0].result.prospects)) {
+      const result = rows[0].result;
+      result.prospects.forEach((p) => { p.dismissed = true; });
+      await setIntelResult(accountId, 'prospect_scan', result);
+    }
     res.redirect('/brief');
   } catch (err) {
     next(err);
@@ -2235,7 +2246,8 @@ webRouter.post('/accounts/:id/intel/prospects/clear', requireAuth, async (req, r
 });
 
 // Dismiss one prospect by position index within the prospect_scan result
-// array. Mutates the JSONB in place rather than wiping the whole scan.
+// array. Marks as dismissed (hidden from view) but preserves the data so
+// it continues to inform strategy and POV context.
 webRouter.post('/accounts/:id/intel/prospects/:idx/dismiss', requireAuth, async (req, res, next) => {
   try {
     const accountId = req.params.id;
@@ -2250,9 +2262,10 @@ webRouter.post('/accounts/:id/intel/prospects/:idx/dismiss', requireAuth, async 
     );
     if (rows[0] && rows[0].result && Array.isArray(rows[0].result.prospects)) {
       const result = rows[0].result;
-      result.prospects = result.prospects.filter((_, i) => i !== idx);
+      if (idx < result.prospects.length) {
+        result.prospects[idx].dismissed = true;
+      }
       await setIntelResult(accountId, 'prospect_scan', result);
-      regenerateAccountPov(accountId).catch((e) => console.error('[pov regen after dismiss]', e));
     }
     res.redirect('/brief');
   } catch (err) {

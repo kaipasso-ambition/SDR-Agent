@@ -54,7 +54,7 @@
   // Build query-string helpers that preserve current filters when the AE
   // flips one knob (e.g. changing sort keeps the status filter intact).
   function qs(overrides) {
-    const base = { sort: sort, status: statusFilter || '', q: '' };
+    const base = { sort: sort, status: statusFilter || '', quiet: includeQuiet ? '1' : '' };
     const merged = Object.assign({}, base, overrides || {});
     const params = Object.keys(merged)
       .filter(function(k) { return merged[k] !== '' && merged[k] != null; })
@@ -140,10 +140,19 @@
 
   <span class="text-slate-300">·</span>
 
-  <a href="<%= qs({quiet: includeQuiet ? '' : '1'}) %>"
-     class="text-slate-500 hover:text-slate-900 underline">
-    <%= includeQuiet ? 'Hide quiet accounts' : 'Show all accounts' %>
-  </a>
+  <span class="text-slate-400"><%= accounts.length %> of <%= totalAccounts %></span>
+
+  <% if (!includeQuiet && accounts.length < totalAccounts) { %>
+    <a href="<%= qs({quiet: '1'}) %>"
+       class="text-slate-500 hover:text-slate-900 underline">
+      Show all <%= totalAccounts %> accounts
+    </a>
+  <% } else if (includeQuiet) { %>
+    <a href="<%= qs({quiet: ''}) %>"
+       class="text-slate-500 hover:text-slate-900 underline">
+      Hide quiet accounts
+    </a>
+  <% } %>
 </div>
 
 <% if (!accounts || accounts.length === 0) { %>
@@ -161,8 +170,11 @@
     <% accounts.forEach(function(a) {
       const ps = a.prospect_scan_result;
       const psRunning = a.prospect_scan_status === 'running';
-      const hasProspects = a.prospect_scan_status === 'completed' && ps && Array.isArray(ps.prospects) && ps.prospects.length > 0;
-      const noProspects  = a.prospect_scan_status === 'completed' && ps && (!ps.prospects || ps.prospects.length === 0);
+      const visibleProspects = (a.prospect_scan_status === 'completed' && ps && Array.isArray(ps.prospects))
+        ? ps.prospects.filter(function(p) { return !p.dismissed; })
+        : [];
+      const hasProspects = visibleProspects.length > 0;
+      const noProspects  = a.prospect_scan_status === 'completed' && ps && visibleProspects.length === 0;
       const psFailed     = a.prospect_scan_status === 'failed';
 
       const pov = a.pov_result;
@@ -305,8 +317,8 @@
                 <% } %>
               </div>
               <form method="POST" action="/accounts/<%= a.account_id %>/intel/prospects/clear" class="inline"
-                    onsubmit="return confirm('Clear all prospects for this account?');">
-                <button type="submit" class="text-[10px] text-slate-400 hover:text-red-700 underline">Clear all</button>
+                    onsubmit="return confirm('Hide all prospects from view? Data is preserved for strategy context.');">
+                <button type="submit" class="text-[10px] text-slate-400 hover:text-red-700 underline">Hide all</button>
               </form>
             </div>
             <% if (ps.opportunity_thesis) { %>
@@ -315,7 +327,9 @@
               </div>
             <% } %>
             <div class="divide-y divide-slate-100">
-              <% ps.prospects.forEach(function(p, pidx) { %>
+              <% visibleProspects.forEach(function(p) {
+                   var origIdx = ps.prospects.indexOf(p);
+              %>
                 <div class="px-4 py-3">
                   <div class="flex items-start justify-between gap-3">
                     <div class="min-w-0 flex-1">
@@ -334,8 +348,8 @@
                       <% if (p.source_url) { %>
                         <a href="<%= p.source_url %>" target="_blank" rel="noopener" class="text-xs text-slate-500 hover:text-slate-900 underline">Source ↗</a>
                       <% } %>
-                      <form method="POST" action="/accounts/<%= a.account_id %>/intel/prospects/<%= pidx %>/dismiss" class="inline"
-                            onsubmit="return confirm('Remove this prospect?');">
+                      <form method="POST" action="/accounts/<%= a.account_id %>/intel/prospects/<%= origIdx %>/dismiss" class="inline"
+                            onsubmit="return confirm('Hide this prospect from view?');">
                         <button type="submit" class="text-[11px] text-slate-400 hover:text-red-700 underline">Not relevant</button>
                       </form>
                     </div>
