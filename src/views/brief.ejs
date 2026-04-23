@@ -224,7 +224,9 @@
             <div class="px-4 py-2 bg-slate-50/50 text-[10px] uppercase tracking-wide text-slate-500">
               Signals (last 60 days)
             </div>
-            <% signals.slice(0, 5).forEach(function(s) { %>
+            <% signals.slice(0, 5).forEach(function(s) {
+                 const displayDate = s.event_date || s.detected_at;
+            %>
               <div class="px-4 py-3">
                 <div class="flex items-start justify-between gap-3">
                   <div class="min-w-0 flex-1">
@@ -236,7 +238,11 @@
                       <% } %>
                       <span class="text-slate-400">SEV <%= s.severity %></span>
                       <span class="text-slate-400">·</span>
-                      <span class="text-slate-400"><%= agoLabel(s.detected_at) %></span>
+                      <span class="text-slate-400"><%= agoLabel(displayDate) %></span>
+                      <% if (s.event_date) { %>
+                        <span class="text-slate-300">·</span>
+                        <span class="text-slate-400"><%= s.event_date %></span>
+                      <% } %>
                     </div>
                     <div class="text-sm font-medium text-slate-900"><%= s.title %></div>
                     <% if (s.so_what) { %>
@@ -250,12 +256,18 @@
                       </div>
                     <% } %>
                   </div>
-                  <div class="flex flex-col items-end gap-1 shrink-0">
+                  <div class="flex flex-col items-end gap-1.5 shrink-0">
                     <% if (s.source_url) { %>
                       <a href="<%= s.source_url %>" target="_blank" rel="noopener" class="text-xs text-slate-500 hover:text-slate-900 underline">Source ↗</a>
                     <% } %>
                     <form method="POST" action="/signals/<%= s.id %>/play" class="inline">
+                      <input type="hidden" name="back" value="/brief" />
                       <button type="submit" class="text-xs text-slate-700 hover:text-slate-900 underline">Build play</button>
+                    </form>
+                    <form method="POST" action="/signals/<%= s.id %>/dismiss" class="inline"
+                          onsubmit="return confirm('Dismiss this signal?');">
+                      <input type="hidden" name="back" value="/brief" />
+                      <button type="submit" class="text-xs text-slate-400 hover:text-red-700 underline">Not relevant</button>
                     </form>
                   </div>
                 </div>
@@ -272,12 +284,18 @@
         <% if (hasProspects) { %>
           <div class="border-t border-slate-100">
             <div class="px-4 py-2 bg-slate-50/50 flex items-center justify-between gap-2">
-              <span class="text-[10px] uppercase tracking-wide text-slate-500">People showing intent</span>
-              <% if (ps.opportunity_strength) { %>
-                <span class="pill <%= priorityColor[ps.opportunity_strength] || priorityColor.cool %> text-[10px]">
-                  <%= ps.opportunity_strength %>
-                </span>
-              <% } %>
+              <div class="flex items-center gap-2">
+                <span class="text-[10px] uppercase tracking-wide text-slate-500">People showing intent</span>
+                <% if (ps.opportunity_strength) { %>
+                  <span class="pill <%= priorityColor[ps.opportunity_strength] || priorityColor.cool %> text-[10px]">
+                    <%= ps.opportunity_strength %>
+                  </span>
+                <% } %>
+              </div>
+              <form method="POST" action="/accounts/<%= a.account_id %>/intel/prospects/clear" class="inline"
+                    onsubmit="return confirm('Clear all prospects for this account?');">
+                <button type="submit" class="text-[10px] text-slate-400 hover:text-red-700 underline">Clear all</button>
+              </form>
             </div>
             <% if (ps.opportunity_thesis) { %>
               <div class="px-4 py-2 text-sm text-slate-800 font-medium border-b border-slate-100">
@@ -285,7 +303,7 @@
               </div>
             <% } %>
             <div class="divide-y divide-slate-100">
-              <% ps.prospects.forEach(function(p) { %>
+              <% ps.prospects.forEach(function(p, pidx) { %>
                 <div class="px-4 py-3">
                   <div class="flex items-start justify-between gap-3">
                     <div class="min-w-0 flex-1">
@@ -300,9 +318,15 @@
                         <div class="text-xs text-slate-500 mt-1 italic"><%= p.why_it_matters %></div>
                       <% } %>
                     </div>
-                    <% if (p.source_url) { %>
-                      <a href="<%= p.source_url %>" target="_blank" rel="noopener" class="text-xs text-slate-500 hover:text-slate-900 underline shrink-0">Source ↗</a>
-                    <% } %>
+                    <div class="flex flex-col items-end gap-1.5 shrink-0">
+                      <% if (p.source_url) { %>
+                        <a href="<%= p.source_url %>" target="_blank" rel="noopener" class="text-xs text-slate-500 hover:text-slate-900 underline">Source ↗</a>
+                      <% } %>
+                      <form method="POST" action="/accounts/<%= a.account_id %>/intel/prospects/<%= pidx %>/dismiss" class="inline"
+                            onsubmit="return confirm('Remove this prospect?');">
+                        <button type="submit" class="text-[11px] text-slate-400 hover:text-red-700 underline">Not relevant</button>
+                      </form>
+                    </div>
                   </div>
                 </div>
               <% }); %>

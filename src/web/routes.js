@@ -2189,6 +2189,51 @@ webRouter.post('/accounts/:id/intel/prospects', requireAuth, async (req, res, ne
   }
 });
 
+// Clear the entire prospect scan for an account — deletes the
+// account_intel row so the card goes back to "no scan yet" state.
+// Use when the whole set is stale and the AE wants to rescan fresh.
+webRouter.post('/accounts/:id/intel/prospects/clear', requireAuth, async (req, res, next) => {
+  try {
+    const accountId = req.params.id;
+    if (!UUID_RE.test(accountId)) return res.redirect('/brief');
+    await query(
+      `DELETE FROM account_intel WHERE account_id = $1 AND kind = 'prospect_scan'`,
+      [accountId]
+    );
+    // POV depends on prospects — regen in the background so the card is coherent.
+    regenerateAccountPov(accountId).catch((e) => console.error('[pov regen after clear]', e));
+    res.redirect('/brief');
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Dismiss one prospect by position index within the prospect_scan result
+// array. Mutates the JSONB in place rather than wiping the whole scan.
+webRouter.post('/accounts/:id/intel/prospects/:idx/dismiss', requireAuth, async (req, res, next) => {
+  try {
+    const accountId = req.params.id;
+    if (!UUID_RE.test(accountId)) return res.redirect('/brief');
+    const idx = parseInt(req.params.idx, 10);
+    if (!Number.isInteger(idx) || idx < 0) return res.redirect('/brief');
+
+    const { rows } = await query(
+      `SELECT result FROM account_intel
+        WHERE account_id = $1 AND kind = 'prospect_scan' AND status = 'completed'`,
+      [accountId]
+    );
+    if (rows[0] && rows[0].result && Array.isArray(rows[0].result.prospects)) {
+      const result = rows[0].result;
+      result.prospects = result.prospects.filter((_, i) => i !== idx);
+      await setIntelResult(accountId, 'prospect_scan', result);
+      regenerateAccountPov(accountId).catch((e) => console.error('[pov regen after dismiss]', e));
+    }
+    res.redirect('/brief');
+  } catch (err) {
+    next(err);
+  }
+});
+
 // Generate hypotheses — AE picks which signals to feed in (checkboxes on
 // the Hypotheses section); the agent drafts 1-3 hypotheses with the
 // Nasralla three-beat narrative, and we insert them via createHypothesis

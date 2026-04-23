@@ -22,7 +22,15 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // throws. Does not touch the DB — the caller decides whether to insert
 // (so the circuit breaker stays readable).
 export async function scanOneAccount(account) {
+  const today = new Date();
+  const todayIso = today.toISOString().slice(0, 10);
+  const cutoff = new Date(today.getTime() - 60 * 24 * 60 * 60 * 1000)
+    .toISOString().slice(0, 10);
+
   const userContent = `
+Today's date: ${todayIso}
+Recency cutoff: ${cutoff} (only return signals whose event_date is ON OR AFTER this date)
+
 Account to scan:
 ${JSON.stringify({
   account_name: account.account_name,
@@ -36,7 +44,7 @@ ${JSON.stringify({
   budget_start_month: account.budget_start_month || null,
 }, null, 2)}
 
-Return a JSON array of signals per the instructions.
+Return a JSON array of signals per the instructions. Every signal must include "event_date" in YYYY-MM-DD format, on or after ${cutoff}.
 `.trim();
 
   const response = await client.messages.create({
@@ -75,18 +83,52 @@ Return a JSON array of signals per the instructions.
     return { signals: [], searches: searchCount, raw: text, skipped: 'not_array' };
   }
 
-  // Normalize signals — enforce required fields + assign a stable dedup
-  // key if the model didn't supply one.
-  const signals = parsed
-    .filter((s) => s && s.title && s.risk_class && s.severity)
-    .map((s) => ({
+  // Normalize signals — enforce required fields, parse event_date, drop
+  // anything outside the 60-day window as a server-side guardrail. The
+  // model is instructed to drop these itself but doesn't always comply,
+  // especially for well-known historical events it pulls from training.
+  const cutoffMs = Date.now() - 60 * 24 * 60 * 60 * 1000;
+  const signals = [];
+  let droppedStale = 0;
+  for (const s of parsed) {
+    if (!s || !s.title || !s.risk_class || !s.severity) continue;
+
+    const eventDate = parseEventDate(s.event_date);
+    if (!eventDate) {
+      droppedStale++;
+      console.log(`[signal_analyzer] drop (no event_date): "${s.title}"`);
+      continue;
+    }
+    if (eventDate.getTime() < cutoffMs) {
+      droppedStale++;
+      console.log(`[signal_analyzer] drop (stale ${s.event_date}): "${s.title}"`);
+      continue;
+    }
+
+    signals.push({
       ...s,
+      event_date: eventDate.toISOString().slice(0, 10),
       account_id: account.id,
       dedup_key: s.dedup_key || buildDedupKey(s),
       raw_model_output: s,
-    }));
+    });
+  }
+
+  if (droppedStale > 0) {
+    console.log(`[signal_analyzer] ${account.account_name}: dropped ${droppedStale} stale/undated signal(s)`);
+  }
 
   return { signals, searches: searchCount, raw: text };
+}
+
+// Accept YYYY-MM-DD or ISO timestamp; reject everything else. Returning
+// a real Date (or null) so the caller can compare against the cutoff.
+function parseEventDate(value) {
+  if (typeof value !== 'string') return null;
+  const m = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return null;
+  const d = new Date(`${m[1]}-${m[2]}-${m[3]}T00:00:00Z`);
+  return Number.isFinite(d.getTime()) ? d : null;
 }
 
 // Main entry point — scan a set of customer accounts, insert the signals,

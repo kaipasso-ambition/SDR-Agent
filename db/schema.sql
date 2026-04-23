@@ -360,7 +360,8 @@ CREATE TABLE IF NOT EXISTS account_signals (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   account_id UUID NOT NULL REFERENCES accounts_registry(id) ON DELETE CASCADE,
   job_id UUID REFERENCES account_signal_jobs(id) ON DELETE SET NULL,
-  detected_at TIMESTAMPTZ DEFAULT NOW(),
+  detected_at TIMESTAMPTZ DEFAULT NOW(),  -- when WE scanned it
+  event_date DATE,                        -- when the underlying event HAPPENED; enables real recency filter
   source TEXT,                            -- 'web_search' | 'manual' | 'ingest'
   signal_type TEXT,                       -- exec_move | restructure | earnings | product_launch | layoff | hiring | funding | partnership | consolidation_note | other
   risk_class TEXT NOT NULL CHECK (risk_class IN ('defense_risk', 'offense_opportunity', 'neutral')),
@@ -377,6 +378,9 @@ CREATE TABLE IF NOT EXISTS account_signals (
   raw_model_output JSONB,
   UNIQUE (account_id, dedup_key)
 );
+ALTER TABLE account_signals ADD COLUMN IF NOT EXISTS event_date DATE;
+CREATE INDEX IF NOT EXISTS account_signals_event_date_idx
+  ON account_signals(event_date DESC);
 CREATE INDEX IF NOT EXISTS account_signals_account_detected_idx
   ON account_signals(account_id, detected_at DESC);
 CREATE INDEX IF NOT EXISTS account_signals_rank_idx

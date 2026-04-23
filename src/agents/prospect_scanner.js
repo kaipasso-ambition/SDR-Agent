@@ -15,7 +15,15 @@ const VALID_SIGNAL_TYPES = new Set([
 const VALID_STRENGTHS = new Set(['hot', 'warm', 'cool']);
 
 export async function scanProspects(account) {
-  const userContent = `Account to scan — ONLY find people who work at THIS company:
+  const today = new Date();
+  const todayIso = today.toISOString().slice(0, 10);
+  const cutoff = new Date(today.getTime() - 60 * 24 * 60 * 60 * 1000)
+    .toISOString().slice(0, 10);
+
+  const userContent = `Today's date: ${todayIso}
+Recency cutoff: ${cutoff} (only return people whose signal is dated ON OR AFTER this date)
+
+Account to scan — ONLY find people who work at THIS company:
 ${JSON.stringify({
   account_name: account.account_name,
   domain: account.domain || null,
@@ -26,7 +34,7 @@ ${JSON.stringify({
   sales_perf_topics: account.sales_perf_topics || null,
 }, null, 2)}
 
-Find 2-3 people AT ${account.account_name} who have recently said or done something related to sales performance, coaching, playbooks, or rep productivity. Only return people with real signals. Return the JSON.`;
+Find 2-3 people AT ${account.account_name} whose recent signal falls within the window above. Every prospect MUST include signal_date_iso in YYYY-MM-DD format on or after ${cutoff}. Drop any person whose signal is older. Return the JSON.`;
 
   const t0 = Date.now();
   const response = await client.messages.create({
@@ -54,7 +62,17 @@ Find 2-3 people AT ${account.account_name} who have recently said or done someth
   }
 
   const asStr = (v) => (typeof v === 'string' && v.trim().length > 0 ? v.trim() : null);
+  const parseIsoDate = (v) => {
+    const s = asStr(v);
+    if (!s) return null;
+    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!m) return null;
+    const d = new Date(`${m[1]}-${m[2]}-${m[3]}T00:00:00Z`);
+    return Number.isFinite(d.getTime()) ? d : null;
+  };
+  const cutoffMs = today.getTime() - 60 * 24 * 60 * 60 * 1000;
 
+  let droppedStale = 0;
   const prospects = (Array.isArray(parsed.prospects) ? parsed.prospects : [])
     .map((p) => {
       if (!p || typeof p !== 'object') return null;
@@ -64,18 +82,31 @@ Find 2-3 people AT ${account.account_name} who have recently said or done someth
       if (!name || !title || !signal) return null;
       const sourceUrl = asStr(p.source_url);
       if (!sourceUrl || !/^https?:\/\//i.test(sourceUrl)) return null;
+
+      // Server-side recency guardrail: require signal_date_iso in window.
+      const iso = parseIsoDate(p.signal_date_iso);
+      if (!iso || iso.getTime() < cutoffMs) {
+        droppedStale++;
+        return null;
+      }
+
       return {
         name,
         title,
         signal,
         signal_type: VALID_SIGNAL_TYPES.has(p.signal_type) ? p.signal_type : 'other',
-        signal_date: asStr(p.signal_date),
+        signal_date: asStr(p.signal_date) || iso.toISOString().slice(0, 10),
+        signal_date_iso: iso.toISOString().slice(0, 10),
         why_it_matters: asStr(p.why_it_matters),
         source_url: sourceUrl,
       };
     })
     .filter(Boolean)
     .slice(0, 3);
+
+  if (droppedStale > 0) {
+    console.log(`[prospect_scanner] ${account.account_name}: dropped ${droppedStale} stale/undated prospect(s)`);
+  }
 
   const result = {
     prospects,

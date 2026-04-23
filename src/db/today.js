@@ -161,7 +161,7 @@ export async function listAccountTimeline(userId, { includeQuiet = false, status
         COUNT(*)::int                                    AS signal_count,
         COUNT(*) FILTER (WHERE s.risk_class = 'defense_risk')::int        AS defense_count,
         COUNT(*) FILTER (WHERE s.risk_class = 'offense_opportunity')::int AS offense_count,
-        MAX(s.detected_at)                               AS last_signal_at,
+        MAX(COALESCE(s.event_date::timestamptz, s.detected_at)) AS last_signal_at,
         jsonb_agg(
           jsonb_build_object(
             'id',               s.id,
@@ -173,14 +173,15 @@ export async function listAccountTimeline(userId, { includeQuiet = false, status
             'signal_type',      s.signal_type,
             'risk_class',       s.risk_class,
             'severity',         s.severity,
+            'event_date',       s.event_date,
             'detected_at',      s.detected_at,
             'status',           s.status
           )
-          ORDER BY s.detected_at DESC
+          ORDER BY COALESCE(s.event_date::timestamptz, s.detected_at) DESC
         )                                                AS signals
       FROM account_signals s
       WHERE s.status IN ('new', 'acknowledged', 'playing')
-        AND s.detected_at >= NOW() - INTERVAL '60 days'
+        AND COALESCE(s.event_date::timestamptz, s.detected_at) >= NOW() - INTERVAL '60 days'
       GROUP BY s.account_id
     )
     SELECT

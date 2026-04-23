@@ -64,7 +64,8 @@ Output schema (strict JSON):
       "title": "Their current title at THIS company",
       "signal": "What they said or did — be specific. Quote if possible.",
       "signal_type": "linkedin_post" | "press_quote" | "conference" | "job_posting" | "podcast" | "blog" | "other",
-      "signal_date": "approximate date or recency (e.g. 'March 2026', 'last week')",
+      "signal_date_iso": "YYYY-MM-DD — the exact date of the signal, must be on or after the cutoff in the user message",
+      "signal_date": "human phrasing (e.g. 'March 2026', 'last week')",
       "why_it_matters": "One line — why this signal suggests they'd be receptive to Ambition",
       "source_url": "https://..."
     }
@@ -79,8 +80,11 @@ Hard rules:
   Do NOT return people at other companies.
 - "signal" must describe something specific they said or did. Not
   "they are VP Sales" — that's a title, not a signal.
+- "signal_date_iso" is REQUIRED and must be in YYYY-MM-DD format and ON OR
+  AFTER the cutoff date in the user message. No exceptions. If you can't
+  pin down a date in the window, DROP the person.
 - "source_url" must be a real URL from web_search. No fabricated URLs.
-- If you cannot find ANYONE at this company with a real signal, return:
+- If you cannot find ANYONE at this company with a real signal in the window, return:
   { "prospects": [], "opportunity_thesis": "No active signals found — monitor for changes", "opportunity_strength": "cool" }
   This is the correct answer when there's no signal. Do NOT fill slots
   with directory-style entries just to return something.

@@ -50,16 +50,17 @@ export async function insertSignals(signals, jobId = null) {
     const dedupKey = s.dedup_key || buildDedupKey(s);
     const { rows } = await query(
       `INSERT INTO account_signals (
-         account_id, job_id, detected_at, source, signal_type, risk_class,
+         account_id, job_id, detected_at, event_date, source, signal_type, risk_class,
          severity, title, summary, so_what, recommended_move,
          source_url, source_excerpt, dedup_key, raw_model_output
        ) VALUES (
-         $1, $2, NOW(), $3, $4, $5,
-         $6, $7, $8, $9, $10,
-         $11, $12, $13, $14
+         $1, $2, NOW(), $3, $4, $5, $6,
+         $7, $8, $9, $10, $11,
+         $12, $13, $14, $15
        )
        ON CONFLICT (account_id, dedup_key) DO UPDATE SET
          detected_at       = NOW(),
+         event_date        = COALESCE(EXCLUDED.event_date, account_signals.event_date),
          job_id            = EXCLUDED.job_id,
          signal_type       = EXCLUDED.signal_type,
          severity          = GREATEST(account_signals.severity, EXCLUDED.severity),
@@ -73,6 +74,7 @@ export async function insertSignals(signals, jobId = null) {
       [
         s.account_id,
         jobId,
+        s.event_date || null,
         s.source || 'web_search',
         s.signal_type || null,
         s.risk_class,
