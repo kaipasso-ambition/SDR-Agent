@@ -51,8 +51,6 @@
     return a.prospect_scan_status === 'running' || a.pov_status === 'running';
   });
 
-  // Build query-string helpers that preserve current filters when the AE
-  // flips one knob (e.g. changing sort keeps the status filter intact).
   function qs(overrides) {
     const base = { sort: sort, status: statusFilter || '', quiet: includeQuiet ? '1' : '' };
     const merged = Object.assign({}, base, overrides || {});
@@ -68,7 +66,7 @@
   <div>
     <h1 class="text-2xl font-semibold">Today</h1>
     <p class="text-sm text-slate-500 mt-1">
-      What moved at your accounts in the last 60 days — and the 2-3 people worth reaching out to.
+      Your book at a glance — what moved, who to reach, and the angle to lead with.
     </p>
   </div>
   <div class="flex items-center gap-2">
@@ -90,7 +88,7 @@
 
 <% if (typeof purgedCount !== 'undefined' && purgedCount !== null) { %>
   <div class="bg-slate-50 border border-slate-200 rounded-lg p-3 mb-5 text-sm text-slate-700">
-    ✓ Purged <%= purgedCount %> stale signal<%= purgedCount === 1 ? '' : 's' %> (older than 60 days or no event date).
+    Purged <%= purgedCount %> stale signal<%= purgedCount === 1 ? '' : 's' %>.
   </div>
 <% } %>
 
@@ -98,7 +96,7 @@
   <div class="bg-emerald-50 border border-emerald-200 rounded-lg p-3 mb-5 flex items-center gap-3">
     <span class="inline-block w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
     <div class="flex-1 text-sm text-emerald-900">
-      Scanning accounts for new signals — <%= activeJob.accounts_scanned || 0 %> scanned, <%= activeJob.signals_detected || 0 %> new. Expect ~30-45s per account.
+      Scanning accounts — <%= activeJob.accounts_scanned || 0 %> scanned, <%= activeJob.signals_detected || 0 %> new. ~30-45s per account.
     </div>
   </div>
   <script>setTimeout(function(){ location.reload(); }, 15000);</script>
@@ -185,10 +183,13 @@
       const sigCount = Number(a.signal_count) || 0;
       const defCount = Number(a.defense_count) || 0;
       const offCount = Number(a.offense_count) || 0;
+
+      const detailCount = sigCount + visibleProspects.length;
     %>
       <div class="bg-white border border-slate-200 rounded-lg overflow-hidden">
 
-        <div class="px-4 py-3 border-b border-slate-100 flex items-start justify-between gap-3 flex-wrap">
+        <%# === HEADER: account name + pills + scan button === %>
+        <div class="px-4 py-3 flex items-start justify-between gap-3 flex-wrap">
           <div class="flex items-center gap-2 min-w-0 flex-1 flex-wrap">
             <a href="/accounts/<%= a.account_id %>" class="font-medium text-slate-900 hover:text-emerald-700 truncate">
               <%= a.account_name %>
@@ -197,26 +198,16 @@
             <% if (hasPov && pov.priority) { %>
               <span class="pill <%= priorityColor[pov.priority] || priorityColor.cool %>"><%= pov.priority %></span>
             <% } %>
-            <% if (sigCount > 0) { %>
-              <span class="text-xs text-slate-500">
-                <%= sigCount %> signal<%= sigCount === 1 ? '' : 's' %>
-                <% if (defCount > 0) { %><span class="text-red-700 ml-1"><%= defCount %> defense</span><% } %>
-                <% if (offCount > 0) { %><span class="text-sky-700 ml-1"><%= offCount %> offense</span><% } %>
-              </span>
-            <% } %>
             <% if (a.industry) { %>
               <span class="text-xs text-slate-400 hidden sm:inline">· <%= a.industry %></span>
+            <% } %>
+            <% if (a.last_activity_at) { %>
+              <span class="text-[11px] text-slate-400"><%= agoLabel(a.last_activity_at) %></span>
             <% } %>
           </div>
           <div class="flex items-center gap-3 shrink-0 flex-wrap">
             <% if (a.fiscal_year_end) { %>
               <span class="text-[11px] text-slate-500">FY <%= FY_MONTHS[a.fiscal_year_end] %></span>
-            <% } %>
-            <% if (a.budget_start_month) { %>
-              <span class="text-[11px] text-slate-500">budget <%= FY_MONTHS[a.budget_start_month] %></span>
-            <% } %>
-            <% if (a.last_activity_at) { %>
-              <span class="text-[11px] text-slate-400"><%= agoLabel(a.last_activity_at) %></span>
             <% } %>
             <form method="POST" action="/accounts/<%= a.account_id %>/scan-all" class="inline">
               <button type="submit"
@@ -228,152 +219,161 @@
           </div>
         </div>
 
+        <%# === POV + PATH IN + STRATEGY: the main content === %>
         <% if (hasPov) { %>
-          <div class="px-4 py-3 bg-slate-50 border-b border-slate-100">
-            <div class="text-[10px] uppercase tracking-wide text-slate-500 mb-1">Point of view</div>
-            <div class="text-sm text-slate-900"><%= pov.pov %></div>
-            <div class="text-sm text-slate-900 mt-1.5">
-              <span class="font-medium text-slate-700">→</span> <%= pov.strategy %>
+          <div class="px-4 pb-3">
+            <div class="text-sm text-slate-800"><%= pov.pov %></div>
+            <% if (pov.path_in) { %>
+              <div class="mt-2 bg-emerald-50 border border-emerald-200 rounded px-3 py-2 text-sm text-emerald-900">
+                <span class="font-semibold">Path in:</span> <%= pov.path_in %>
+              </div>
+            <% } %>
+            <div class="text-sm text-slate-700 mt-2">
+              <span class="font-medium">This week:</span> <%= pov.strategy %>
             </div>
           </div>
         <% } else if (povRunning) { %>
-          <div class="px-4 py-2.5 bg-slate-50 border-b border-slate-100 text-xs text-slate-500 flex items-center gap-2">
+          <div class="px-4 pb-3 text-xs text-slate-500 flex items-center gap-2">
             <span class="inline-block w-2 h-2 bg-slate-400 rounded-full animate-pulse"></span>
             Building point of view…
           </div>
         <% } %>
 
-        <% if (signals.length > 0) { %>
-          <div class="divide-y divide-slate-100">
-            <div class="px-4 py-2 bg-slate-50/50 text-[10px] uppercase tracking-wide text-slate-500">
-              Signals (last 60 days)
-            </div>
-            <% signals.slice(0, 5).forEach(function(s) {
-                 const displayDate = s.event_date || s.detected_at;
-            %>
-              <div class="px-4 py-3">
-                <div class="flex items-start justify-between gap-3">
-                  <div class="min-w-0 flex-1">
-                    <div class="flex items-center gap-2 flex-wrap mb-1 text-xs">
-                      <% if (s.risk_class) { %>
-                        <span class="pill <%= riskPill[s.risk_class] || riskPill.neutral %>">
-                          <%= riskLabel[s.risk_class] || 'Context' %>
-                        </span>
-                      <% } %>
-                      <span class="text-slate-400">SEV <%= s.severity %></span>
-                      <span class="text-slate-400">·</span>
-                      <span class="text-slate-400"><%= agoLabel(displayDate) %></span>
-                      <% if (s.event_date) { %>
-                        <span class="text-slate-300">·</span>
-                        <span class="text-slate-400"><%= s.event_date %></span>
-                      <% } %>
-                    </div>
-                    <div class="text-sm font-medium text-slate-900"><%= s.title %></div>
-                    <% if (s.so_what) { %>
-                      <div class="text-sm text-slate-700 mt-1"><%= s.so_what %></div>
-                    <% } else if (s.summary) { %>
-                      <div class="text-sm text-slate-700 mt-1"><%= s.summary %></div>
-                    <% } %>
-                    <% if (s.recommended_move) { %>
-                      <div class="text-sm text-slate-900 mt-1.5">
-                        <span class="font-medium text-slate-700">→</span> <%= s.recommended_move %>
-                      </div>
-                    <% } %>
-                  </div>
-                  <div class="flex flex-col items-end gap-1.5 shrink-0">
-                    <% if (s.source_url) { %>
-                      <a href="<%= s.source_url %>" target="_blank" rel="noopener" class="text-xs text-slate-500 hover:text-slate-900 underline">Source ↗</a>
-                    <% } %>
-                    <form method="POST" action="/signals/<%= s.id %>/play" class="inline">
-                      <input type="hidden" name="back" value="/brief" />
-                      <button type="submit" class="text-xs text-slate-700 hover:text-slate-900 underline">Build play</button>
-                    </form>
-                    <form method="POST" action="/signals/<%= s.id %>/dismiss" class="inline"
-                          onsubmit="return confirm('Dismiss this signal?');">
-                      <input type="hidden" name="back" value="/brief" />
-                      <button type="submit" class="text-xs text-slate-400 hover:text-red-700 underline">Not relevant</button>
-                    </form>
-                  </div>
-                </div>
-              </div>
-            <% }); %>
-            <% if (signals.length > 5) { %>
-              <div class="px-4 py-2 text-xs text-slate-500">
-                <a href="/accounts/<%= a.account_id %>" class="underline">+ <%= signals.length - 5 %> more on account page</a>
-              </div>
-            <% } %>
-          </div>
-        <% } %>
+        <%# === SUPPORTING DETAIL: signals + prospects in a collapsible section === %>
+        <% if (detailCount > 0 || psRunning || psFailed) { %>
+          <details class="border-t border-slate-100 group">
+            <summary class="px-4 py-2 text-xs text-slate-500 cursor-pointer list-none select-none hover:bg-slate-50 flex items-center gap-2">
+              <span class="text-slate-400 text-[10px] group-open:rotate-90 transition-transform">&#9654;</span>
+              <% if (sigCount > 0 && hasProspects) { %>
+                <%= sigCount %> signal<%= sigCount === 1 ? '' : 's' %><% if (defCount > 0) { %> (<span class="text-red-700"><%= defCount %> defense</span>)<% } %> + <%= visibleProspects.length %> prospect<%= visibleProspects.length === 1 ? '' : 's' %>
+              <% } else if (sigCount > 0) { %>
+                <%= sigCount %> signal<%= sigCount === 1 ? '' : 's' %>
+                <% if (defCount > 0) { %><span class="text-red-700 ml-1"><%= defCount %> defense</span><% } %>
+                <% if (offCount > 0) { %><span class="text-sky-700 ml-1"><%= offCount %> offense</span><% } %>
+              <% } else if (hasProspects) { %>
+                <%= visibleProspects.length %> prospect<%= visibleProspects.length === 1 ? '' : 's' %> showing intent
+              <% } else if (psRunning) { %>
+                Scanning for prospects…
+              <% } else if (psFailed) { %>
+                Prospect scan failed
+              <% } %>
+            </summary>
 
-        <% if (hasProspects) { %>
-          <div class="border-t border-slate-100">
-            <div class="px-4 py-2 bg-slate-50/50 flex items-center justify-between gap-2">
-              <div class="flex items-center gap-2">
-                <span class="text-[10px] uppercase tracking-wide text-slate-500">People showing intent</span>
-                <% if (ps.opportunity_strength) { %>
-                  <span class="pill <%= priorityColor[ps.opportunity_strength] || priorityColor.cool %> text-[10px]">
-                    <%= ps.opportunity_strength %>
-                  </span>
+            <% if (signals.length > 0) { %>
+              <div class="divide-y divide-slate-100">
+                <% signals.slice(0, 5).forEach(function(s) {
+                     const displayDate = s.event_date || s.detected_at;
+                %>
+                  <div class="px-4 py-3">
+                    <div class="flex items-start justify-between gap-3">
+                      <div class="min-w-0 flex-1">
+                        <div class="flex items-center gap-2 flex-wrap mb-1 text-xs">
+                          <% if (s.risk_class) { %>
+                            <span class="pill <%= riskPill[s.risk_class] || riskPill.neutral %>">
+                              <%= riskLabel[s.risk_class] || 'Context' %>
+                            </span>
+                          <% } %>
+                          <span class="text-slate-400">SEV <%= s.severity %></span>
+                          <span class="text-slate-400"><%= agoLabel(displayDate) %></span>
+                        </div>
+                        <div class="text-sm font-medium text-slate-900"><%= s.title %></div>
+                        <% if (s.so_what) { %>
+                          <div class="text-sm text-slate-700 mt-1"><%= s.so_what %></div>
+                        <% } else if (s.summary) { %>
+                          <div class="text-sm text-slate-700 mt-1"><%= s.summary %></div>
+                        <% } %>
+                      </div>
+                      <div class="flex flex-col items-end gap-1.5 shrink-0">
+                        <% if (s.source_url) { %>
+                          <a href="<%= s.source_url %>" target="_blank" rel="noopener" class="text-xs text-slate-500 hover:text-slate-900 underline">Source ↗</a>
+                        <% } %>
+                        <form method="POST" action="/signals/<%= s.id %>/play" class="inline">
+                          <input type="hidden" name="back" value="/brief" />
+                          <button type="submit" class="text-xs text-slate-700 hover:text-slate-900 underline">Build play</button>
+                        </form>
+                        <form method="POST" action="/signals/<%= s.id %>/dismiss" class="inline"
+                              onsubmit="return confirm('Dismiss this signal?');">
+                          <input type="hidden" name="back" value="/brief" />
+                          <button type="submit" class="text-xs text-slate-400 hover:text-red-700 underline">Not relevant</button>
+                        </form>
+                      </div>
+                    </div>
+                  </div>
+                <% }); %>
+                <% if (signals.length > 5) { %>
+                  <div class="px-4 py-2 text-xs text-slate-500">
+                    <a href="/accounts/<%= a.account_id %>" class="underline">+ <%= signals.length - 5 %> more on account page</a>
+                  </div>
                 <% } %>
               </div>
-              <form method="POST" action="/accounts/<%= a.account_id %>/intel/prospects/clear" class="inline"
-                    onsubmit="return confirm('Hide all prospects from view? Data is preserved for strategy context.');">
-                <button type="submit" class="text-[10px] text-slate-400 hover:text-red-700 underline">Hide all</button>
-              </form>
-            </div>
-            <% if (ps.opportunity_thesis) { %>
-              <div class="px-4 py-2 text-sm text-slate-800 font-medium border-b border-slate-100">
-                <%= ps.opportunity_thesis %>
+            <% } %>
+
+            <% if (hasProspects) { %>
+              <div class="<%= signals.length > 0 ? 'border-t border-slate-200' : '' %>">
+                <div class="px-4 py-2 bg-slate-50/50 flex items-center justify-between gap-2">
+                  <div class="flex items-center gap-2">
+                    <span class="text-[10px] uppercase tracking-wide text-slate-500">People showing intent</span>
+                    <% if (ps.opportunity_strength) { %>
+                      <span class="pill <%= priorityColor[ps.opportunity_strength] || priorityColor.cool %> text-[10px]">
+                        <%= ps.opportunity_strength %>
+                      </span>
+                    <% } %>
+                  </div>
+                  <form method="POST" action="/accounts/<%= a.account_id %>/intel/prospects/clear" class="inline"
+                        onsubmit="return confirm('Hide all prospects from view? Data is preserved for strategy context.');">
+                    <button type="submit" class="text-[10px] text-slate-400 hover:text-red-700 underline">Hide all</button>
+                  </form>
+                </div>
+                <div class="divide-y divide-slate-100">
+                  <% visibleProspects.forEach(function(p) {
+                       var origIdx = ps.prospects.indexOf(p);
+                  %>
+                    <div class="px-4 py-3">
+                      <div class="flex items-start justify-between gap-3">
+                        <div class="min-w-0 flex-1">
+                          <div class="flex items-center gap-2 flex-wrap">
+                            <span class="font-medium text-slate-900"><%= p.name %></span>
+                            <span class="text-xs text-slate-500"><%= p.title %></span>
+                            <span class="pill bg-sky-50 text-sky-800 text-[10px]"><%= signalTypeLabel[p.signal_type] || p.signal_type %></span>
+                            <% if (p.signal_date) { %><span class="text-[11px] text-slate-400"><%= p.signal_date %></span><% } %>
+                          </div>
+                          <div class="text-sm text-slate-800 mt-1"><%= p.signal %></div>
+                          <% if (p.why_it_matters) { %>
+                            <div class="text-xs text-slate-500 mt-1 italic"><%= p.why_it_matters %></div>
+                          <% } %>
+                        </div>
+                        <div class="flex flex-col items-end gap-1.5 shrink-0">
+                          <% if (p.source_url) { %>
+                            <a href="<%= p.source_url %>" target="_blank" rel="noopener" class="text-xs text-slate-500 hover:text-slate-900 underline">Source ↗</a>
+                          <% } %>
+                          <form method="POST" action="/accounts/<%= a.account_id %>/intel/prospects/<%= origIdx %>/dismiss" class="inline"
+                                onsubmit="return confirm('Hide this prospect from view?');">
+                            <button type="submit" class="text-[11px] text-slate-400 hover:text-red-700 underline">Not relevant</button>
+                          </form>
+                        </div>
+                      </div>
+                    </div>
+                  <% }); %>
+                </div>
+              </div>
+            <% } else if (psRunning) { %>
+              <div class="px-4 py-3 text-sm text-slate-500 flex items-center gap-2">
+                <span class="inline-block w-2 h-2 bg-slate-400 rounded-full animate-pulse"></span>
+                Searching for people at <%= a.account_name %> showing buying signals…
+              </div>
+            <% } else if (psFailed) { %>
+              <div class="px-4 py-2 text-xs text-red-700">
+                Prospect scan failed. Click <strong>Rescan</strong> to try again.
               </div>
             <% } %>
-            <div class="divide-y divide-slate-100">
-              <% visibleProspects.forEach(function(p) {
-                   var origIdx = ps.prospects.indexOf(p);
-              %>
-                <div class="px-4 py-3">
-                  <div class="flex items-start justify-between gap-3">
-                    <div class="min-w-0 flex-1">
-                      <div class="flex items-center gap-2 flex-wrap">
-                        <span class="font-medium text-slate-900"><%= p.name %></span>
-                        <span class="text-xs text-slate-500"><%= p.title %></span>
-                        <span class="pill bg-sky-50 text-sky-800 text-[10px]"><%= signalTypeLabel[p.signal_type] || p.signal_type %></span>
-                        <% if (p.signal_date) { %><span class="text-[11px] text-slate-400"><%= p.signal_date %></span><% } %>
-                      </div>
-                      <div class="text-sm text-slate-800 mt-1"><%= p.signal %></div>
-                      <% if (p.why_it_matters) { %>
-                        <div class="text-xs text-slate-500 mt-1 italic"><%= p.why_it_matters %></div>
-                      <% } %>
-                    </div>
-                    <div class="flex flex-col items-end gap-1.5 shrink-0">
-                      <% if (p.source_url) { %>
-                        <a href="<%= p.source_url %>" target="_blank" rel="noopener" class="text-xs text-slate-500 hover:text-slate-900 underline">Source ↗</a>
-                      <% } %>
-                      <form method="POST" action="/accounts/<%= a.account_id %>/intel/prospects/<%= origIdx %>/dismiss" class="inline"
-                            onsubmit="return confirm('Hide this prospect from view?');">
-                        <button type="submit" class="text-[11px] text-slate-400 hover:text-red-700 underline">Not relevant</button>
-                      </form>
-                    </div>
-                  </div>
-                </div>
-              <% }); %>
-            </div>
-          </div>
-        <% } else if (psRunning) { %>
-          <div class="px-4 py-3 border-t border-slate-100 text-sm text-slate-500 flex items-center gap-2">
-            <span class="inline-block w-2 h-2 bg-slate-400 rounded-full animate-pulse"></span>
-            Searching for people at <%= a.account_name %> showing buying signals…
-          </div>
-        <% } else if (noProspects) { %>
-          <div class="px-4 py-3 border-t border-slate-100 text-xs text-slate-500">
-            No active people-level signals in the last 60 days.
-          </div>
-        <% } else if (psFailed) { %>
-          <div class="px-4 py-2 border-t border-slate-100 text-xs text-red-700">
-            Prospect scan failed. Click <strong>Rescan</strong> to try again.
+          </details>
+        <% } else if (noProspects && signals.length === 0) { %>
+          <div class="px-4 py-2 border-t border-slate-100 text-xs text-slate-500">
+            No signals or prospects in the last 60 days.
           </div>
         <% } %>
 
-        <% if (signals.length === 0 && !hasProspects && !psRunning && !noProspects && !psFailed && !hasPov) { %>
+        <% if (signals.length === 0 && !hasProspects && !psRunning && !noProspects && !psFailed && !hasPov && !povRunning) { %>
           <div class="px-4 py-4 text-xs text-slate-500">
             No recent intel. Click <strong>Scan</strong> to pull news + prospects for this account.
           </div>

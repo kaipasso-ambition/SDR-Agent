@@ -75,6 +75,7 @@ Write the POV, strategy, and priority. Return JSON only.`;
   }
 
   const pov = typeof parsed.pov === 'string' ? parsed.pov.trim() : null;
+  const path_in = typeof parsed.path_in === 'string' ? parsed.path_in.trim() : null;
   const strategy = typeof parsed.strategy === 'string' ? parsed.strategy.trim() : null;
   const priority = VALID_PRIORITIES.has(parsed.priority) ? parsed.priority : 'cool';
 
@@ -83,7 +84,7 @@ Write the POV, strategy, and priority. Return JSON only.`;
   }
 
   return {
-    result: { pov, strategy, priority, generated_at: new Date().toISOString() },
+    result: { pov, path_in, strategy, priority, generated_at: new Date().toISOString() },
     elapsed_ms,
     error: null,
     raw: text,

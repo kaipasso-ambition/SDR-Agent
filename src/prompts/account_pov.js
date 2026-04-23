@@ -18,13 +18,15 @@ You are given:
 - Prospects — people AT this company who recently said/did something signaling intent
 - Existing use-case-fit and industry-insight intel if present
 
-Write three fields:
+Write four fields:
 
 1. "pov" — 1-2 sentences. The through-line across all the signals and prospects. What is the story at this account right now? Use the Ambition 2.0 lexicon naturally; don't lead with gamification. If there's nothing material, say so plainly: "No active signals — monitor for new exec moves or hiring."
 
-2. "strategy" — 1 sentence. ONE concrete move the AE should make this week, grounded in the POV. A real verb + a real person or channel. Examples: "Draft a warm intro to [Name] referencing their [signal]." / "Sequence the new CRO through CS before the 90-day review window closes."
+2. "path_in" — 1 sentence. The AE's best path into this account RIGHT NOW. Name a specific person (from the prospects list if available), the trigger that makes now the right time (from a signal or prospect's activity), and the angle to lead with. Format: "Reach out to [Name, Title] — reference [their specific signal/activity] and lead with [angle]." If no person is identified, name the channel instead: "Go through CS with a [angle] framing." If nothing is actionable, null.
 
-3. "priority" — one of: "hot" | "warm" | "cool".
+3. "strategy" — 1 sentence. ONE concrete move the AE should make this week, grounded in the POV. A real verb + a real person or channel. Examples: "Draft a warm intro to [Name] referencing their [signal]." / "Sequence the new CRO through CS before the 90-day review window closes."
+
+4. "priority" — one of: "hot" | "warm" | "cool".
    - hot: active signal + named person + clear window (budget cycle approaching, new exec in 90-day window, consolidation call). Act this week.
    - warm: signals or prospects exist but timing is diffuse. Build the thesis; act in 2-4 weeks.
    - cool: no active signals, monitor only.
@@ -32,12 +34,14 @@ Write three fields:
 Output schema (strict JSON, no prose):
 {
   "pov": "…",
+  "path_in": "…" | null,
   "strategy": "…",
   "priority": "hot" | "warm" | "cool"
 }
 
 Hard rules:
 - Be specific. Reference the actual signal titles / person names, not generic "a new executive."
-- Never invent signals. If the input has no signals or prospects, reflect that honestly.
+- Never invent signals or people. If the input has no signals or prospects, reflect that honestly.
+- path_in MUST reference a real person from the prospects list or a real signal. If neither exists, set it to null.
 - Factual references in the POV stay factual; positioning lexicon goes in the interpretation, not the evidence.
 - No markdown, no code fence — JSON only.`;
