@@ -379,6 +379,7 @@ CREATE TABLE IF NOT EXISTS account_signals (
   UNIQUE (account_id, dedup_key)
 );
 ALTER TABLE account_signals ADD COLUMN IF NOT EXISTS event_date DATE;
+ALTER TABLE account_signals ADD COLUMN IF NOT EXISTS dismiss_reason TEXT;
 CREATE INDEX IF NOT EXISTS account_signals_event_date_idx
   ON account_signals(event_date DESC);
 CREATE INDEX IF NOT EXISTS account_signals_account_detected_idx

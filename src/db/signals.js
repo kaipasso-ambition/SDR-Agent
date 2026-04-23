@@ -209,10 +209,10 @@ export async function acknowledgeSignal(id) {
   );
 }
 
-export async function dismissSignal(id) {
+export async function dismissSignal(id, reason = null) {
   await query(
-    `UPDATE account_signals SET status = 'dismissed' WHERE id = $1`,
-    [id]
+    `UPDATE account_signals SET status = 'dismissed', dismiss_reason = $2 WHERE id = $1`,
+    [id, reason]
   );
 }
 
@@ -221,6 +221,18 @@ export async function setSignalPlaying(id) {
     `UPDATE account_signals SET status = 'playing' WHERE id = $1`,
     [id]
   );
+}
+
+export async function getDismissedSignals(accountId, { limit = 10 } = {}) {
+  const { rows } = await query(
+    `SELECT title, signal_type, risk_class, dismiss_reason
+       FROM account_signals
+      WHERE account_id = $1 AND status = 'dismissed' AND dismiss_reason IS NOT NULL
+      ORDER BY detected_at DESC
+      LIMIT $2`,
+    [accountId, limit]
+  );
+  return rows;
 }
 
 // Pull a dismissed signal back into the active brief. Lands as

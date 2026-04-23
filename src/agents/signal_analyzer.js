@@ -11,7 +11,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { SIGNAL_ANALYSIS_PROMPT } from '../prompts/signal_analysis.js';
 import { listAccounts, getAccountById } from '../db/accounts_registry.js';
-import { insertSignals, buildDedupKey } from '../db/signals.js';
+import { insertSignals, buildDedupKey, getDismissedSignals } from '../db/signals.js';
 import { query } from '../db/index.js';
 
 const client = new Anthropic();
@@ -26,6 +26,11 @@ export async function scanOneAccount(account) {
   const todayIso = today.toISOString().slice(0, 10);
   const cutoff = new Date(today.getTime() - 60 * 24 * 60 * 60 * 1000)
     .toISOString().slice(0, 10);
+
+  const dismissed = await getDismissedSignals(account.id);
+  const feedbackBlock = dismissed.length > 0
+    ? `\nPreviously dismissed signals (AE marked as not relevant — avoid similar results):\n${dismissed.map((d) => `- "${d.title}" (${d.signal_type}) — reason: ${d.dismiss_reason}`).join('\n')}\n`
+    : '';
 
   const userContent = `
 Today's date: ${todayIso}
@@ -43,7 +48,7 @@ ${JSON.stringify({
   fiscal_year_end: account.fiscal_year_end || null,
   budget_start_month: account.budget_start_month || null,
 }, null, 2)}
-
+${feedbackBlock}
 Return a JSON array of signals per the instructions. Every signal must include "event_date" in YYYY-MM-DD format, on or after ${cutoff}.
 `.trim();
 

@@ -22,6 +22,7 @@ import {
   listAccounts,
   listChurnedWithWinbackContext,
   getAccountStatusCounts,
+  getAccountById,
   getAccountBundle,
   getCoverageByAccount,
   clearAllAccounts,
@@ -86,6 +87,7 @@ import { generateHypotheses } from '../agents/hypothesis_generator.js';
 import { lookupFiscalYear } from '../agents/fiscal_lookup.js';
 import { scanProspects } from '../agents/prospect_scanner.js';
 import { generateAccountPov } from '../agents/account_pov.js';
+import { findWarmPath } from '../agents/warm_path.js';
 import {
   getAccountIntel,
   setIntelRunning,
@@ -1007,7 +1009,7 @@ webRouter.post('/accounts/:id/notes', requireAuth, async (req, res, next) => {
     // 4000 char soft cap — anything bigger is going to blow the prompt budget
     const clipped = notes.slice(0, 4000);
     await updateAccountNotes(req.params.id, clipped);
-    res.redirect(`/accounts/${req.params.id}`);
+    res.redirect(req.body?.back || `/accounts/${req.params.id}`);
   } catch (err) {
     next(err);
   }
@@ -1898,7 +1900,8 @@ webRouter.post('/signals/:id/ack', requireAuth, async (req, res, next) => {
 webRouter.post('/signals/:id/dismiss', requireAuth, async (req, res, next) => {
   try {
     if (!UUID_RE.test(req.params.id)) return res.redirect('/brief');
-    await dismissSignal(req.params.id);
+    const reason = (req.body?.reason || '').trim() || null;
+    await dismissSignal(req.params.id, reason);
     res.redirect(req.body?.back || '/brief');
   } catch (err) {
     next(err);
@@ -2175,11 +2178,13 @@ webRouter.post('/accounts/:id/intel/prospects', requireAuth, async (req, res, ne
         ? '/discover' : `/accounts/${accountId}#prospects`);
     }
 
+    const dismissedProspects = (intel.prospect_scan?.result?.prospects || [])
+      .filter((p) => p.dismissed);
     await setIntelRunning(accountId, 'prospect_scan');
 
     Promise.resolve()
       .then(async () => {
-        const out = await scanProspects(bundle.account);
+        const out = await scanProspects(bundle.account, { dismissedProspects });
         if (out.error || !out.result) {
           await setIntelFailed(accountId, 'prospect_scan', out.error || 'no_result');
           return;
@@ -2264,9 +2269,73 @@ webRouter.post('/accounts/:id/intel/prospects/:idx/dismiss', requireAuth, async 
       const result = rows[0].result;
       if (idx < result.prospects.length) {
         result.prospects[idx].dismissed = true;
+        const reason = (req.body?.reason || '').trim() || null;
+        if (reason) result.prospects[idx].dismiss_reason = reason;
       }
       await setIntelResult(accountId, 'prospect_scan', result);
     }
+    res.redirect('/brief');
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Find stepping stones for a target prospect. The AE identified a senior
+// exec via prospect scan but needs a way in through their team. Fires
+// warm_path agent (Claude + web_search), stores results on the prospect.
+webRouter.post('/accounts/:id/prospects/:idx/find-path', requireAuth, async (req, res, next) => {
+  try {
+    const accountId = req.params.id;
+    if (!UUID_RE.test(accountId)) return res.redirect('/brief');
+    const idx = parseInt(req.params.idx, 10);
+    if (!Number.isInteger(idx) || idx < 0) return res.redirect('/brief');
+
+    const [accountRow, intelRow] = await Promise.all([
+      getAccountById(accountId),
+      query(
+        `SELECT result FROM account_intel
+          WHERE account_id = $1 AND kind = 'prospect_scan' AND status = 'completed'`,
+        [accountId]
+      ),
+    ]);
+    if (!accountRow || !intelRow.rows[0]?.result?.prospects?.[idx]) {
+      return res.redirect('/brief');
+    }
+
+    const prospect = intelRow.rows[0].result.prospects[idx];
+    const result = intelRow.rows[0].result;
+
+    // Mark as loading so the UI can show a spinner
+    prospect.warm_path_status = 'running';
+    await setIntelResult(accountId, 'prospect_scan', result);
+
+    // Fire the agent in the background
+    findWarmPath({
+      account: accountRow,
+      targetName: prospect.name,
+      targetTitle: prospect.title,
+      targetSignal: prospect.signal,
+    }).then(async (out) => {
+      const freshRow = await query(
+        `SELECT result FROM account_intel
+          WHERE account_id = $1 AND kind = 'prospect_scan' AND status = 'completed'`,
+        [accountId]
+      );
+      if (!freshRow.rows[0]?.result?.prospects?.[idx]) return;
+      const freshResult = freshRow.rows[0].result;
+      if (out.error || !out.result?.stepping_stones?.length) {
+        freshResult.prospects[idx].warm_path_status = 'empty';
+        freshResult.prospects[idx].stepping_stones = [];
+        freshResult.prospects[idx].approach_summary = out.result?.approach_summary || 'No stepping stones found.';
+      } else {
+        freshResult.prospects[idx].warm_path_status = 'done';
+        freshResult.prospects[idx].stepping_stones = out.result.stepping_stones;
+        freshResult.prospects[idx].approach_summary = out.result.approach_summary;
+      }
+      await setIntelResult(accountId, 'prospect_scan', freshResult);
+      console.log(`[warm_path] ${accountRow.account_name} / ${prospect.name}: ${out.result?.stepping_stones?.length || 0} stepping stones, ${out.searches} searches, ${out.elapsed_ms}ms`);
+    }).catch((e) => console.error('[warm_path]', e));
+
     res.redirect('/brief');
   } catch (err) {
     next(err);
@@ -3210,9 +3279,11 @@ webRouter.post('/accounts/:id/scan-all', requireAuth, async (req, res, next) => 
     // --- Prospect scan (fire-and-forget via account_intel) ---
     let prospectPromise = Promise.resolve();
     if (!prospectRunning) {
+      const dismissedProspects = (intel.prospect_scan?.result?.prospects || [])
+        .filter((p) => p.dismissed);
       await setIntelRunning(accountId, 'prospect_scan');
       prospectPromise = (async () => {
-        const out = await scanProspects(bundle.account);
+        const out = await scanProspects(bundle.account, { dismissedProspects });
         if (out.error || !out.result) {
           await setIntelFailed(accountId, 'prospect_scan', out.error || 'no_result');
           return;

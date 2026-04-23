@@ -14,11 +14,15 @@ const VALID_SIGNAL_TYPES = new Set([
 ]);
 const VALID_STRENGTHS = new Set(['hot', 'warm', 'cool']);
 
-export async function scanProspects(account) {
+export async function scanProspects(account, { dismissedProspects = [] } = {}) {
   const today = new Date();
   const todayIso = today.toISOString().slice(0, 10);
   const cutoff = new Date(today.getTime() - 60 * 24 * 60 * 60 * 1000)
     .toISOString().slice(0, 10);
+
+  const feedbackBlock = dismissedProspects.length > 0
+    ? `\nPreviously dismissed prospects (AE marked as not relevant — find DIFFERENT people):\n${dismissedProspects.map((d) => `- ${d.name} (${d.title})${d.dismiss_reason ? ' — reason: ' + d.dismiss_reason : ''}`).join('\n')}\n`
+    : '';
 
   const userContent = `Today's date: ${todayIso}
 Recency cutoff: ${cutoff} (only return people whose signal is dated ON OR AFTER this date)
@@ -33,7 +37,7 @@ ${JSON.stringify({
   buyer_timing: account.buyer_timing || null,
   sales_perf_topics: account.sales_perf_topics || null,
 }, null, 2)}
-
+${feedbackBlock}
 Find 2-3 people AT ${account.account_name} whose recent signal falls within the window above. Every prospect MUST include signal_date_iso in YYYY-MM-DD format on or after ${cutoff}. Drop any person whose signal is older. Return the JSON.`;
 
   const t0 = Date.now();
