@@ -85,6 +85,7 @@ import { pullIndustryInsight } from '../agents/industry_insight.js';
 import { generateHypotheses } from '../agents/hypothesis_generator.js';
 import { lookupFiscalYear } from '../agents/fiscal_lookup.js';
 import { scanProspects } from '../agents/prospect_scanner.js';
+import { generateAccountPov } from '../agents/account_pov.js';
 import {
   getAccountIntel,
   setIntelRunning,
@@ -93,13 +94,14 @@ import {
 } from '../db/account_intel.js';
 import {
   getSignalById,
+  getSignalsForAccount,
   acknowledgeSignal,
   dismissSignal,
   setSignalPlaying,
   restoreSignal,
   getLastScanForAccount,
 } from '../db/signals.js';
-import { listUnifiedBrief, getUnifiedCounts } from '../db/today.js';
+import { listUnifiedBrief, getUnifiedCounts, listAccountTimeline } from '../db/today.js';
 import {
   getPresenceFeed,
   getPresenceStats,
@@ -273,43 +275,6 @@ webRouter.post('/prospects/new', requireAuth, async (req, res) => {
       error: 'Pipeline failed: ' + (err.message || 'unknown error') + '. Check the Railway logs.',
       notice: null,
     });
-  }
-});
-
-// GET /discover — prospecting command center. Shows the full account
-// book (prospects first, then customers, then churned) with signal
-// count, fiscal year, budget timing, and last scan. Surfaces which
-// accounts need research next.
-webRouter.get('/discover', requireAuth, async (req, res, next) => {
-  try {
-    const { rows } = await query(
-      `SELECT a.*,
-              u.name  AS owner_name,
-              u.email AS owner_email,
-              (SELECT COUNT(*)::int FROM account_signals s
-                WHERE s.account_id = a.id
-                  AND s.status IN ('new','acknowledged','playing')) AS signal_count,
-              (SELECT MAX(s.detected_at) FROM account_signals s
-                WHERE s.account_id = a.id) AS last_signal_at_live,
-              (SELECT MAX(s.detected_at) FROM account_signals s
-                WHERE s.account_id = a.id) AS last_scan_at,
-              ps.status AS prospect_scan_status,
-              ps.result AS prospect_scan_result,
-              ps.completed_at AS prospect_scan_at
-         FROM accounts_registry a
-         LEFT JOIN users u ON u.id = a.owner_user_id
-         LEFT JOIN account_intel ps ON ps.account_id = a.id AND ps.kind = 'prospect_scan'
-        WHERE a.status IN ('prospect','customer','churned')
-        ORDER BY
-          CASE a.status WHEN 'prospect' THEN 1 WHEN 'customer' THEN 2 WHEN 'churned' THEN 3 ELSE 4 END,
-          a.last_signal_at ASC NULLS FIRST,
-          a.account_name ASC`
-    );
-    const counts = { prospect: 0, customer: 0, churned: 0 };
-    rows.forEach((r) => { if (counts[r.status] !== undefined) counts[r.status]++; });
-    res.render('discover', { title: 'Discover', accounts: rows, counts });
-  } catch (err) {
-    next(err);
   }
 });
 
@@ -1831,48 +1796,54 @@ webRouter.post('/expand/paths/:id/outcome', requireAuth, async (req, res, next) 
 
 // ---------- Signals (Sprint 1: Pulse + Monday Brief) ----------
 
-// Monday Brief — top 5 ranked unacked signals for the current user.
-// Ranked risk-first (defense > offense > neutral), severity-weighted,
-// recency as tiebreak. See src/db/signals.js for the exact SQL ordering.
-// /brief is the unified "today" inbox. Mixes customer_signal + expansion +
-// revisit triggers into one ranked feed so the AE has exactly one place to
-// decide what to act on first. Filter tab (?kind=customers|expansion|revisit)
-// narrows to a single source when the AE wants focused work. No filter =
-// everything, ranked by composite score.
+// /brief (aka /today) — unified account-grouped view. One card per
+// account showing: AI-generated POV + strategy, news signals from the
+// last 60 days, and prospects (people AT the company showing intent).
+// Sort by newest activity, priority, or oldest. Filter by account status.
+// Quiet accounts (no signals, no prospects, no POV) hidden by default.
 webRouter.get('/brief', requireAuth, async (req, res, next) => {
   try {
-    const allowedKinds = ['customer_signal', 'expansion', 'revisit'];
-    const kindParam = (req.query?.kind || '').trim();
-    const kindMap = {
-      customers: 'customer_signal',
-      expansion: 'expansion',
-      revisit: 'revisit',
-    };
-    const kindFilter = kindMap[kindParam] || (allowedKinds.includes(kindParam) ? kindParam : null);
+    const allowedSorts = new Set(['newest', 'priority', 'oldest']);
+    const sort = allowedSorts.has(req.query?.sort) ? req.query.sort : 'newest';
 
-    const [allItems, counts, activeJobRow] = await Promise.all([
-      listUnifiedBrief(req.session.userId, { limit: 100 }),
-      getUnifiedCounts(req.session.userId),
+    const allowedStatuses = new Set(['prospect', 'customer', 'churned']);
+    const statusFilter = allowedStatuses.has(req.query?.status) ? req.query.status : null;
+
+    const includeQuiet = req.query?.quiet === '1';
+
+    const [accounts, activeJobRow] = await Promise.all([
+      listAccountTimeline(req.session.userId, {
+        includeQuiet,
+        statuses: statusFilter ? [statusFilter] : null,
+      }),
       query(`SELECT * FROM account_signal_jobs ORDER BY started_at DESC LIMIT 1`),
     ]);
 
-    const items = kindFilter
-      ? allItems.filter((r) => r.kind === kindFilter)
-      : allItems;
+    // Priority sort: hot > warm > cool, then by recency. Oldest: flip
+    // the recency comparator. Newest is the DB default.
+    const priorityRank = { hot: 3, warm: 2, cool: 1 };
+    const sorted = [...accounts];
+    if (sort === 'priority') {
+      sorted.sort((a, b) => {
+        const pa = priorityRank[a.pov_result?.priority] || 0;
+        const pb = priorityRank[b.pov_result?.priority] || 0;
+        if (pa !== pb) return pb - pa;
+        return new Date(b.last_activity_at || 0) - new Date(a.last_activity_at || 0);
+      });
+    } else if (sort === 'oldest') {
+      sorted.sort((a, b) =>
+        new Date(a.last_activity_at || 0) - new Date(b.last_activity_at || 0)
+      );
+    }
 
     const activeJob = activeJobRow.rows[0] || null;
     const runningJob = activeJob && activeJob.status === 'running';
     res.render('brief', {
       title: 'Today',
-      items,
-      counts,
-      kindFilter: kindParam || null,
-      kindTotals: {
-        all: allItems.length,
-        customer_signal: allItems.filter((r) => r.kind === 'customer_signal').length,
-        expansion: allItems.filter((r) => r.kind === 'expansion').length,
-        revisit: allItems.filter((r) => r.kind === 'revisit').length,
-      },
+      accounts: sorted,
+      sort,
+      statusFilter,
+      includeQuiet,
       activeJob,
       runningJob,
     });
@@ -1880,6 +1851,10 @@ webRouter.get('/brief', requireAuth, async (req, res, next) => {
     next(err);
   }
 });
+
+// /discover is now aliased to /brief — the account-grouped view
+// replaces the old separate Discover page.
+webRouter.get('/discover', requireAuth, (req, res) => res.redirect('/brief'));
 
 // Signal staging page — surfaces the signal summary and three CTAs.
 // Only "Draft outbound" is wired end-to-end in Sprint 1; the other two
@@ -2201,13 +2176,14 @@ webRouter.post('/accounts/:id/intel/prospects', requireAuth, async (req, res, ne
         await setIntelResult(accountId, 'prospect_scan', out.result);
         console.log(`[intel] prospect scan for ${accountId} — ${out.result.prospects.length} prospects, ${out.searches} searches, ${out.elapsed_ms}ms`);
       })
+      .then(() => regenerateAccountPov(accountId))
       .catch(async (err) => {
         console.error(`[intel] prospect scan ${accountId} failed:`, err);
         try { await setIntelFailed(accountId, 'prospect_scan', err.message || String(err)); } catch (_) {}
       });
 
-    res.redirect(req.body?._from === 'discover'
-      ? '/discover' : `/accounts/${accountId}#prospects`);
+    res.redirect(req.body?._from === 'discover' || req.body?._from === 'brief'
+      ? '/brief' : `/accounts/${accountId}#prospects`);
   } catch (err) {
     next(err);
   }
@@ -3054,12 +3030,25 @@ webRouter.post('/signals/scan', requireAuth, async (req, res, next) => {
     const jobId = rows[0].id;
 
     // Fire-and-forget — don't await. The /brief page renders the
-    // active-job banner by polling the latest row.
+    // active-job banner by polling the latest row. When the scan
+    // finishes, regenerate POV for each scanned account.
     runSignalScanCycle({
       user_id: req.session.userId,
       account_ids,
       job_id: jobId,
-    }).catch((err) => console.error('[signals/scan] background failed:', err));
+    })
+      .then(async () => {
+        if (account_ids && account_ids.length > 0) {
+          for (const id of account_ids) { await regenerateAccountPov(id); }
+        } else {
+          // Full-book scan: regen POV for every customer account that
+          // was in scope. Do this serially to respect the Haiku rate
+          // and keep load predictable.
+          const customers = await listAccounts({ status: 'customer' });
+          for (const a of customers) { await regenerateAccountPov(a.id); }
+        }
+      })
+      .catch((err) => console.error('[signals/scan] background failed:', err));
 
     res.redirect(account_ids ? `/accounts/${account_ids[0]}` : '/brief');
   } catch (err) {
@@ -3090,13 +3079,115 @@ webRouter.post('/accounts/:id/signals/rescan', requireAuth, async (req, res, nex
       user_id: req.session.userId,
       account_ids: [req.params.id],
       job_id: jobId,
-    }).catch((err) => console.error('[accounts/rescan]', err));
+    })
+      .then(() => regenerateAccountPov(req.params.id))
+      .catch((err) => console.error('[accounts/rescan]', err));
 
     res.redirect(`/accounts/${req.params.id}?rescan=started`);
   } catch (err) {
     next(err);
   }
 });
+
+// Unified per-account scan — fires both signal scan (news, last 60 days)
+// AND prospect scan (people AT this company with recent intent signals)
+// in one click. POV regenerates once both finish so the Today card is
+// coherent on the next page load. This is the button on each account
+// card in /brief.
+webRouter.post('/accounts/:id/scan-all', requireAuth, async (req, res, next) => {
+  try {
+    const accountId = req.params.id;
+    if (!UUID_RE.test(accountId)) return res.redirect('/brief');
+    const bundle = await getAccountBundle(accountId);
+    if (!bundle) return res.redirect('/brief');
+
+    const intel = await getAccountIntel(accountId);
+    const prospectRunning = intel.prospect_scan?.status === 'running';
+
+    // --- Signal scan (fire-and-forget, throttled to once/24h) ---
+    const lastAt = await getLastScanForAccount(accountId);
+    const ONE_DAY = 24 * 60 * 60 * 1000;
+    const signalScanThrottled = lastAt && Date.now() - new Date(lastAt).getTime() < ONE_DAY;
+
+    let signalPromise = Promise.resolve();
+    if (!signalScanThrottled) {
+      const { rows: jobRows } = await query(
+        `INSERT INTO account_signal_jobs (user_id, status) VALUES ($1, 'running') RETURNING id`,
+        [req.session.userId]
+      );
+      const jobId = jobRows[0].id;
+      signalPromise = runSignalScanCycle({
+        user_id: req.session.userId,
+        account_ids: [accountId],
+        job_id: jobId,
+      });
+    }
+
+    // --- Prospect scan (fire-and-forget via account_intel) ---
+    let prospectPromise = Promise.resolve();
+    if (!prospectRunning) {
+      await setIntelRunning(accountId, 'prospect_scan');
+      prospectPromise = (async () => {
+        const out = await scanProspects(bundle.account);
+        if (out.error || !out.result) {
+          await setIntelFailed(accountId, 'prospect_scan', out.error || 'no_result');
+          return;
+        }
+        await setIntelResult(accountId, 'prospect_scan', out.result);
+      })().catch(async (err) => {
+        console.error(`[scan-all] prospect scan ${accountId} failed:`, err);
+        try { await setIntelFailed(accountId, 'prospect_scan', err.message || String(err)); } catch (_) {}
+      });
+    }
+
+    // --- POV regen once both finish ---
+    Promise.allSettled([signalPromise, prospectPromise])
+      .then(() => regenerateAccountPov(accountId))
+      .catch((err) => console.error('[scan-all] POV regen failed:', err));
+
+    res.redirect('/brief');
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Regenerate the AI point-of-view for one account. Pulls the latest
+// signals + prospect scan + metadata and runs the Haiku POV agent.
+// Safe to call after any scan completes — if there's nothing material,
+// the agent honestly says "no active signals".
+async function regenerateAccountPov(accountId) {
+  try {
+    const bundle = await getAccountBundle(accountId);
+    if (!bundle) return;
+    const [signals, intel] = await Promise.all([
+      getSignalsForAccount(accountId, { limit: 10 }),
+      getAccountIntel(accountId),
+    ]);
+    const prospects = intel.prospect_scan?.status === 'completed'
+      ? (intel.prospect_scan.result?.prospects || [])
+      : [];
+    const useCaseFit = intel.use_case_fit?.status === 'completed' ? intel.use_case_fit.result : null;
+    const industryInsight = intel.industry_insight?.status === 'completed' ? intel.industry_insight.result : null;
+
+    await setIntelRunning(accountId, 'account_pov');
+    const out = await generateAccountPov({
+      account: bundle.account,
+      signals,
+      prospects,
+      useCaseFit,
+      industryInsight,
+    });
+    if (out.error || !out.result) {
+      await setIntelFailed(accountId, 'account_pov', out.error || 'no_result');
+      return;
+    }
+    await setIntelResult(accountId, 'account_pov', out.result);
+    console.log(`[pov] ${accountId} — ${out.elapsed_ms}ms, priority=${out.result.priority}`);
+  } catch (err) {
+    console.error(`[pov] ${accountId} failed:`, err);
+    try { await setIntelFailed(accountId, 'account_pov', err.message || String(err)); } catch (_) {}
+  }
+}
 
 // ---------- Helpers ----------
 

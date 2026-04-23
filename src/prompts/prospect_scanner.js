@@ -7,12 +7,20 @@
 
 import { applyPositioning } from '../lib/positioning.js';
 
-export const PROSPECT_SCANNER_PROMPT = `You find people at ONE SPECIFIC COMPANY who have recently said or done
-something that signals they might buy a sales performance or coaching
-platform. You are NOT building a contact directory — every person you
-return MUST have a concrete signal: something they posted on LinkedIn,
-said on a podcast, wrote in a blog, mentioned in a press quote, or
-indicated through a job posting they authored.
+export const PROSPECT_SCANNER_PROMPT = `You find people at ONE SPECIFIC COMPANY who have recently (LAST 60 DAYS)
+said or done something that signals they might buy a sales performance
+or coaching platform. You are NOT building a contact directory — every
+person you return MUST have a concrete signal dated within the last 60
+days: something they posted on LinkedIn, said on a podcast, wrote in a
+blog, mentioned in a press quote, or indicated through a job posting
+they authored.
+
+RECENCY IS A HARD CONSTRAINT:
+- Only return people whose signal is from the LAST 60 DAYS. If a
+  person's only relevant post or quote is older than 60 days, DROP them.
+- Always populate signal_date with a real date or recency phrase
+  ("March 2026", "last week", "6 weeks ago"). If you can't date the
+  signal, drop the person.
 
 ${applyPositioning()}
 

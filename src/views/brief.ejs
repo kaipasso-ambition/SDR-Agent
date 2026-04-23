@@ -1,165 +1,335 @@
 <%
-  // Kind meta — three scanner sources, normalized to one card shape.
-  // The 'lane' styling reflects the AE's mental model:
-  //   blue    = defense (customer signal, risk)
-  //   sky     = offense (customer signal, opportunity) / context
-  //   emerald = expansion (growth inside current customers)
-  //   amber   = revisit (re-entry on lost/churned)
-  const riskMeta = {
-    defense_risk:         { label: 'Defense risk',        pill: 'bg-red-100 text-red-800',       border: 'border-red-300',     bar: 'bg-red-500' },
-    offense_opportunity:  { label: 'Offense opportunity', pill: 'bg-sky-100 text-sky-800',       border: 'border-sky-300',     bar: 'bg-sky-500' },
-    neutral:              { label: 'Context',             pill: 'bg-slate-100 text-slate-700',   border: 'border-slate-200',   bar: 'bg-slate-300' },
+  const FY_MONTHS = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  const statusColor = {
+    customer: 'bg-emerald-100 text-emerald-800',
+    prospect: 'bg-sky-100 text-sky-800',
+    churned:  'bg-amber-100 text-amber-800',
   };
-  const kindMeta = {
-    customer_signal: { label: 'Customer',  pill: 'bg-slate-100 text-slate-700',     border: 'border-slate-200',   bar: 'bg-slate-400' },
-    expansion:       { label: 'Expansion', pill: 'bg-emerald-100 text-emerald-800', border: 'border-emerald-300', bar: 'bg-emerald-500' },
-    revisit:         { label: 'Revisit',   pill: 'bg-amber-100 text-amber-800',     border: 'border-amber-300',   bar: 'bg-amber-500' },
+  const priorityColor = {
+    hot:  'bg-red-100 text-red-800',
+    warm: 'bg-amber-100 text-amber-800',
+    cool: 'bg-slate-100 text-slate-600',
   };
-  function cardMeta(item) {
-    if (item.kind === 'customer_signal') return riskMeta[item.risk_class] || riskMeta.neutral;
-    return kindMeta[item.kind] || kindMeta.customer_signal;
+  const riskPill = {
+    defense_risk:        'bg-red-100 text-red-800',
+    offense_opportunity: 'bg-sky-100 text-sky-800',
+    neutral:             'bg-slate-100 text-slate-700',
+  };
+  const riskLabel = {
+    defense_risk:        'Defense',
+    offense_opportunity: 'Offense',
+    neutral:             'Context',
+  };
+  const signalTypeLabel = {
+    linkedin_post: 'LinkedIn',
+    press_quote:   'Press',
+    conference:    'Conference',
+    job_posting:   'Job posting',
+    podcast:       'Podcast',
+    blog:          'Blog',
+    other:         'Web',
+  };
+
+  function daysAgo(d) {
+    if (!d) return null;
+    const ms = Date.now() - new Date(d).getTime();
+    if (ms < 0) return 0;
+    return Math.floor(ms / 86400000);
   }
-  const tabs = [
-    { key: null,              label: 'All',        count: kindTotals.all },
-    { key: 'customers',       label: 'Customers',  count: kindTotals.customer_signal },
-    { key: 'expansion',       label: 'Expansion',  count: kindTotals.expansion },
-    { key: 'revisit',         label: 'Revisit',    count: kindTotals.revisit },
-  ];
+  function agoLabel(d) {
+    const n = daysAgo(d);
+    if (n === null) return '';
+    if (n === 0) return 'today';
+    if (n === 1) return 'yesterday';
+    if (n < 7)  return n + 'd ago';
+    if (n < 60) return Math.floor(n / 7) + 'w ago';
+    return Math.floor(n / 30) + 'mo ago';
+  }
+
+  const anyRunning = accounts.some(function(a) {
+    return a.prospect_scan_status === 'running' || a.pov_status === 'running';
+  });
+
+  // Build query-string helpers that preserve current filters when the AE
+  // flips one knob (e.g. changing sort keeps the status filter intact).
+  function qs(overrides) {
+    const base = { sort: sort, status: statusFilter || '', q: '' };
+    const merged = Object.assign({}, base, overrides || {});
+    const params = Object.keys(merged)
+      .filter(function(k) { return merged[k] !== '' && merged[k] != null; })
+      .map(function(k) { return encodeURIComponent(k) + '=' + encodeURIComponent(merged[k]); })
+      .join('&');
+    return params ? ('/brief?' + params) : '/brief';
+  }
 %>
 
 <div class="mb-6 flex items-start justify-between gap-4 flex-wrap">
   <div>
     <h1 class="text-2xl font-semibold">Today</h1>
-    <p class="text-sm text-slate-500 mt-1">The one move to make, ranked.</p>
+    <p class="text-sm text-slate-500 mt-1">
+      What moved at your accounts in the last 60 days — and the 2-3 people worth reaching out to.
+    </p>
   </div>
-  <form method="POST" action="/signals/scan" class="shrink-0">
-    <button type="submit"
-            class="text-sm bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded font-medium"
-            <% if (runningJob) { %>disabled<% } %>>
-      <% if (runningJob) { %>Scanning…<% } else { %>Run scan now<% } %>
-    </button>
-  </form>
+  <div class="flex items-center gap-2">
+    <form method="POST" action="/signals/scan" class="shrink-0">
+      <button type="submit"
+              class="text-sm bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded font-medium disabled:bg-slate-400 disabled:cursor-wait"
+              <% if (runningJob) { %>disabled<% } %>>
+        <% if (runningJob) { %>Scanning…<% } else { %>Scan all accounts<% } %>
+      </button>
+    </form>
+  </div>
 </div>
 
 <% if (runningJob) { %>
-  <div class="bg-emerald-50 border border-emerald-200 rounded-lg p-4 mb-6 flex items-center gap-3">
+  <div class="bg-emerald-50 border border-emerald-200 rounded-lg p-3 mb-5 flex items-center gap-3">
     <span class="inline-block w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
     <div class="flex-1 text-sm text-emerald-900">
-      Scanning accounts for new signals — <%= activeJob.accounts_scanned || 0 %> scanned, <%= activeJob.signals_detected || 0 %> new.
-      Expect ~30-45s per account.
+      Scanning accounts for new signals — <%= activeJob.accounts_scanned || 0 %> scanned, <%= activeJob.signals_detected || 0 %> new. Expect ~30-45s per account.
     </div>
   </div>
   <script>setTimeout(function(){ location.reload(); }, 15000);</script>
-<% } else if (activeJob && activeJob.status === 'completed' && activeJob.finished_at && (Date.now() - new Date(activeJob.finished_at).getTime() < 120000)) { %>
-  <div class="bg-slate-50 border border-slate-200 rounded-lg p-3 mb-6 text-sm text-slate-700">
-    ✓ Last customer scan finished — <%= activeJob.accounts_scanned %> account<%= activeJob.accounts_scanned === 1 ? '' : 's' %>,
-    <%= activeJob.signals_detected %> new signal<%= activeJob.signals_detected === 1 ? '' : 's' %>,
-    <%= activeJob.signals_skipped_dedup %> deduped.
-  </div>
+<% } else if (anyRunning) { %>
+  <script>setTimeout(function(){ location.reload(); }, 8000);</script>
 <% } %>
 
-<div class="mb-5 flex items-center gap-1 text-xs flex-wrap">
-  <% tabs.forEach(function(t) {
-      const active = (kindFilter || null) === t.key;
-      const href = t.key ? ('/brief?kind=' + t.key) : '/brief';
-  %>
-    <a href="<%= href %>"
-       class="px-3 py-1.5 rounded border <%= active ? 'bg-slate-900 text-white border-slate-900' : 'bg-white border-slate-300 text-slate-700 hover:border-slate-500' %>">
-      <%= t.label %>
-      <span class="<%= active ? 'text-slate-300' : 'text-slate-400' %> ml-1"><%= t.count %></span>
+<div class="mb-4 flex items-center gap-3 text-xs flex-wrap">
+  <div class="flex items-center gap-1">
+    <span class="text-slate-500 mr-1">Status:</span>
+    <% ['', 'customer', 'prospect', 'churned'].forEach(function(s) {
+      const active = (statusFilter || '') === s;
+      const label = s === '' ? 'All' : s.charAt(0).toUpperCase() + s.slice(1);
+    %>
+      <a href="<%= qs({status: s}) %>"
+         class="px-2.5 py-1 rounded border <%= active ? 'bg-slate-900 text-white border-slate-900' : 'bg-white border-slate-300 text-slate-700 hover:border-slate-500' %>">
+        <%= label %>
+      </a>
+    <% }); %>
+  </div>
+
+  <span class="text-slate-300">·</span>
+
+  <div class="flex items-center gap-1">
+    <span class="text-slate-500 mr-1">Sort:</span>
+    <a href="<%= qs({sort: 'newest'}) %>"
+       class="px-2.5 py-1 rounded border <%= sort === 'newest' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white border-slate-300 text-slate-700 hover:border-slate-500' %>">
+      Newest
     </a>
-  <% }); %>
+    <a href="<%= qs({sort: 'priority'}) %>"
+       class="px-2.5 py-1 rounded border <%= sort === 'priority' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white border-slate-300 text-slate-700 hover:border-slate-500' %>">
+      Priority
+    </a>
+    <a href="<%= qs({sort: 'oldest'}) %>"
+       class="px-2.5 py-1 rounded border <%= sort === 'oldest' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white border-slate-300 text-slate-700 hover:border-slate-500' %>">
+      Oldest
+    </a>
+  </div>
+
+  <span class="text-slate-300">·</span>
+
+  <a href="<%= qs({quiet: includeQuiet ? '' : '1'}) %>"
+     class="text-slate-500 hover:text-slate-900 underline">
+    <%= includeQuiet ? 'Hide quiet accounts' : 'Show all accounts' %>
+  </a>
 </div>
 
-<% if (!items || items.length === 0) { %>
-  <div class="bg-white border border-slate-200 rounded-lg p-8 text-sm text-slate-500 text-center">
-    <% if (kindFilter) { %>
-      <div class="text-base text-slate-700 mb-1">Nothing in this lane right now.</div>
-      <a href="/brief" class="underline">Show everything →</a>
+<% if (!accounts || accounts.length === 0) { %>
+  <div class="bg-white border border-slate-200 rounded-lg p-8 text-center text-slate-500">
+    <% if (statusFilter) { %>
+      No <%= statusFilter %> accounts with activity in the last 60 days.
+      <a href="<%= qs({status: ''}) %>" class="underline">Clear filter</a>
     <% } else { %>
-      <div class="text-base text-slate-700 mb-1">No signals yet.</div>
-      Click <strong>Run scan now</strong> to start a pass over your customer accounts,
-      or kick off a scan from <a href="/expand" class="underline">/expand</a> (current customers)
-      or <a href="/revisit" class="underline">/revisit</a> (lost / churned).
+      <div class="text-base text-slate-700 mb-1">No activity yet.</div>
+      Click <strong>Scan all accounts</strong> to start. ~30-45s per account.
     <% } %>
   </div>
 <% } else { %>
-  <ul class="space-y-4">
-    <% items.forEach(function(s, idx) {
-      const meta = cardMeta(s);
-      const km = kindMeta[s.kind] || kindMeta.customer_signal;
-      const isCustomerSignal = s.kind === 'customer_signal';
+  <div class="space-y-4">
+    <% accounts.forEach(function(a) {
+      const ps = a.prospect_scan_result;
+      const psRunning = a.prospect_scan_status === 'running';
+      const hasProspects = a.prospect_scan_status === 'completed' && ps && Array.isArray(ps.prospects) && ps.prospects.length > 0;
+      const noProspects  = a.prospect_scan_status === 'completed' && ps && (!ps.prospects || ps.prospects.length === 0);
+      const psFailed     = a.prospect_scan_status === 'failed';
+
+      const pov = a.pov_result;
+      const povRunning = a.pov_status === 'running';
+      const hasPov = a.pov_status === 'completed' && pov && pov.pov;
+
+      const signals = Array.isArray(a.signals) ? a.signals : [];
+      const sigCount = Number(a.signal_count) || 0;
+      const defCount = Number(a.defense_count) || 0;
+      const offCount = Number(a.offense_count) || 0;
     %>
-      <%
-        // Prefer the interpretive so_what; fall back to the factual summary
-        // so every card has exactly one paragraph of context, not two.
-        const body = (s.so_what && s.so_what.trim()) || (s.summary && s.summary.trim()) || '';
-        // /revisit link needs the opportunity_id — parse it back out of
-        // the play_action path we generated in the unified query.
-        const revisitOppId = s.kind === 'revisit'
-          ? ((s.play_action || '').split('/')[2] || '')
-          : '';
-      %>
-      <li class="bg-white border-2 <%= meta.border %> rounded-lg overflow-hidden">
-        <div class="flex">
-          <div class="<%= meta.bar %> w-1 shrink-0"></div>
-          <div class="flex-1 p-5">
-            <div class="flex items-center gap-2 flex-wrap mb-2 text-xs">
-              <span class="pill <%= km.pill %>"><%= km.label %></span>
-              <% if (isCustomerSignal) { %>
-                <span class="pill <%= (riskMeta[s.risk_class] || riskMeta.neutral).pill %>">
-                  <%= (riskMeta[s.risk_class] || riskMeta.neutral).label %>
-                </span>
-              <% } %>
-              <a href="/accounts/<%= s.account_id %>" class="font-medium text-slate-700 hover:underline"><%= s.account_name %></a>
-              <span class="text-slate-400">·</span>
-              <span class="text-slate-400">SEV <%= s.severity %></span>
-              <span class="text-slate-400">·</span>
-              <span class="text-slate-400"><%= new Date(s.detected_at).toLocaleDateString() %></span>
-            </div>
+      <div class="bg-white border border-slate-200 rounded-lg overflow-hidden">
 
-            <div class="flex items-start justify-between gap-4">
-              <div class="flex-1 min-w-0">
-                <div class="text-base font-semibold text-slate-900 mb-1"><%= s.title %></div>
-                <% if (body) { %>
-                  <div class="text-sm text-slate-700"><%= body %></div>
-                <% } %>
-                <% if (s.recommended_move) { %>
-                  <div class="text-sm text-slate-900 mt-2">
-                    <span class="font-medium">→</span> <%= s.recommended_move %>
-                  </div>
-                <% } %>
-              </div>
-
-              <form method="POST" action="<%= s.play_action %>" class="shrink-0"
-                    onsubmit="this.querySelector('button').disabled=true;this.querySelector('button').textContent='Building…';">
-                <% if (isCustomerSignal) { %>
-                  <input type="hidden" name="action" value="build_play" />
-                <% } %>
-                <button type="submit" class="text-sm bg-slate-900 hover:bg-slate-800 disabled:bg-slate-500 disabled:cursor-wait text-white px-4 py-2 rounded font-medium">
-                  Build a play →
-                </button>
-              </form>
-            </div>
-
-            <div class="flex items-center gap-3 mt-3 text-xs text-slate-400">
-              <% if (s.source_url) { %>
-                <a href="<%= s.source_url %>" target="_blank" rel="noopener" class="hover:text-slate-700 underline">Source ↗</a>
-                <span>·</span>
-              <% } %>
-              <% if (isCustomerSignal) { %>
-                <form method="POST" action="/signals/<%= s.id %>/dismiss" class="inline">
-                  <button type="submit" class="hover:text-slate-700">Not this one</button>
-                </form>
-              <% } else if (s.kind === 'expansion') { %>
-                <a href="/expand/<%= s.account_id %>" class="hover:text-slate-700">Open dossier</a>
-              <% } else if (s.kind === 'revisit') { %>
-                <a href="/revisit/<%= encodeURIComponent(revisitOppId) %>" class="hover:text-slate-700">Open revisit</a>
-              <% } %>
-            </div>
+        <div class="px-4 py-3 border-b border-slate-100 flex items-start justify-between gap-3 flex-wrap">
+          <div class="flex items-center gap-2 min-w-0 flex-1 flex-wrap">
+            <a href="/accounts/<%= a.account_id %>" class="font-medium text-slate-900 hover:text-emerald-700 truncate">
+              <%= a.account_name %>
+            </a>
+            <span class="pill <%= statusColor[a.account_status] || 'bg-slate-100 text-slate-700' %>"><%= a.account_status %></span>
+            <% if (hasPov && pov.priority) { %>
+              <span class="pill <%= priorityColor[pov.priority] || priorityColor.cool %>"><%= pov.priority %></span>
+            <% } %>
+            <% if (sigCount > 0) { %>
+              <span class="text-xs text-slate-500">
+                <%= sigCount %> signal<%= sigCount === 1 ? '' : 's' %>
+                <% if (defCount > 0) { %><span class="text-red-700 ml-1"><%= defCount %> defense</span><% } %>
+                <% if (offCount > 0) { %><span class="text-sky-700 ml-1"><%= offCount %> offense</span><% } %>
+              </span>
+            <% } %>
+            <% if (a.industry) { %>
+              <span class="text-xs text-slate-400 hidden sm:inline">· <%= a.industry %></span>
+            <% } %>
+          </div>
+          <div class="flex items-center gap-3 shrink-0 flex-wrap">
+            <% if (a.fiscal_year_end) { %>
+              <span class="text-[11px] text-slate-500">FY <%= FY_MONTHS[a.fiscal_year_end] %></span>
+            <% } %>
+            <% if (a.budget_start_month) { %>
+              <span class="text-[11px] text-slate-500">budget <%= FY_MONTHS[a.budget_start_month] %></span>
+            <% } %>
+            <% if (a.last_activity_at) { %>
+              <span class="text-[11px] text-slate-400"><%= agoLabel(a.last_activity_at) %></span>
+            <% } %>
+            <form method="POST" action="/accounts/<%= a.account_id %>/scan-all" class="inline">
+              <button type="submit"
+                      class="text-xs bg-slate-900 hover:bg-slate-800 text-white px-3 py-1.5 rounded font-medium disabled:bg-slate-400 disabled:cursor-wait"
+                      <% if (psRunning || povRunning) { %>disabled<% } %>>
+                <% if (psRunning || povRunning) { %>Scanning…<% } else if (sigCount > 0 || hasProspects || noProspects) { %>Rescan<% } else { %>Scan<% } %>
+              </button>
+            </form>
           </div>
         </div>
-      </li>
+
+        <% if (hasPov) { %>
+          <div class="px-4 py-3 bg-slate-50 border-b border-slate-100">
+            <div class="text-[10px] uppercase tracking-wide text-slate-500 mb-1">Point of view</div>
+            <div class="text-sm text-slate-900"><%= pov.pov %></div>
+            <div class="text-sm text-slate-900 mt-1.5">
+              <span class="font-medium text-slate-700">→</span> <%= pov.strategy %>
+            </div>
+          </div>
+        <% } else if (povRunning) { %>
+          <div class="px-4 py-2.5 bg-slate-50 border-b border-slate-100 text-xs text-slate-500 flex items-center gap-2">
+            <span class="inline-block w-2 h-2 bg-slate-400 rounded-full animate-pulse"></span>
+            Building point of view…
+          </div>
+        <% } %>
+
+        <% if (signals.length > 0) { %>
+          <div class="divide-y divide-slate-100">
+            <div class="px-4 py-2 bg-slate-50/50 text-[10px] uppercase tracking-wide text-slate-500">
+              Signals (last 60 days)
+            </div>
+            <% signals.slice(0, 5).forEach(function(s) { %>
+              <div class="px-4 py-3">
+                <div class="flex items-start justify-between gap-3">
+                  <div class="min-w-0 flex-1">
+                    <div class="flex items-center gap-2 flex-wrap mb-1 text-xs">
+                      <% if (s.risk_class) { %>
+                        <span class="pill <%= riskPill[s.risk_class] || riskPill.neutral %>">
+                          <%= riskLabel[s.risk_class] || 'Context' %>
+                        </span>
+                      <% } %>
+                      <span class="text-slate-400">SEV <%= s.severity %></span>
+                      <span class="text-slate-400">·</span>
+                      <span class="text-slate-400"><%= agoLabel(s.detected_at) %></span>
+                    </div>
+                    <div class="text-sm font-medium text-slate-900"><%= s.title %></div>
+                    <% if (s.so_what) { %>
+                      <div class="text-sm text-slate-700 mt-1"><%= s.so_what %></div>
+                    <% } else if (s.summary) { %>
+                      <div class="text-sm text-slate-700 mt-1"><%= s.summary %></div>
+                    <% } %>
+                    <% if (s.recommended_move) { %>
+                      <div class="text-sm text-slate-900 mt-1.5">
+                        <span class="font-medium text-slate-700">→</span> <%= s.recommended_move %>
+                      </div>
+                    <% } %>
+                  </div>
+                  <div class="flex flex-col items-end gap-1 shrink-0">
+                    <% if (s.source_url) { %>
+                      <a href="<%= s.source_url %>" target="_blank" rel="noopener" class="text-xs text-slate-500 hover:text-slate-900 underline">Source ↗</a>
+                    <% } %>
+                    <form method="POST" action="/signals/<%= s.id %>/play" class="inline">
+                      <button type="submit" class="text-xs text-slate-700 hover:text-slate-900 underline">Build play</button>
+                    </form>
+                  </div>
+                </div>
+              </div>
+            <% }); %>
+            <% if (signals.length > 5) { %>
+              <div class="px-4 py-2 text-xs text-slate-500">
+                <a href="/accounts/<%= a.account_id %>" class="underline">+ <%= signals.length - 5 %> more on account page</a>
+              </div>
+            <% } %>
+          </div>
+        <% } %>
+
+        <% if (hasProspects) { %>
+          <div class="border-t border-slate-100">
+            <div class="px-4 py-2 bg-slate-50/50 flex items-center justify-between gap-2">
+              <span class="text-[10px] uppercase tracking-wide text-slate-500">People showing intent</span>
+              <% if (ps.opportunity_strength) { %>
+                <span class="pill <%= priorityColor[ps.opportunity_strength] || priorityColor.cool %> text-[10px]">
+                  <%= ps.opportunity_strength %>
+                </span>
+              <% } %>
+            </div>
+            <% if (ps.opportunity_thesis) { %>
+              <div class="px-4 py-2 text-sm text-slate-800 font-medium border-b border-slate-100">
+                <%= ps.opportunity_thesis %>
+              </div>
+            <% } %>
+            <div class="divide-y divide-slate-100">
+              <% ps.prospects.forEach(function(p) { %>
+                <div class="px-4 py-3">
+                  <div class="flex items-start justify-between gap-3">
+                    <div class="min-w-0 flex-1">
+                      <div class="flex items-center gap-2 flex-wrap">
+                        <span class="font-medium text-slate-900"><%= p.name %></span>
+                        <span class="text-xs text-slate-500"><%= p.title %></span>
+                        <span class="pill bg-sky-50 text-sky-800 text-[10px]"><%= signalTypeLabel[p.signal_type] || p.signal_type %></span>
+                        <% if (p.signal_date) { %><span class="text-[11px] text-slate-400"><%= p.signal_date %></span><% } %>
+                      </div>
+                      <div class="text-sm text-slate-800 mt-1"><%= p.signal %></div>
+                      <% if (p.why_it_matters) { %>
+                        <div class="text-xs text-slate-500 mt-1 italic"><%= p.why_it_matters %></div>
+                      <% } %>
+                    </div>
+                    <% if (p.source_url) { %>
+                      <a href="<%= p.source_url %>" target="_blank" rel="noopener" class="text-xs text-slate-500 hover:text-slate-900 underline shrink-0">Source ↗</a>
+                    <% } %>
+                  </div>
+                </div>
+              <% }); %>
+            </div>
+          </div>
+        <% } else if (psRunning) { %>
+          <div class="px-4 py-3 border-t border-slate-100 text-sm text-slate-500 flex items-center gap-2">
+            <span class="inline-block w-2 h-2 bg-slate-400 rounded-full animate-pulse"></span>
+            Searching for people at <%= a.account_name %> showing buying signals…
+          </div>
+        <% } else if (noProspects) { %>
+          <div class="px-4 py-3 border-t border-slate-100 text-xs text-slate-500">
+            No active people-level signals in the last 60 days.
+          </div>
+        <% } else if (psFailed) { %>
+          <div class="px-4 py-2 border-t border-slate-100 text-xs text-red-700">
+            Prospect scan failed. Click <strong>Rescan</strong> to try again.
+          </div>
+        <% } %>
+
+        <% if (signals.length === 0 && !hasProspects && !psRunning && !noProspects && !psFailed && !hasPov) { %>
+          <div class="px-4 py-4 text-xs text-slate-500">
+            No recent intel. Click <strong>Scan</strong> to pull news + prospects for this account.
+          </div>
+        <% } %>
+
+      </div>
     <% }); %>
-  </ul>
+  </div>
 <% } %>

@@ -143,6 +143,95 @@ export async function listUnifiedBrief(userId, { limit = 50 } = {}) {
 // sources so the "unread" number on the header reflects total work waiting,
 // not just customer signals. `this_week` is rows detected in the last 7 days;
 // breakdowns let the UI render "X defense · Y offense · Z growth · W revisit".
+// Account-grouped view for the unified /today page: one row per account
+// with signal count + latest activity + POV + prospect scan, filtered to
+// the last 60 days. Accounts with zero activity and no prospect scan
+// drop off unless includeQuiet is set (so the page isn't cluttered with
+// 150 empty cards, but the AE can still reveal them on demand).
+export async function listAccountTimeline(userId, { includeQuiet = false, statuses = null } = {}) {
+  const statusList = Array.isArray(statuses) && statuses.length > 0
+    ? statuses
+    : ['prospect', 'customer', 'churned'];
+
+  const { rows } = await query(
+    `
+    WITH recent_signals AS (
+      SELECT
+        s.account_id,
+        COUNT(*)::int                                    AS signal_count,
+        COUNT(*) FILTER (WHERE s.risk_class = 'defense_risk')::int        AS defense_count,
+        COUNT(*) FILTER (WHERE s.risk_class = 'offense_opportunity')::int AS offense_count,
+        MAX(s.detected_at)                               AS last_signal_at,
+        jsonb_agg(
+          jsonb_build_object(
+            'id',               s.id,
+            'title',            s.title,
+            'summary',          s.summary,
+            'so_what',          s.so_what,
+            'recommended_move', s.recommended_move,
+            'source_url',       s.source_url,
+            'signal_type',      s.signal_type,
+            'risk_class',       s.risk_class,
+            'severity',         s.severity,
+            'detected_at',      s.detected_at,
+            'status',           s.status
+          )
+          ORDER BY s.detected_at DESC
+        )                                                AS signals
+      FROM account_signals s
+      WHERE s.status IN ('new', 'acknowledged', 'playing')
+        AND s.detected_at >= NOW() - INTERVAL '60 days'
+      GROUP BY s.account_id
+    )
+    SELECT
+      a.id                              AS account_id,
+      a.account_name,
+      a.status                          AS account_status,
+      a.industry,
+      a.domain,
+      a.fiscal_year_end,
+      a.budget_start_month,
+      a.buyer_timing,
+      a.sales_perf_topics,
+      a.notes,
+      a.owner_user_id,
+      u.name                            AS owner_name,
+      COALESCE(rs.signal_count, 0)      AS signal_count,
+      COALESCE(rs.defense_count, 0)     AS defense_count,
+      COALESCE(rs.offense_count, 0)     AS offense_count,
+      rs.last_signal_at,
+      COALESCE(rs.signals, '[]'::jsonb) AS signals,
+      ps.status                         AS prospect_scan_status,
+      ps.result                         AS prospect_scan_result,
+      ps.completed_at                   AS prospect_scan_at,
+      pov.status                        AS pov_status,
+      pov.result                        AS pov_result,
+      pov.completed_at                  AS pov_at,
+      GREATEST(
+        COALESCE(rs.last_signal_at,    'epoch'::timestamptz),
+        COALESCE(ps.completed_at,       'epoch'::timestamptz),
+        COALESCE(pov.completed_at,      'epoch'::timestamptz)
+      )                                  AS last_activity_at
+    FROM accounts_registry a
+    LEFT JOIN users u                ON u.id = a.owner_user_id
+    LEFT JOIN recent_signals rs      ON rs.account_id = a.id
+    LEFT JOIN account_intel ps       ON ps.account_id = a.id AND ps.kind = 'prospect_scan'
+    LEFT JOIN account_intel pov      ON pov.account_id = a.id AND pov.kind = 'account_pov'
+    WHERE (a.owner_user_id = $1 OR a.owner_user_id IS NULL)
+      AND a.status = ANY($2::text[])
+      AND ($3::boolean
+           OR rs.signal_count > 0
+           OR ps.status IS NOT NULL
+           OR pov.status IS NOT NULL)
+    ORDER BY
+      last_activity_at DESC NULLS LAST,
+      a.account_name ASC
+    `,
+    [userId, statusList, includeQuiet]
+  );
+  return rows;
+}
+
 export async function getUnifiedCounts(userId) {
   const { rows } = await query(
     `
