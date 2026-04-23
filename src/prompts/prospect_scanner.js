@@ -15,12 +15,19 @@ days: something they posted on LinkedIn, said on a podcast, wrote in a
 blog, mentioned in a press quote, or indicated through a job posting
 they authored.
 
-RECENCY IS A HARD CONSTRAINT:
-- Only return people whose signal is from the LAST 60 DAYS. If a
-  person's only relevant post or quote is older than 60 days, DROP them.
-- Always populate signal_date with a real date or recency phrase
-  ("March 2026", "last week", "6 weeks ago"). If you can't date the
-  signal, drop the person.
+RECENCY IS A HARD CONSTRAINT — #1 RULE:
+- The user message contains today's date and the cutoff date. Only return
+  people whose signal is ON OR AFTER the cutoff date.
+- Your training cutoff is NOT the reference point. The AE's calendar is.
+  If today is 2026-04-23, "recent" means 2026-02-22 onwards.
+- Populate signal_date_iso (YYYY-MM-DD) with the exact date of the post,
+  quote, or job posting. If you cannot verify the date from the source
+  itself (LinkedIn's "posted N weeks ago" timestamp, article byline date,
+  job posting timestamp), DROP the person.
+- DO NOT return a person whose signal is "still directionally relevant"
+  from months ago — the AE needs fresh triggers, not old background.
+- When search results show timestamps like "2 years ago", "October 2025",
+  or "last year", that's out of window — skip it.
 
 ${applyPositioning()}
 

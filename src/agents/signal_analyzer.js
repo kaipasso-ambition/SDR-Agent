@@ -87,7 +87,13 @@ Return a JSON array of signals per the instructions. Every signal must include "
   // anything outside the 60-day window as a server-side guardrail. The
   // model is instructed to drop these itself but doesn't always comply,
   // especially for well-known historical events it pulls from training.
-  const cutoffMs = Date.now() - 60 * 24 * 60 * 60 * 1000;
+  const now = Date.now();
+  const cutoffMs = now - 60 * 24 * 60 * 60 * 1000;
+  // Grace period for future dates: announcements can be dated 1-2 days
+  // ahead of publication (scheduled press releases). Tolerate up to 7
+  // days; anything further out is almost always a hallucination.
+  const futureGraceMs = now + 7 * 24 * 60 * 60 * 1000;
+
   const signals = [];
   let droppedStale = 0;
   for (const s of parsed) {
@@ -99,9 +105,21 @@ Return a JSON array of signals per the instructions. Every signal must include "
       console.log(`[signal_analyzer] drop (no event_date): "${s.title}"`);
       continue;
     }
-    if (eventDate.getTime() < cutoffMs) {
+    const ts = eventDate.getTime();
+    if (ts < cutoffMs) {
       droppedStale++;
       console.log(`[signal_analyzer] drop (stale ${s.event_date}): "${s.title}"`);
+      continue;
+    }
+    if (ts > futureGraceMs) {
+      droppedStale++;
+      console.log(`[signal_analyzer] drop (future ${s.event_date}): "${s.title}"`);
+      continue;
+    }
+    // Source must cite a URL; model occasionally returns just a title.
+    if (!s.source_url || typeof s.source_url !== 'string' || !/^https?:\/\//i.test(s.source_url)) {
+      droppedStale++;
+      console.log(`[signal_analyzer] drop (no source_url): "${s.title}"`);
       continue;
     }
 
@@ -115,10 +133,10 @@ Return a JSON array of signals per the instructions. Every signal must include "
   }
 
   if (droppedStale > 0) {
-    console.log(`[signal_analyzer] ${account.account_name}: dropped ${droppedStale} stale/undated signal(s)`);
+    console.log(`[signal_analyzer] ${account.account_name}: dropped ${droppedStale} stale/undated/unsourced signal(s)`);
   }
 
-  return { signals, searches: searchCount, raw: text };
+  return { signals, searches: searchCount, raw: text, droppedStale };
 }
 
 // Accept YYYY-MM-DD or ISO timestamp; reject everything else. Returning

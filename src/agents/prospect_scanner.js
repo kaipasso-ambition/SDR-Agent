@@ -71,6 +71,7 @@ Find 2-3 people AT ${account.account_name} whose recent signal falls within the 
     return Number.isFinite(d.getTime()) ? d : null;
   };
   const cutoffMs = today.getTime() - 60 * 24 * 60 * 60 * 1000;
+  const futureGraceMs = today.getTime() + 7 * 24 * 60 * 60 * 1000;
 
   let droppedStale = 0;
   const prospects = (Array.isArray(parsed.prospects) ? parsed.prospects : [])
@@ -83,10 +84,23 @@ Find 2-3 people AT ${account.account_name} whose recent signal falls within the 
       const sourceUrl = asStr(p.source_url);
       if (!sourceUrl || !/^https?:\/\//i.test(sourceUrl)) return null;
 
-      // Server-side recency guardrail: require signal_date_iso in window.
+      // Server-side recency guardrail: require signal_date_iso strictly
+      // within the 60-day window (no future hallucinations either).
       const iso = parseIsoDate(p.signal_date_iso);
-      if (!iso || iso.getTime() < cutoffMs) {
+      if (!iso) {
         droppedStale++;
+        console.log(`[prospect_scanner] drop (no signal_date_iso): ${name}`);
+        return null;
+      }
+      const ts = iso.getTime();
+      if (ts < cutoffMs) {
+        droppedStale++;
+        console.log(`[prospect_scanner] drop (stale ${p.signal_date_iso}): ${name}`);
+        return null;
+      }
+      if (ts > futureGraceMs) {
+        droppedStale++;
+        console.log(`[prospect_scanner] drop (future ${p.signal_date_iso}): ${name}`);
         return null;
       }
 

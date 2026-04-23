@@ -72,6 +72,12 @@
     </p>
   </div>
   <div class="flex items-center gap-2">
+    <form method="POST" action="/signals/purge-stale" class="shrink-0"
+          onsubmit="return confirm('Dismiss every active signal older than 60 days or with no event date?');">
+      <button type="submit" class="text-xs text-slate-500 hover:text-red-700 underline px-2">
+        Purge stale intel
+      </button>
+    </form>
     <form method="POST" action="/signals/scan" class="shrink-0">
       <button type="submit"
               class="text-sm bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded font-medium disabled:bg-slate-400 disabled:cursor-wait"
@@ -81,6 +87,12 @@
     </form>
   </div>
 </div>
+
+<% if (typeof purgedCount !== 'undefined' && purgedCount !== null) { %>
+  <div class="bg-slate-50 border border-slate-200 rounded-lg p-3 mb-5 text-sm text-slate-700">
+    ✓ Purged <%= purgedCount %> stale signal<%= purgedCount === 1 ? '' : 's' %> (older than 60 days or no event date).
+  </div>
+<% } %>
 
 <% if (runningJob) { %>
   <div class="bg-emerald-50 border border-emerald-200 rounded-lg p-3 mb-5 flex items-center gap-3">

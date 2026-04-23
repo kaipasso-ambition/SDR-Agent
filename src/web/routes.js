@@ -1838,6 +1838,9 @@ webRouter.get('/brief', requireAuth, async (req, res, next) => {
 
     const activeJob = activeJobRow.rows[0] || null;
     const runningJob = activeJob && activeJob.status === 'running';
+    const purgedParam = req.query?.purged;
+    const purgedCount = purgedParam != null && /^\d+$/.test(purgedParam)
+      ? parseInt(purgedParam, 10) : null;
     res.render('brief', {
       title: 'Today',
       accounts: sorted,
@@ -1846,6 +1849,7 @@ webRouter.get('/brief', requireAuth, async (req, res, next) => {
       includeQuiet,
       activeJob,
       runningJob,
+      purgedCount,
     });
   } catch (err) {
     next(err);
@@ -2184,6 +2188,28 @@ webRouter.post('/accounts/:id/intel/prospects', requireAuth, async (req, res, ne
 
     res.redirect(req.body?._from === 'discover' || req.body?._from === 'brief'
       ? '/brief' : `/accounts/${accountId}#prospects`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Purge stale intel across the entire book — dismisses every active
+// signal with a NULL event_date (pre-recency-fix rows) or an event_date
+// older than 60 days. Non-destructive: dismissed rows stay in DB on the
+// account's archive tab. Use this to clean up historical contamination
+// from earlier prompt versions that didn't enforce dating.
+webRouter.post('/signals/purge-stale', requireAuth, async (req, res, next) => {
+  try {
+    const { rowCount } = await query(
+      `UPDATE account_signals
+          SET status = 'dismissed',
+              acknowledged_at = NOW()
+        WHERE status IN ('new', 'acknowledged', 'playing')
+          AND (event_date IS NULL
+               OR event_date < (CURRENT_DATE - INTERVAL '60 days')::date)`
+    );
+    console.log(`[purge-stale] dismissed ${rowCount} stale signal(s)`);
+    res.redirect('/brief?purged=' + rowCount);
   } catch (err) {
     next(err);
   }
