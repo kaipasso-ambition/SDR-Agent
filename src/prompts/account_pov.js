@@ -25,13 +25,16 @@ Write five fields:
    - warm: signals exist but timing is diffuse. Build the thesis; act in 2-4 weeks.
    - cool: no active signals, stable account, monitor only.
 
+6. "recommended_play" — 2-3 sentences. Draft the AE's instinct for a play. This should read like what a sharp AE would type if they sat down and synthesized all the signals, the opportunity, and the account context into one move. Be specific: name the person to reach, the angle to use, and why now. If no play is warranted (cool/stable account), return null.
+
 Output schema (strict JSON, no prose):
 {
   "whats_happening": "…",
   "where_is_the_opportunity": "…" | null,
   "who_needs_to_know": "…" | null,
   "next_step": "…",
-  "priority": "hot" | "warm" | "cool"
+  "priority": "hot" | "warm" | "cool",
+  "recommended_play": "…" | null
 }
 
 Hard rules:
@@ -39,4 +42,5 @@ Hard rules:
 - Never invent signals or people. If the input has no signals or active voices, reflect that honestly.
 - Think about what MOVES THE ACCOUNT FORWARD — not what gets a meeting, but what protects the relationship and opens expansion.
 - Factual references stay factual; positioning lexicon goes in the interpretation, not the evidence.
+- The recommended_play should feel like the AE's own thinking, not a generic template. Reference specific people, signals, and timing from the input. Write in first person as if the AE is dictating their read on the account.
 - No markdown, no code fence — JSON only.`;

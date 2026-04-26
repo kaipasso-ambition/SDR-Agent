@@ -971,6 +971,15 @@ webRouter.get('/accounts/:id', requireAuth, async (req, res, next) => {
     const triggerSignal = triggerSignalId && UUID_RE.test(triggerSignalId)
       ? await getSignalById(triggerSignalId) : null;
 
+    // Pre-fill play instinct from query param, signal, or POV
+    let prefillInstinct = '';
+    if (typeof req.query?.instinct === 'string') {
+      prefillInstinct = req.query.instinct;
+    } else if (triggerSignal) {
+      const parts = [triggerSignal.so_what, triggerSignal.recommended_move].filter(Boolean);
+      prefillInstinct = parts.join(' — ');
+    }
+
     res.render('account', {
       title: bundle.account.account_name,
       account: bundle.account,
@@ -981,6 +990,7 @@ webRouter.get('/accounts/:id', requireAuth, async (req, res, next) => {
       events,
       intel,
       triggerSignal,
+      prefillInstinct,
       composerOpen: req.query?.new_play === '1',
       rescanStatus: typeof req.query?.rescan === 'string' ? req.query.rescan : null,
       personas: PERSONAS,

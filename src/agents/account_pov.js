@@ -52,7 +52,7 @@ Write the account briefing. Return JSON only.`;
   const t0 = Date.now();
   const response = await callWithRetry(client, {
     model: 'claude-haiku-4-5-20251001',
-    max_tokens: 800,
+    max_tokens: 1024,
     system: ACCOUNT_POV_PROMPT,
     messages: [{ role: 'user', content: userContent }],
   }, { timeout: 20_000 });
@@ -76,6 +76,7 @@ Write the account briefing. Return JSON only.`;
   const who_needs_to_know = str(parsed.who_needs_to_know);
   const next_step = str(parsed.next_step);
   const priority = VALID_PRIORITIES.has(parsed.priority) ? parsed.priority : 'cool';
+  const recommended_play = str(parsed.recommended_play);
 
   if (!whats_happening || !next_step) {
     return { result: null, elapsed_ms, error: 'missing_fields', raw: text };
@@ -88,6 +89,7 @@ Write the account briefing. Return JSON only.`;
       who_needs_to_know,
       next_step,
       priority,
+      recommended_play,
       generated_at: new Date().toISOString(),
     },
     elapsed_ms,

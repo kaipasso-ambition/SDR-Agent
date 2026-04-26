@@ -21,7 +21,7 @@
         <% } %>
         <label class="block text-sm">
           <span class="font-medium text-slate-800">What's your read?</span>
-          <textarea name="instinct" rows="3" required placeholder="e.g. 'SDR team already uses us. Want to get to the new CRO through our SDR champion before Q3 budget review.'" class="w-full border border-slate-300 rounded px-3 py-2 mt-1 text-sm"></textarea>
+          <textarea name="instinct" rows="3" required placeholder="e.g. 'SDR team already uses us. Want to get to the new CRO through our SDR champion before Q3 budget review.'" class="w-full border border-slate-300 rounded px-3 py-2 mt-1 text-sm"><%= prefillInstinct || '' %></textarea>
         </label>
         <% if (hypotheses.length > 0) { %>
           <label class="block text-sm">
