@@ -955,15 +955,35 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 webRouter.get('/accounts/:id', requireAuth, async (req, res, next) => {
   try {
     if (!UUID_RE.test(req.params.id)) return res.redirect('/accounts');
-    const includeArchive = req.query?.archive === '1';
-    const bundle = await getAccountBundle(req.params.id, { includeArchive });
+    const accountId = req.params.id;
+    const bundle = await getAccountBundle(accountId);
     if (!bundle) return res.redirect('/accounts');
-    res.render('account_detail', {
+
+    const [contacts, hypotheses, plays, events, intel] = await Promise.all([
+      listContactsForAccount(accountId),
+      listHypothesesForAccount(accountId),
+      listPlaysForAccount(accountId),
+      listEvents({ includeCompleted: false }),
+      getAccountIntel(accountId),
+    ]);
+
+    const triggerSignalId = typeof req.query?.signal === 'string' ? req.query.signal : null;
+    const triggerSignal = triggerSignalId && UUID_RE.test(triggerSignalId)
+      ? await getSignalById(triggerSignalId) : null;
+
+    res.render('account', {
       title: bundle.account.account_name,
-      personas: PERSONAS,
+      account: bundle.account,
+      signals: bundle.signals || [],
+      contacts,
+      hypotheses,
+      plays,
+      events,
+      intel,
+      triggerSignal,
+      composerOpen: req.query?.new_play === '1',
       rescanStatus: typeof req.query?.rescan === 'string' ? req.query.rescan : null,
-      archiveOpen: includeArchive,
-      ...bundle,
+      personas: PERSONAS,
     });
   } catch (err) {
     next(err);
@@ -1275,7 +1295,7 @@ webRouter.post('/revisit/:opportunity_id/triggers/:trigger_index/play', requireA
       console.error('[revisit/triggers/play build] expansion failed:', err.message);
     }
 
-    res.redirect(`/accounts/${accountId}/plan#play-${play.id}`);
+    res.redirect(`/accounts/${accountId}#play-${play.id}`);
   } catch (err) {
     console.error('[revisit/triggers/play]', err);
     next(err);
@@ -1627,7 +1647,7 @@ webRouter.post('/expand/:account_id/triggers/:trigger_index/play', requireAuth, 
       console.error('[expand/triggers/play build] expansion failed:', err.message);
     }
 
-    res.redirect(`/accounts/${accountId}/plan#play-${play.id}`);
+    res.redirect(`/accounts/${accountId}#play-${play.id}`);
   } catch (err) {
     console.error('[expand/triggers/play]', err);
     next(err);
@@ -1984,7 +2004,7 @@ webRouter.post('/signals/:id/play', requireAuth, async (req, res, next) => {
       }
 
       await setSignalPlaying(signal.id).catch(() => {});
-      return res.redirect(`/accounts/${signal.account_id}/plan#play-${play.id}`);
+      return res.redirect(`/accounts/${signal.account_id}#play-${play.id}`);
     }
 
     if (action === 'draft_outbound') {
@@ -2037,44 +2057,11 @@ function pickNarrative(body) {
 // Plan view — the chess board (org chart), hypotheses, and plays for one
 // account. Pre-fills the play composer when called with
 // ?new_play=1&signal=<id> from the /brief Start-a-play button.
-webRouter.get('/accounts/:id/plan', requireAuth, async (req, res, next) => {
-  try {
-    if (!UUID_RE.test(req.params.id)) return res.redirect('/accounts');
-    const accountId = req.params.id;
-    const bundle = await getAccountBundle(accountId);
-    if (!bundle) return res.redirect('/accounts');
-
-    const [contacts, hypotheses, plays, events, intel] = await Promise.all([
-      listContactsForAccount(accountId),
-      listHypothesesForAccount(accountId),
-      listPlaysForAccount(accountId),
-      listEvents({ includeCompleted: false }),
-      getAccountIntel(accountId),
-    ]);
-
-    // If the Start-a-play button handed us a signal_id, hydrate it so
-    // the composer can show "triggered by: <signal title>".
-    const triggerSignalId = typeof req.query?.signal === 'string' ? req.query.signal : null;
-    const triggerSignal = triggerSignalId && UUID_RE.test(triggerSignalId)
-      ? await getSignalById(triggerSignalId)
-      : null;
-
-    res.render('account_plan', {
-      title: `${bundle.account.account_name} — Plan`,
-      account: bundle.account,
-      contacts,
-      hypotheses,
-      plays,
-      events,
-      pulseSignals: bundle.signals,
-      triggerSignal,
-      composerOpen: req.query?.new_play === '1',
-      personas: PERSONAS,
-      intel,
-    });
-  } catch (err) {
-    next(err);
-  }
+webRouter.get('/accounts/:id/plan', requireAuth, (req, res) => {
+  const qs = req.query?.new_play === '1'
+    ? `?new_play=1${req.query.signal ? '&signal=' + req.query.signal : ''}`
+    : '';
+  res.redirect(`/accounts/${req.params.id}${qs}`);
 });
 
 // ---------- Game Plan intel (Use Case Identifier + Industry Insight) ----------
@@ -2092,7 +2079,7 @@ webRouter.post('/accounts/:id/intel/use-case', requireAuth, async (req, res, nex
 
     const intel = await getAccountIntel(accountId);
     if (intel.use_case_fit?.status === 'running') {
-      return res.redirect(`/accounts/${accountId}/plan#intel`);
+      return res.redirect(`/accounts/${accountId}#intel`);
     }
 
     await setIntelRunning(accountId, 'use_case_fit');
@@ -2121,7 +2108,7 @@ webRouter.post('/accounts/:id/intel/use-case', requireAuth, async (req, res, nex
         try { await setIntelFailed(accountId, 'use_case_fit', err.message || String(err)); } catch (_) {}
       });
 
-    res.redirect(`/accounts/${accountId}/plan#intel`);
+    res.redirect(`/accounts/${accountId}#intel`);
   } catch (err) {
     next(err);
   }
@@ -2136,7 +2123,7 @@ webRouter.post('/accounts/:id/intel/industry', requireAuth, async (req, res, nex
 
     const intel = await getAccountIntel(accountId);
     if (intel.industry_insight?.status === 'running') {
-      return res.redirect(`/accounts/${accountId}/plan#intel`);
+      return res.redirect(`/accounts/${accountId}#intel`);
     }
 
     await setIntelRunning(accountId, 'industry_insight');
@@ -2156,7 +2143,7 @@ webRouter.post('/accounts/:id/intel/industry', requireAuth, async (req, res, nex
         try { await setIntelFailed(accountId, 'industry_insight', err.message || String(err)); } catch (_) {}
       });
 
-    res.redirect(`/accounts/${accountId}/plan#intel`);
+    res.redirect(`/accounts/${accountId}#intel`);
   } catch (err) {
     next(err);
   }
@@ -2355,7 +2342,7 @@ webRouter.post('/accounts/:id/hypotheses/generate', requireAuth, async (req, res
 
     const intel = await getAccountIntel(accountId);
     if (intel.hypotheses_gen?.status === 'running') {
-      return res.redirect(`/accounts/${accountId}/plan#hypotheses`);
+      return res.redirect(`/accounts/${accountId}#hypotheses`);
     }
 
     // Selected signals from the checkbox group. Empty = use all pulse
@@ -2424,7 +2411,7 @@ webRouter.post('/accounts/:id/hypotheses/generate', requireAuth, async (req, res
         try { await setIntelFailed(accountId, 'hypotheses_gen', err.message || String(err)); } catch (_) {}
       });
 
-    res.redirect(`/accounts/${accountId}/plan#hypotheses`);
+    res.redirect(`/accounts/${accountId}#hypotheses`);
   } catch (err) {
     next(err);
   }
@@ -2436,7 +2423,7 @@ webRouter.post('/accounts/:id/contacts', requireAuth, async (req, res, next) => 
   try {
     if (!UUID_RE.test(req.params.id)) return res.redirect('/accounts');
     const name = (req.body?.name || '').trim();
-    if (!name) return res.redirect(`/accounts/${req.params.id}/plan`);
+    if (!name) return res.redirect(`/accounts/${req.params.id}`);
     await createContact({
       account_id: req.params.id,
       name,
@@ -2451,7 +2438,7 @@ webRouter.post('/accounts/:id/contacts', requireAuth, async (req, res, next) => 
       notes: (req.body?.notes || '').trim() || null,
       created_by_user_id: req.session.userId,
     });
-    res.redirect(`/accounts/${req.params.id}/plan`);
+    res.redirect(`/accounts/${req.params.id}`);
   } catch (err) {
     next(err);
   }
@@ -2479,7 +2466,7 @@ webRouter.post('/contacts/:id', requireAuth, async (req, res, next) => {
       else if (UUID_RE.test(v) && v !== contact.id) patch.reports_to_contact_id = v;
     }
     await updateContact(contact.id, patch);
-    res.redirect(`/accounts/${contact.account_id}/plan`);
+    res.redirect(`/accounts/${contact.account_id}`);
   } catch (err) {
     next(err);
   }
@@ -2491,7 +2478,7 @@ webRouter.post('/contacts/:id/delete', requireAuth, async (req, res, next) => {
     const contact = await getContactById(req.params.id);
     if (!contact) return res.redirect('/accounts');
     await deleteContact(contact.id);
-    res.redirect(`/accounts/${contact.account_id}/plan`);
+    res.redirect(`/accounts/${contact.account_id}`);
   } catch (err) {
     next(err);
   }
@@ -2506,7 +2493,7 @@ webRouter.post('/accounts/:id/hypotheses', requireAuth, async (req, res, next) =
     const target_persona_id = (req.body?.target_persona_id || '').trim();
     const narrative_hook = (req.body?.narrative_hook || '').trim();
     if (!use_case || !target_persona_id || !narrative_hook) {
-      return res.redirect(`/accounts/${req.params.id}/plan`);
+      return res.redirect(`/accounts/${req.params.id}`);
     }
     const evidence_signal_ids = []
       .concat(req.body?.evidence_signal_ids || [])
@@ -2527,7 +2514,7 @@ webRouter.post('/accounts/:id/hypotheses', requireAuth, async (req, res, next) =
       status: req.body?.status || 'theory',
       created_by_user_id: req.session.userId,
     });
-    res.redirect(`/accounts/${req.params.id}/plan`);
+    res.redirect(`/accounts/${req.params.id}`);
   } catch (err) {
     next(err);
   }
@@ -2549,7 +2536,7 @@ webRouter.post('/hypotheses/:id', requireAuth, async (req, res, next) => {
     const narrative = pickNarrative(req.body);
     if (narrative !== undefined) patch.narrative = narrative;
     await updateHypothesis(h.id, patch);
-    res.redirect(`/accounts/${h.account_id}/plan`);
+    res.redirect(`/accounts/${h.account_id}`);
   } catch (err) {
     next(err);
   }
@@ -2561,7 +2548,7 @@ webRouter.post('/hypotheses/:id/delete', requireAuth, async (req, res, next) => 
     const h = await getHypothesisById(req.params.id);
     if (!h) return res.redirect('/accounts');
     await deleteHypothesis(h.id);
-    res.redirect(`/accounts/${h.account_id}/plan`);
+    res.redirect(`/accounts/${h.account_id}`);
   } catch (err) {
     next(err);
   }
@@ -2578,7 +2565,7 @@ webRouter.post('/accounts/:id/plays', requireAuth, async (req, res, next) => {
     if (!UUID_RE.test(req.params.id)) return res.redirect('/accounts');
     const accountId = req.params.id;
     const instinct = (req.body?.instinct || '').trim();
-    if (!instinct) return res.redirect(`/accounts/${accountId}/plan`);
+    if (!instinct) return res.redirect(`/accounts/${accountId}`);
 
     const hypothesis_id = req.body?.hypothesis_id && UUID_RE.test(req.body.hypothesis_id)
       ? req.body.hypothesis_id
@@ -2655,7 +2642,7 @@ webRouter.post('/accounts/:id/plays', requireAuth, async (req, res, next) => {
       await setSignalPlaying(triggered_by_signal_id).catch(() => {});
     }
 
-    res.redirect(`/accounts/${accountId}/plan#play-${play.id}`);
+    res.redirect(`/accounts/${accountId}#play-${play.id}`);
   } catch (err) {
     next(err);
   }
@@ -2691,7 +2678,7 @@ webRouter.post('/plays/:id', requireAuth, async (req, res, next) => {
       patch.closed_at = null;
     }
     await updatePlay(play.id, patch);
-    res.redirect(`/accounts/${play.account_id}/plan#play-${play.id}`);
+    res.redirect(`/accounts/${play.account_id}#play-${play.id}`);
   } catch (err) {
     next(err);
   }
@@ -2733,7 +2720,7 @@ webRouter.post('/plays/:id/rebuild', requireAuth, async (req, res, next) => {
         status: play.status === 'drafting' ? 'active' : play.status,
       });
     }
-    res.redirect(`/accounts/${accountId}/plan#play-${play.id}`);
+    res.redirect(`/accounts/${accountId}#play-${play.id}`);
   } catch (err) {
     next(err);
   }
@@ -2745,7 +2732,7 @@ webRouter.post('/plays/:id/delete', requireAuth, async (req, res, next) => {
     const play = await getPlayById(req.params.id);
     if (!play) return res.redirect('/accounts');
     await deletePlay(play.id);
-    res.redirect(`/accounts/${play.account_id}/plan`);
+    res.redirect(`/accounts/${play.account_id}`);
   } catch (err) {
     next(err);
   }

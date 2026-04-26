@@ -1,0 +1,47 @@
+<% if (sigCount > 0) { %>
+<details class="bg-white border border-slate-200 rounded-lg mb-4 overflow-hidden" open>
+  <summary class="px-4 py-3 text-sm font-medium text-slate-700 cursor-pointer list-none select-none hover:bg-slate-50">
+    <%= sigCount %> signal<%= sigCount === 1 ? '' : 's' %>
+    <% var defC = signals.filter(function(s){ return s.risk_class === 'defense_risk'; }).length; %>
+    <% var offC = signals.filter(function(s){ return s.risk_class === 'offense_opportunity'; }).length; %>
+    <% if (defC > 0) { %><span class="text-red-700 ml-1">(<%= defC %> defense)</span><% } %>
+    <% if (offC > 0) { %><span class="text-sky-700 ml-1">(<%= offC %> offense)</span><% } %>
+  </summary>
+  <div class="divide-y divide-slate-100 border-t border-slate-100">
+    <% signals.forEach(function(s) {
+      var displayDate = s.event_date || s.detected_at;
+    %>
+      <div class="px-4 py-3">
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center gap-2 flex-wrap mb-1 text-xs">
+              <% if (s.risk_class) { %>
+                <span class="pill <%= riskPill[s.risk_class] || riskPill.neutral %>"><%= riskLabel[s.risk_class] || 'Context' %></span>
+              <% } %>
+              <span class="text-slate-400">SEV <%= s.severity %></span>
+              <span class="text-slate-400"><%= agoLabel(displayDate) %></span>
+              <% if (s.status === 'acknowledged') { %><span class="pill bg-slate-100 text-slate-500">acked</span><% } %>
+              <% if (s.status === 'playing') { %><span class="pill bg-emerald-100 text-emerald-800">in play</span><% } %>
+            </div>
+            <div class="text-sm font-medium text-slate-900"><%= s.title %></div>
+            <% if (s.so_what) { %><div class="text-sm text-slate-700 mt-1"><%= s.so_what %></div><% } %>
+            <% if (s.recommended_move) { %><div class="text-xs text-slate-500 mt-1 italic"><%= s.recommended_move %></div><% } %>
+          </div>
+          <div class="flex flex-col items-end gap-1.5 shrink-0">
+            <% if (s.source_url) { %>
+              <a href="<%= s.source_url %>" target="_blank" rel="noopener" class="text-xs text-slate-500 hover:text-slate-900 underline">Source ↗</a>
+            <% } %>
+            <a href="/accounts/<%= account.id %>?new_play=1&signal=<%= s.id %>" class="text-xs text-slate-700 hover:text-slate-900 underline">Build play</a>
+            <form method="POST" action="/signals/<%= s.id %>/dismiss" class="inline"
+                  onsubmit="var r=prompt('Why not relevant? (optional)','');if(r===null)return false;this.querySelector('[name=reason]').value=r;return true;">
+              <input type="hidden" name="back" value="/accounts/<%= account.id %>" />
+              <input type="hidden" name="reason" value="" />
+              <button type="submit" class="text-xs text-slate-400 hover:text-red-700 underline">Dismiss</button>
+            </form>
+          </div>
+        </div>
+      </div>
+    <% }); %>
+  </div>
+</details>
+<% } %>

@@ -1,0 +1,177 @@
+<details class="bg-white border border-slate-200 rounded-lg mb-4 overflow-hidden" <% if (plays.length > 0 || composerOpen) { %>open<% } %>>
+  <summary class="px-4 py-3 text-sm font-medium text-slate-700 cursor-pointer list-none select-none hover:bg-slate-50">
+    Plays <span class="text-xs text-slate-400 font-normal">(<%= plays.length %>)</span>
+  </summary>
+  <div class="border-t border-slate-100">
+
+    <!-- Composer -->
+    <details id="play-composer" class="border-b border-slate-200 p-4 bg-slate-50" <% if (composerOpen) { %>open<% } %>>
+      <summary class="text-sm font-semibold text-slate-900 cursor-pointer">
+        + Start a play
+        <% if (triggerSignal) { %><span class="text-xs text-slate-500 font-normal">· triggered by "<%= triggerSignal.title %>"</span><% } %>
+      </summary>
+      <form method="POST" action="/accounts/<%= account.id %>/plays" class="mt-3 space-y-3" onsubmit="return startBuildingPlay(this)">
+        <% if (triggerSignal) { %>
+          <input type="hidden" name="triggered_by_signal_id" value="<%= triggerSignal.id %>" />
+          <div class="bg-white border border-slate-200 rounded p-3 text-xs">
+            <div class="text-slate-500 uppercase tracking-wide text-[10px] font-semibold mb-1">Triggering signal</div>
+            <div class="font-medium text-slate-900"><%= triggerSignal.title %></div>
+            <% if (triggerSignal.so_what) { %><div class="text-slate-600 mt-1"><%= triggerSignal.so_what %></div><% } %>
+          </div>
+        <% } %>
+        <label class="block text-sm">
+          <span class="font-medium text-slate-800">What's your read?</span>
+          <textarea name="instinct" rows="3" required placeholder="e.g. 'SDR team already uses us. Want to get to the new CRO through our SDR champion before Q3 budget review.'" class="w-full border border-slate-300 rounded px-3 py-2 mt-1 text-sm"></textarea>
+        </label>
+        <% if (hypotheses.length > 0) { %>
+          <label class="block text-sm">
+            <span class="font-medium text-slate-800">Hypothesis</span>
+            <select name="hypothesis_id" class="w-full border border-slate-300 rounded px-3 py-2 mt-1 text-sm">
+              <option value="">— none —</option>
+              <% hypotheses.forEach(function(h) { %><option value="<%= h.id %>"><%= useCaseLabel[h.use_case] || h.use_case %> → <%= h.target_persona_id %></option><% }); %>
+            </select>
+          </label>
+        <% } %>
+        <% if (contacts.length > 0) { %>
+          <div class="text-sm">
+            <div class="font-medium text-slate-800 mb-1">Contact path</div>
+            <div class="max-h-48 overflow-y-auto border border-slate-200 rounded p-2 space-y-1 bg-white">
+              <% contacts.forEach(function(c) { %>
+                <label class="flex items-start gap-2 text-xs py-1">
+                  <input type="checkbox" name="contact_path" value="<%= c.id %>" class="mt-0.5" />
+                  <span><span class="font-medium"><%= c.name %></span> <span class="text-slate-500"><%= c.title ? '· ' + c.title : '' %></span>
+                    <span class="pill <%= (dealRoleMeta[c.deal_role] || dealRoleMeta.unknown).pill %> ml-1"><%= (dealRoleMeta[c.deal_role] || dealRoleMeta.unknown).label %></span></span>
+                </label>
+              <% }); %>
+            </div>
+          </div>
+        <% } %>
+        <button type="submit" id="play-build-btn" class="bg-slate-900 hover:bg-slate-800 disabled:bg-slate-400 disabled:cursor-wait text-white px-4 py-2 rounded font-medium text-sm inline-flex items-center gap-2">
+          <svg id="play-build-spinner" class="hidden animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path></svg>
+          <span id="play-build-label">Build the play →</span>
+        </button>
+        <p id="play-build-status" class="text-xs text-slate-500">Takes ~10s.</p>
+      </form>
+    </details>
+    <script>
+      function startBuildingPlay(form) {
+        var btn = document.getElementById('play-build-btn');
+        var spin = document.getElementById('play-build-spinner');
+        var label = document.getElementById('play-build-label');
+        var status = document.getElementById('play-build-status');
+        if (!btn || btn.disabled) return false;
+        btn.disabled = true; spin.classList.remove('hidden'); label.textContent = 'Building…';
+        var frames = ['Reading your instinct…','Pulling account context…','Sequencing moves…','Drafting artifacts…','Almost there…'];
+        var i = 0; status.textContent = frames[0]; status.className = 'text-xs text-emerald-700 font-medium';
+        var timer = setInterval(function() { i = (i + 1) % frames.length; status.textContent = frames[i]; }, 2500);
+        setTimeout(function() { clearInterval(timer); }, 180000);
+        return true;
+      }
+    </script>
+
+    <!-- Existing plays -->
+    <% if (plays.length === 0) { %>
+      <div class="p-4 text-sm text-slate-500">No plays yet.</div>
+    <% } else { %>
+      <ul class="divide-y divide-slate-100">
+        <% plays.forEach(function(p) {
+          var exp = p.ai_expansion || {};
+          var statusM = playStatusMeta[p.status] || playStatusMeta.drafting;
+        %>
+          <li class="p-4">
+            <div class="flex items-start justify-between gap-3 mb-2 flex-wrap">
+              <div class="min-w-0 flex-1">
+                <div class="text-sm font-semibold text-slate-900"><%= exp.named_play || '(no expansion yet)' %></div>
+                <div class="text-xs text-slate-500 mt-0.5">
+                  <% if (p.hypothesis_use_case) { %><%= useCaseLabel[p.hypothesis_use_case] || p.hypothesis_use_case %> · <% } %>
+                  by <%= p.author_name || 'unknown' %> · <%= new Date(p.created_at).toLocaleDateString() %>
+                </div>
+              </div>
+              <div class="flex items-center gap-2">
+                <% if (exp.named_play) { %>
+                  <a href="/plays/<%= p.id %>/export.pptx" class="text-xs border border-slate-300 hover:border-emerald-500 text-slate-700 px-2 py-1 rounded font-medium">Export</a>
+                <% } %>
+                <span class="pill <%= statusM.cls %>"><%= statusM.label %></span>
+              </div>
+            </div>
+            <div class="bg-slate-50 border-l-2 border-slate-300 px-3 py-2 text-sm text-slate-700 mb-3">
+              <span class="text-xs text-slate-500 uppercase tracking-wide font-semibold">Your instinct</span><br/><%= p.instinct %>
+            </div>
+            <% if (exp.moves && exp.moves.length > 0) { %>
+              <ol class="space-y-3 mb-3">
+                <% exp.moves.forEach(function(m) {
+                  var am = actorMeta[m.actor_type] || actorMeta.ae;
+                  var hasArt = m.artifact && m.artifact.content && String(m.artifact.content).trim();
+                %>
+                  <li class="text-sm flex gap-3">
+                    <span class="shrink-0 w-6 h-6 rounded-full bg-slate-900 text-white text-xs flex items-center justify-center font-semibold"><%= m.step %></span>
+                    <div class="flex-1 min-w-0">
+                      <div class="flex items-center gap-2 flex-wrap">
+                        <span class="inline-flex items-center text-[10px] font-semibold uppercase tracking-wide border rounded px-1.5 py-0.5 <%= am.cls %>"><%= am.label %></span>
+                        <span class="font-medium text-slate-900"><%= m.actor %></span>
+                        <span class="text-xs text-slate-500">· <%= m.channel %> · day <%= m.days_from_now %></span>
+                      </div>
+                      <div class="text-slate-700 mt-1"><%= m.ask %></div>
+                      <% if (m.rationale) { %><div class="text-xs text-slate-500 italic mt-0.5"><%= m.rationale %></div><% } %>
+                      <% if (hasArt) { %>
+                        <% var artId = 'artifact-' + p.id + '-' + m.step; %>
+                        <details class="mt-2 bg-emerald-50/50 border border-emerald-200 rounded">
+                          <summary class="cursor-pointer px-3 py-2 text-xs font-semibold text-emerald-900">Artifact<% if (m.artifact.for_actor === 'champion') { %> — for the champion<% } %></summary>
+                          <div class="px-3 pb-3">
+                            <pre id="<%= artId %>" class="whitespace-pre-wrap text-xs text-slate-800 bg-white border border-emerald-200 rounded p-2 font-sans"><%= m.artifact.content %></pre>
+                            <button type="button" class="mt-2 text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-2 py-1 rounded"
+                                    onclick="(function(btn){var el=document.getElementById('<%= artId %>');navigator.clipboard.writeText(el.innerText).then(function(){var o=btn.textContent;btn.textContent='Copied';setTimeout(function(){btn.textContent=o;},1500);});})(this)">Copy</button>
+                          </div>
+                        </details>
+                      <% } %>
+                    </div>
+                  </li>
+                <% }); %>
+              </ol>
+              <% if (exp.stakeholder_narratives && Object.keys(exp.stakeholder_narratives).length > 0) { %>
+                <div class="mb-3 border border-slate-200 rounded p-3 bg-white">
+                  <div class="uppercase tracking-wide text-[10px] text-slate-500 font-semibold mb-2">Stakeholder narratives</div>
+                  <ul class="space-y-1.5 text-xs">
+                    <% Object.keys(exp.stakeholder_narratives).forEach(function(name) { %>
+                      <li><span class="font-semibold text-slate-900"><%= name %>:</span> <span class="text-slate-700"><%= exp.stakeholder_narratives[name] %></span></li>
+                    <% }); %>
+                  </ul>
+                </div>
+              <% } %>
+            <% } else { %>
+              <div class="bg-amber-50 border border-amber-200 rounded p-3 text-xs text-amber-900 mb-3">
+                Expansion missing.
+                <form method="POST" action="/plays/<%= p.id %>/rebuild" class="inline"><button class="underline ml-1">Rebuild</button></form>
+              </div>
+            <% } %>
+            <% if (exp.internal_ask) { %>
+              <div class="text-xs mb-2"><span class="uppercase tracking-wide text-slate-500 font-semibold">Internal ask</span> · <%= exp.internal_ask %></div>
+            <% } %>
+            <% if (exp.risks && exp.risks.length > 0) { %>
+              <div class="text-xs mb-2"><span class="uppercase tracking-wide text-slate-500 font-semibold">Risks</span>
+                <ul class="text-slate-700 list-disc list-inside mt-0.5"><% exp.risks.forEach(function(r) { %><li><%= r %></li><% }); %></ul>
+              </div>
+            <% } %>
+            <details class="mt-3">
+              <summary class="text-xs text-slate-500 hover:text-slate-900 cursor-pointer">Update status</summary>
+              <form method="POST" action="/plays/<%= p.id %>" class="mt-2 space-y-2 text-xs">
+                <div class="grid grid-cols-3 gap-2">
+                  <select name="status" class="border border-slate-300 rounded px-2 py-1">
+                    <% Object.keys(playStatusMeta).forEach(function(k) { %><option value="<%= k %>" <%= p.status === k ? 'selected' : '' %>><%= playStatusMeta[k].label %></option><% }); %>
+                  </select>
+                  <input name="next_action" value="<%= p.next_action || '' %>" placeholder="next action" class="border border-slate-300 rounded px-2 py-1 col-span-2" />
+                </div>
+                <textarea name="outcome_notes" rows="2" placeholder="What happened?" class="w-full border border-slate-300 rounded px-2 py-1"><%= p.outcome_notes || '' %></textarea>
+                <div class="flex items-center gap-2">
+                  <button type="submit" class="bg-slate-900 hover:bg-slate-800 text-white px-3 py-1 rounded font-medium">Save</button>
+                  <button type="submit" formaction="/plays/<%= p.id %>/rebuild" class="text-slate-600 hover:text-slate-900 underline">Rebuild</button>
+                  <button type="submit" formaction="/plays/<%= p.id %>/delete" class="text-red-600 hover:text-red-800 underline">Delete</button>
+                </div>
+              </form>
+            </details>
+          </li>
+        <% }); %>
+      </ul>
+    <% } %>
+  </div>
+</details>

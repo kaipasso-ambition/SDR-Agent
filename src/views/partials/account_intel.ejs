@@ -1,0 +1,83 @@
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+
+  <!-- Use Case Identifier -->
+  <div class="bg-white border border-slate-200 rounded-lg overflow-hidden">
+    <div class="px-4 py-3 border-b border-slate-200 flex items-start justify-between gap-2">
+      <div>
+        <div class="text-sm font-medium text-slate-700">Use Case Fit</div>
+        <div class="text-[10px] text-slate-500">Which Ambition use case fits this account.</div>
+      </div>
+      <form method="POST" action="/accounts/<%= account.id %>/intel/use-case" class="shrink-0">
+        <button type="submit" class="text-xs bg-slate-900 hover:bg-slate-800 text-white px-3 py-1.5 rounded font-medium disabled:bg-slate-400 disabled:cursor-wait"
+                <% if (ucfRunning) { %>disabled<% } %>>
+          <% if (ucfRunning) { %>Thinking…<% } else if (ucfResult) { %>Re-run<% } else { %>Identify<% } %>
+        </button>
+      </form>
+    </div>
+    <% if (ucfRunning) { %>
+      <div class="p-4 text-sm text-slate-500 flex items-center gap-2">
+        <span class="inline-block w-2 h-2 bg-slate-400 rounded-full animate-pulse"></span> Analyzing…
+      </div>
+    <% } else if (ucf?.status === 'failed') { %>
+      <div class="p-4 text-sm text-red-700">Failed<% if (ucf.error) { %>: <span class="text-xs font-mono"><%= ucf.error %></span><% } %></div>
+    <% } else if (!ucfResult) { %>
+      <div class="p-4 text-sm text-slate-500">Click Identify to analyze.</div>
+    <% } else if (!ucfResult.primary) { %>
+      <div class="p-4 text-sm text-slate-600">Not enough evidence yet. <% if (ucfResult.rationale) { %><%= ucfResult.rationale %><% } %></div>
+    <% } else { %>
+      <div class="p-4 space-y-2">
+        <% [ucfResult.primary, ucfResult.secondary].filter(Boolean).forEach(function(p, idx) { %>
+          <div class="<%= idx === 0 ? 'border-2 border-slate-900' : 'border border-slate-200' %> rounded p-3">
+            <div class="flex items-center gap-2 flex-wrap mb-1">
+              <span class="pill <%= idx === 0 ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700' %>"><%= p.label %></span>
+              <% if (p.audience) { %><span class="pill bg-sky-100 text-sky-800"><%= p.audience %></span><% } %>
+              <% if (p.confidence) { %><span class="text-xs text-slate-500">conf <%= p.confidence %>/5</span><% } %>
+            </div>
+            <% if (p.why) { %><p class="text-sm text-slate-800"><%= p.why %></p><% } %>
+          </div>
+        <% }); %>
+        <% if (ucfResult.rationale) { %><div class="text-xs text-slate-500 italic"><%= ucfResult.rationale %></div><% } %>
+      </div>
+    <% } %>
+  </div>
+
+  <!-- Industry Insight -->
+  <div class="bg-white border border-slate-200 rounded-lg overflow-hidden">
+    <div class="px-4 py-3 border-b border-slate-200 flex items-start justify-between gap-2">
+      <div>
+        <div class="text-sm font-medium text-slate-700">Industry Insight</div>
+        <div class="text-[10px] text-slate-500">Challenger-style teach for this buyer's industry.</div>
+      </div>
+      <form method="POST" action="/accounts/<%= account.id %>/intel/industry" class="shrink-0">
+        <button type="submit" class="text-xs bg-slate-900 hover:bg-slate-800 text-white px-3 py-1.5 rounded font-medium disabled:bg-slate-400 disabled:cursor-wait"
+                <% if (indRunning) { %>disabled<% } %>>
+          <% if (indRunning) { %>Searching…<% } else if (indResult) { %>Re-run<% } else { %>Pull insight<% } %>
+        </button>
+      </form>
+    </div>
+    <% if (indRunning) { %>
+      <div class="p-4 text-sm text-slate-500 flex items-center gap-2">
+        <span class="inline-block w-2 h-2 bg-slate-400 rounded-full animate-pulse"></span> Searching…
+      </div>
+    <% } else if (ind?.status === 'failed') { %>
+      <div class="p-4 text-sm text-red-700">Failed<% if (ind.error) { %>: <span class="text-xs font-mono"><%= ind.error %></span><% } %></div>
+    <% } else if (!indResult) { %>
+      <div class="p-4 text-sm text-slate-500">Click Pull insight to search.</div>
+    <% } else if (!indResult.insights || indResult.insights.length === 0) { %>
+      <div class="p-4 text-sm text-slate-600">No insight surfaced. Try again later.</div>
+    <% } else { %>
+      <div class="p-4 space-y-3">
+        <% indResult.insights.forEach(function(i) { %>
+          <div class="border border-slate-200 rounded p-3">
+            <div class="text-sm font-semibold text-slate-900 mb-1"><%= i.headline %></div>
+            <% if (i.what_changed) { %><div class="text-xs text-slate-700 mb-1"><span class="uppercase tracking-wide text-[10px] text-slate-500 font-semibold">What changed</span> · <%= i.what_changed %></div><% } %>
+            <% if (i.why_it_costs_them) { %><div class="text-xs text-slate-700 mb-1"><span class="uppercase tracking-wide text-[10px] text-amber-700 font-semibold">Hidden cost</span> · <%= i.why_it_costs_them %></div><% } %>
+            <% if (i.the_reframe) { %><div class="text-xs text-slate-800 mb-1"><span class="uppercase tracking-wide text-[10px] text-emerald-700 font-semibold">The reframe</span> · <%= i.the_reframe %></div><% } %>
+            <% if (i.source_url) { %><a href="<%= i.source_url %>" target="_blank" rel="noopener" class="text-[11px] text-slate-500 hover:text-slate-900 underline"><%= i.source_pub || 'Source' %> ↗</a><% } %>
+          </div>
+        <% }); %>
+      </div>
+    <% } %>
+  </div>
+
+</div>

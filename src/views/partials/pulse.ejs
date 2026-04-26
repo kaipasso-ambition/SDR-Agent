@@ -81,7 +81,7 @@
                   <a href="/signals/<%= s.id %>/stage" class="text-slate-500 hover:text-slate-900 underline">More options</a>
                 <% } else { %>
                   <span class="text-violet-700">In play</span>
-                  <a href="/accounts/<%= s.account_id %>/plan" class="text-slate-500 hover:text-slate-900 underline">View plan</a>
+                  <a href="/accounts/<%= s.account_id %>" class="text-slate-500 hover:text-slate-900 underline">View account</a>
                 <% } %>
                 <% if (s.source_url) { %>
                   <a href="<%= s.source_url %>" target="_blank" rel="noopener" class="text-slate-500 hover:text-slate-900 underline">Source ↗</a>

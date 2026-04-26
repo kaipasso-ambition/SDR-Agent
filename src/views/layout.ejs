@@ -32,18 +32,7 @@
             <% } %>
           </a>
 
-          <details class="nav-menu relative">
-            <summary class="text-sm text-slate-600 hover:text-slate-900 cursor-pointer list-none select-none flex items-center gap-1">
-              Accounts <span class="text-slate-400 text-[10px]">▼</span>
-            </summary>
-            <div class="absolute left-0 top-full mt-1 w-44 bg-white border border-slate-200 rounded-lg shadow-lg py-1 text-sm">
-              <a href="/accounts" class="block px-3 py-1.5 text-slate-700 hover:bg-slate-50">Accounts</a>
-              <a href="/plays" class="block px-3 py-1.5 text-slate-700 hover:bg-slate-50">Plays</a>
-              <a href="/drafts" class="block px-3 py-1.5 text-slate-700 hover:bg-slate-50">Drafts</a>
-              <div class="border-t border-slate-100 my-1"></div>
-              <a href="/prospects" class="block px-3 py-1.5 text-slate-700 hover:bg-slate-50">Prospects</a>
-            </div>
-          </details>
+          <a href="/accounts" class="text-sm text-slate-600 hover:text-slate-900">Accounts</a>
 
           <a href="/settings" class="text-sm text-slate-600 hover:text-slate-900">Settings</a>
         </div>
@@ -55,16 +44,6 @@
         </div>
       </div>
     </nav>
-    <script>
-      // Close any open nav dropdown when clicking outside of it. Native
-      // <details> doesn't auto-close on outside click; this gives it
-      // normal menu behaviour without pulling in a UI library.
-      document.addEventListener('click', function(e) {
-        document.querySelectorAll('details.nav-menu[open]').forEach(function(d) {
-          if (!d.contains(e.target)) d.removeAttribute('open');
-        });
-      });
-    </script>
   <% } %>
 
   <% if (typeof activeJob !== 'undefined' && activeJob) { %>

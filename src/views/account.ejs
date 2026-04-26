@@ -1,0 +1,257 @@
+<%
+  const FY_MONTHS = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const statusColor = {
+    customer: 'bg-emerald-100 text-emerald-800',
+    prospect: 'bg-sky-100 text-sky-800',
+    churned:  'bg-amber-100 text-amber-800',
+  };
+  const priorityColor = {
+    hot:  'bg-red-100 text-red-800',
+    warm: 'bg-amber-100 text-amber-800',
+    cool: 'bg-slate-100 text-slate-600',
+  };
+  const riskPill = {
+    defense_risk:        'bg-red-100 text-red-800',
+    offense_opportunity: 'bg-sky-100 text-sky-800',
+    neutral:             'bg-slate-100 text-slate-700',
+  };
+  const riskLabel = {
+    defense_risk:        'Defense',
+    offense_opportunity: 'Offense',
+    neutral:             'Context',
+  };
+  const signalTypeLabel = {
+    linkedin_post: 'LinkedIn', press_quote: 'Press', conference: 'Conference',
+    job_posting: 'Job posting', podcast: 'Podcast', blog: 'Blog', other: 'Web',
+  };
+  const dealRoleMeta = {
+    economic_buyer: { label: 'Economic buyer', pill: 'bg-violet-100 text-violet-800' },
+    champion:       { label: 'Champion',        pill: 'bg-emerald-100 text-emerald-800' },
+    coach:          { label: 'Coach',           pill: 'bg-sky-100 text-sky-800' },
+    influencer:     { label: 'Influencer',      pill: 'bg-amber-100 text-amber-800' },
+    user:           { label: 'User',             pill: 'bg-slate-100 text-slate-700' },
+    blocker:        { label: 'Blocker',         pill: 'bg-red-100 text-red-800' },
+    unknown:        { label: 'Unclassified',    pill: 'bg-slate-100 text-slate-500' },
+  };
+  const stanceMeta = {
+    hot: { label: 'Hot', cls: 'text-red-600 font-medium' },
+    warm: { label: 'Warm', cls: 'text-orange-600' },
+    neutral: { label: 'Neutral', cls: 'text-slate-500' },
+    cold: { label: 'Cold', cls: 'text-sky-700' },
+    hostile: { label: 'Hostile', cls: 'text-red-700 font-medium' },
+  };
+  const playStatusMeta = {
+    drafting:  { label: 'Drafting',  cls: 'bg-amber-100 text-amber-800' },
+    active:    { label: 'Active',    cls: 'bg-emerald-100 text-emerald-800' },
+    paused:    { label: 'Paused',    cls: 'bg-slate-100 text-slate-700' },
+    won:       { label: 'Won',       cls: 'bg-violet-100 text-violet-800' },
+    lost:      { label: 'Lost',      cls: 'bg-slate-100 text-slate-500' },
+    abandoned: { label: 'Abandoned', cls: 'bg-slate-100 text-slate-500' },
+  };
+  const actorMeta = {
+    champion:           { label: 'Champion carries', cls: 'bg-emerald-100 text-emerald-900 border-emerald-300' },
+    ae:                 { label: 'You (coach)',       cls: 'bg-slate-100 text-slate-800 border-slate-300' },
+    internal_colleague: { label: 'Internal assist',   cls: 'bg-sky-100 text-sky-900 border-sky-300' },
+  };
+  const useCaseLabel = {
+    performance_graph: 'Performance Graph', ascend_coaching: 'Ascend coaching',
+    gtm_governance: 'GTM Governance', manager_enablement: 'Manager enablement',
+    rep_ramp: 'Rep ramp', multi_team_rollup: 'Multi-team roll-up',
+  };
+
+  function daysAgo(d) {
+    if (!d) return null;
+    const ms = Date.now() - new Date(d).getTime();
+    return ms < 0 ? 0 : Math.floor(ms / 86400000);
+  }
+  function agoLabel(d) {
+    const n = daysAgo(d);
+    if (n === null) return '';
+    if (n === 0) return 'today';
+    if (n === 1) return 'yesterday';
+    if (n < 7) return n + 'd ago';
+    if (n < 60) return Math.floor(n / 7) + 'w ago';
+    return Math.floor(n / 30) + 'mo ago';
+  }
+
+  // POV
+  const pov = intel?.account_pov?.status === 'completed' ? intel.account_pov.result : null;
+  const povRunning = intel?.account_pov?.status === 'running';
+
+  // Prospects
+  const ps = intel?.prospect_scan;
+  const psResult = ps?.status === 'completed' ? ps.result : null;
+  const psRunning = ps?.status === 'running';
+  const psFailed = ps?.status === 'failed';
+  const visibleProspects = (psResult && Array.isArray(psResult.prospects))
+    ? psResult.prospects.filter(function(p) { return !p.dismissed; }) : [];
+
+  // Signals
+  const sigCount = signals.length;
+
+  // Contacts tree
+  const byId = new Map(contacts.map(function(c) { return [c.id, Object.assign({}, c, { children: [] })]; }));
+  const roots = [];
+  for (const c of byId.values()) {
+    const pid = c.reports_to_contact_id;
+    if (pid && byId.has(pid)) byId.get(pid).children.push(c);
+    else roots.push(c);
+  }
+  const contactRows = [];
+  function walk(node, depth) { contactRows.push({ node: node, depth: depth }); node.children.forEach(function(ch) { walk(ch, depth + 1); }); }
+  roots.forEach(function(r) { walk(r, 0); });
+
+  // Intel
+  const ucf = intel?.use_case_fit;
+  const ucfRunning = ucf?.status === 'running';
+  const ucfResult = ucf?.status === 'completed' && ucf.result ? ucf.result : null;
+  const ind = intel?.industry_insight;
+  const indRunning = ind?.status === 'running';
+  const indResult = ind?.status === 'completed' && ind.result ? ind.result : null;
+  const hgen = intel?.hypotheses_gen;
+  const hgenRunning = hgen?.status === 'running';
+  const anyIntelRunning = ucfRunning || indRunning || hgenRunning || psRunning || povRunning;
+%>
+
+<!-- ============ HEADER ============ -->
+<div class="mb-6">
+  <a href="/brief" class="text-xs text-slate-500 hover:text-slate-900">&larr; Today</a>
+  <div class="flex items-start justify-between gap-4 mt-2 flex-wrap">
+    <div class="flex items-center gap-3 flex-wrap">
+      <h1 class="text-2xl font-semibold"><%= account.account_name %></h1>
+      <span class="pill <%= statusColor[account.status] || 'bg-slate-100 text-slate-700' %>"><%= account.status %></span>
+      <% if (pov && pov.priority) { %>
+        <span class="pill <%= priorityColor[pov.priority] || priorityColor.cool %>"><%= pov.priority %></span>
+      <% } %>
+      <% if (account.domain) { %><span class="text-xs text-slate-400"><%= account.domain %></span><% } %>
+      <% if (account.industry) { %><span class="text-xs text-slate-400">· <%= account.industry %></span><% } %>
+    </div>
+    <form method="POST" action="/accounts/<%= account.id %>/scan-all">
+      <button type="submit" class="text-sm bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded font-medium disabled:bg-slate-400 disabled:cursor-wait"
+              <% if (psRunning || povRunning) { %>disabled<% } %>>
+        <% if (psRunning || povRunning) { %>Scanning…<% } else { %>Scan account<% } %>
+      </button>
+    </form>
+  </div>
+  <% if (rescanStatus === 'started') { %>
+    <div class="mt-2 text-xs text-emerald-700 flex items-center gap-2">
+      <span class="inline-block w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span> Scan started — results appear in ~60s.
+    </div>
+  <% } else if (rescanStatus === 'throttled') { %>
+    <div class="mt-2 text-xs text-slate-500">Already scanned in the last 24h.</div>
+  <% } %>
+</div>
+
+<% if (anyIntelRunning) { %>
+  <script>setTimeout(function(){ location.reload(); }, 8000);</script>
+<% } %>
+
+<!-- ============ POV CARD ============ -->
+<% if (pov) { %>
+  <div class="bg-white border border-slate-200 rounded-lg p-5 mb-6 space-y-3">
+    <div>
+      <div class="text-[10px] uppercase tracking-wide text-slate-500 mb-0.5">What's happening</div>
+      <div class="text-sm text-slate-800"><%= pov.whats_happening || pov.pov %></div>
+    </div>
+    <% if (pov.where_is_the_opportunity || pov.path_in) { %>
+      <div>
+        <div class="text-[10px] uppercase tracking-wide text-emerald-700 mb-0.5">Where's the opportunity</div>
+        <div class="text-sm text-emerald-900"><%= pov.where_is_the_opportunity || pov.path_in %></div>
+      </div>
+    <% } %>
+    <% if (pov.who_needs_to_know) { %>
+      <div>
+        <div class="text-[10px] uppercase tracking-wide text-sky-700 mb-0.5">Who needs to know</div>
+        <div class="text-sm text-sky-900"><%= pov.who_needs_to_know %></div>
+      </div>
+    <% } %>
+    <div class="pt-2 border-t border-slate-100">
+      <span class="text-sm font-medium text-slate-700">This week:</span>
+      <span class="text-sm text-slate-800"><%= pov.next_step || pov.strategy %></span>
+    </div>
+  </div>
+<% } else if (povRunning) { %>
+  <div class="bg-white border border-slate-200 rounded-lg p-4 mb-6 text-sm text-slate-500 flex items-center gap-2">
+    <span class="inline-block w-2 h-2 bg-slate-400 rounded-full animate-pulse"></span> Building point of view…
+  </div>
+<% } %>
+
+<!-- ============ NOTES ============ -->
+<details class="bg-white border border-slate-200 rounded-lg mb-4 overflow-hidden" <% if (!account.notes) { %>open<% } %>>
+  <summary class="px-4 py-3 text-sm text-slate-700 cursor-pointer list-none select-none hover:bg-slate-50 flex items-center gap-2">
+    <span class="text-slate-400 text-[10px]">&#9998;</span>
+    <span class="font-medium">Notes</span>
+    <% if (account.notes) { %><span class="text-slate-400 text-xs ml-1">— <%= account.notes.length > 80 ? account.notes.slice(0,80) + '…' : account.notes %></span><% } %>
+  </summary>
+  <form method="POST" action="/accounts/<%= account.id %>/notes" class="px-4 pb-4 border-t border-slate-100 pt-3">
+    <textarea name="notes" rows="3" placeholder="Add context for future scans (e.g. 'SDR team uses Ambition, want to expand to AE team')"
+              class="w-full border border-slate-200 rounded px-3 py-2 text-sm text-slate-800 resize-y"><%= account.notes || '' %></textarea>
+    <div class="flex items-center justify-between mt-1.5">
+      <span class="text-[10px] text-slate-400">These notes feed into every scan and POV.</span>
+      <button type="submit" class="text-xs bg-slate-900 hover:bg-slate-800 text-white px-3 py-1 rounded">Save</button>
+    </div>
+  </form>
+</details>
+
+<!-- ============ ACCOUNT FIELDS (fiscal, buyer timing) ============ -->
+<details class="bg-white border border-slate-200 rounded-lg mb-6 overflow-hidden">
+  <summary class="px-4 py-3 text-sm text-slate-700 cursor-pointer list-none select-none hover:bg-slate-50 flex items-center gap-2">
+    <span class="text-slate-400 text-[10px]">&#9881;</span>
+    <span class="font-medium">Account fields</span>
+    <% if (account.fiscal_year_end) { %><span class="text-slate-400 text-xs ml-1">FY ends <%= FY_MONTHS[account.fiscal_year_end] %></span><% } %>
+  </summary>
+  <form method="POST" action="/accounts/<%= account.id %>/fields" class="px-4 pb-4 border-t border-slate-100 pt-3 space-y-3 text-sm">
+    <div class="grid grid-cols-2 gap-3">
+      <label class="block">
+        <span class="text-xs text-slate-500">Fiscal year ends</span>
+        <select name="fiscal_year_end" class="w-full border border-slate-300 rounded px-2 py-1.5 mt-0.5 text-sm">
+          <option value="">Unknown</option>
+          <% for (var m = 1; m <= 12; m++) { %>
+            <option value="<%= m %>" <%= account.fiscal_year_end === m ? 'selected' : '' %>><%= FY_MONTHS[m] %></option>
+          <% } %>
+        </select>
+      </label>
+      <label class="block">
+        <span class="text-xs text-slate-500">Budget cycle starts</span>
+        <select name="budget_start_month" class="w-full border border-slate-300 rounded px-2 py-1.5 mt-0.5 text-sm">
+          <option value="">Unknown</option>
+          <% for (var m = 1; m <= 12; m++) { %>
+            <option value="<%= m %>" <%= account.budget_start_month === m ? 'selected' : '' %>><%= FY_MONTHS[m] %></option>
+          <% } %>
+        </select>
+      </label>
+    </div>
+    <label class="block">
+      <span class="text-xs text-slate-500">Buyer timing notes</span>
+      <input name="buyer_timing" value="<%= account.buyer_timing || '' %>" placeholder="e.g. 'Q3 budget review, renewal in Oct'" class="w-full border border-slate-300 rounded px-2 py-1.5 mt-0.5 text-sm" />
+    </label>
+    <label class="block">
+      <span class="text-xs text-slate-500">Sales performance topics</span>
+      <textarea name="sales_perf_topics" rows="2" placeholder="e.g. 'SDR ramp, manager coaching cadence, forecast discipline'" class="w-full border border-slate-300 rounded px-2 py-1.5 mt-0.5 text-sm"><%= account.sales_perf_topics || '' %></textarea>
+    </label>
+    <div class="flex items-center gap-3">
+      <button type="submit" class="text-xs bg-slate-900 hover:bg-slate-800 text-white px-3 py-1 rounded">Save fields</button>
+      <form method="POST" action="/accounts/<%= account.id %>/fields/lookup-fiscal-year" class="inline">
+        <button type="submit" class="text-xs text-slate-500 hover:text-slate-900 underline">Auto-lookup fiscal year</button>
+      </form>
+    </div>
+  </form>
+</details>
+
+<%# === SIGNALS === %>
+<%- include('partials/account_signals') %>
+
+<%# === ACTIVE VOICES === %>
+<%- include('partials/account_voices') %>
+
+<%# === CONTACTS === %>
+<%- include('partials/account_contacts') %>
+
+<%# === PLAYS === %>
+<%- include('partials/account_plays') %>
+
+<%# === HYPOTHESES === %>
+<%- include('partials/account_hypotheses') %>
+
+<%# === INTEL === %>
+<%- include('partials/account_intel') %>
