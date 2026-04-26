@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Account Mockup · TriNet</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            navy: { 50: '#EEF0F4', 100: '#D5DAE3', 200: '#ABB5C7', 300: '#8190AB', 400: '#576B8F', 500: '#3A4F73', 600: '#2A3B5C', 700: '#1E2D4F', 800: '#152140', 900: '#0D1529' },
+            teal:  { 50: '#E6F7F3', 100: '#C0EDE3', 200: '#8CDCC8', 300: '#55CAAD', 400: '#2FBA96', 500: '#2AAA8A', 600: '#239074', 700: '#1B705A', 800: '#145243', 900: '#0E3A2F' },
+          },
+        },
+      },
+    }
+  </script>
+  <style>
+    body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 9999px; font-size: 11px; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-900 min-h-screen">
+
+  <!-- NAV -->
+  <nav class="bg-navy-700">
+    <div class="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
+      <div class="flex items-center gap-5">
+        <a href="#" class="font-semibold text-white tracking-wide">AMBITION</a>
+        <a href="#" class="text-sm text-navy-200 hover:text-white flex items-center gap-1.5">Today
+          <span class="inline-flex items-center justify-center bg-teal-500 text-white text-[10px] font-semibold rounded-full min-w-[18px] h-[18px] px-1.5 leading-none">3</span>
+        </a>
+        <a href="#" class="text-sm text-navy-200 hover:text-white">Accounts</a>
+        <a href="#" class="text-sm text-navy-200 hover:text-white">Settings</a>
+      </div>
+      <div class="text-sm text-navy-300">Kyle P.</div>
+    </div>
+  </nav>
+
+  <main class="max-w-6xl mx-auto px-4 py-8">
+
+    <!-- HEADER -->
+    <div class="mb-6">
+      <a href="#" class="text-xs text-slate-500 hover:text-slate-900">&larr; Today</a>
+      <div class="flex items-start justify-between gap-4 mt-2 flex-wrap">
+        <div class="flex items-center gap-3 flex-wrap">
+          <h1 class="text-2xl font-semibold">TriNet</h1>
+          <span class="pill bg-emerald-100 text-emerald-800">customer</span>
+          <span class="pill bg-red-100 text-red-800">hot</span>
+          <span class="pill bg-amber-100 text-amber-800 border border-amber-300">watching</span>
+          <span class="text-xs text-slate-400">trinet.com · HR / PEO</span>
+        </div>
+        <div class="flex items-center gap-3">
+          <button class="text-xs text-slate-400 hover:text-slate-700 underline">Deprioritize</button>
+          <button class="text-sm bg-navy-700 hover:bg-navy-800 text-white px-4 py-2 rounded font-medium">Scan account</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================
+         GAPS — plain English, actionable, with inline CTAs
+         ============================================================ -->
+    <div class="bg-amber-50 border border-amber-200 rounded-lg px-5 py-3 mb-6 space-y-1">
+      <div class="text-sm text-amber-900 flex items-center gap-2">
+        <span class="text-amber-500 font-bold text-base">!</span>
+        <span><strong>No champion identified</strong> — <a href="#contacts" class="underline hover:text-amber-700">add a contact</a> and tag them as champion.</span>
+      </div>
+      <div class="text-sm text-amber-900 flex items-center gap-2">
+        <span class="text-amber-500 font-bold text-base">!</span>
+        <span><strong>No active play</strong> — recommended: <em>"Get to new CRO through SDR champion before Q3 budget review."</em>
+          <a href="#plays" class="inline-flex items-center gap-1 ml-1 text-xs bg-teal-600 hover:bg-teal-700 text-white px-2 py-0.5 rounded font-medium">Run this play</a>
+        </span>
+      </div>
+    </div>
+
+    <!-- ============================================================
+         DEBRIEF — POV + This week + Recommended play (tight thread)
+         ============================================================ -->
+    <div class="bg-white border border-slate-200 border-l-4 border-l-navy-700 rounded-lg mb-6 overflow-hidden">
+      <div class="p-5 space-y-3">
+        <div>
+          <div class="text-[10px] uppercase tracking-wide text-slate-500 mb-0.5">What's happening</div>
+          <div class="text-sm text-slate-800">TriNet's SDR team (8 reps) has been using Ambition for contest boards since 2023. New CRO Jenna Park started 6 weeks ago and is consolidating tools — 3 vendors cut so far. SDR manager Mike Chen just posted about "building a coaching culture" on LinkedIn.</div>
+        </div>
+        <div>
+          <div class="text-[10px] uppercase tracking-wide text-teal-700 mb-0.5">Where's the opportunity</div>
+          <div class="text-sm text-teal-800">Jenna is consolidating around platforms that serve multiple teams, not point tools. If we can show Ambition as the coaching + performance layer for AEs and managers (not just SDR contests), we survive the cut and expand. Mike Chen is the path — he's already a believer.</div>
+        </div>
+        <div class="pt-2 border-t border-slate-100 flex items-start justify-between gap-4">
+          <div>
+            <span class="text-sm font-medium text-slate-700">This week:</span>
+            <span class="text-sm text-slate-800">Reach out to Mike Chen, reference his LinkedIn post on coaching culture. Offer a 20-minute "what other teams are doing with Ambition beyond SDR" call.</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Intel summary -->
+      <div class="px-5 py-3 border-t border-slate-100 flex items-center gap-4 flex-wrap">
+        <div class="flex items-center gap-2">
+          <span class="text-[10px] uppercase tracking-wide text-slate-500 font-semibold">Use case</span>
+          <span class="pill bg-navy-700 text-white">Performance Graph</span>
+          <span class="pill bg-sky-100 text-sky-800">frontline mgr</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="text-[10px] uppercase tracking-wide text-slate-500 font-semibold">Industry</span>
+          <span class="text-sm text-slate-700">PEO margins compressing → coaching ROI is the pitch, not gamification</span>
+        </div>
+      </div>
+
+      <!-- Notes -->
+      <div class="px-5 py-3 border-t border-slate-100">
+        <div class="text-sm text-slate-700">SDR team uses Ambition for contests + leaderboards. Mike Chen (SDR mgr) is our champion internally. Want to get Ascend coaching story to the new CRO Jenna Park before Q3 budget review.</div>
+        <button class="text-xs text-slate-400 hover:text-slate-700 mt-1">Edit notes</button>
+      </div>
+    </div>
+
+    <!-- ============================================================
+         VOICES — opportunity thesis IS the header
+         ============================================================ -->
+    <div id="voices" class="bg-white border border-slate-200 border-l-4 border-l-teal-500 rounded-lg mb-6 overflow-hidden">
+      <div class="px-5 py-3 border-b border-slate-200">
+        <div class="flex items-center justify-between mb-1">
+          <div class="text-sm font-semibold text-slate-900">Voices <span class="text-slate-400 font-normal ml-1">2</span></div>
+          <span class="pill bg-red-100 text-red-800">hot</span>
+        </div>
+        <div class="text-sm text-teal-800">New CRO consolidating vendors creates urgency. SDR manager publicly signaling coaching interest gives us a warm path in.</div>
+      </div>
+      <div class="divide-y divide-slate-100">
+        <!-- Prospect 1 -->
+        <div class="px-5 py-3">
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="font-medium text-slate-900">Mike Chen</span>
+            <span class="text-xs text-slate-500">SDR Manager</span>
+            <span class="pill bg-sky-50 text-sky-800 text-[10px]">LinkedIn</span>
+            <span class="text-[11px] text-slate-400">Apr 18</span>
+          </div>
+          <div class="text-sm text-slate-800 mt-1">Posted about building a "coaching culture that scales" — cited moving beyond leaderboards to 1:1 manager accountability.</div>
+          <div class="text-xs text-slate-500 mt-1 italic">Already uses Ambition. This is a buying signal for Ascend coaching — he's describing exactly the problem it solves.</div>
+          <div class="mt-2 flex items-center gap-3 text-xs">
+            <a href="#" class="text-slate-500 hover:text-slate-900 underline">Source ↗</a>
+            <a href="#" class="text-teal-700 hover:text-teal-900 underline">Find warm path</a>
+            <a href="#" class="text-slate-400 hover:text-red-700 underline">Not relevant</a>
+          </div>
+        </div>
+        <!-- Prospect 2 -->
+        <div class="px-5 py-3">
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="font-medium text-slate-900">Jenna Park</span>
+            <span class="text-xs text-slate-500">CRO (new, 6 weeks)</span>
+            <span class="pill bg-sky-50 text-sky-800 text-[10px]">Press</span>
+            <span class="text-[11px] text-slate-400">Apr 10</span>
+          </div>
+          <div class="text-sm text-slate-800 mt-1">Quoted in SaaStr recap: "We're cutting from 14 tools to 6. If a platform doesn't serve the full org, it's on the list."</div>
+          <div class="text-xs text-slate-500 mt-1 italic">Defense risk. She's the decision maker and she's cutting tools. We need to position as platform, not point solution.</div>
+          <div class="mt-2 flex items-center gap-3 text-xs">
+            <a href="#" class="text-slate-500 hover:text-slate-900 underline">Source ↗</a>
+            <a href="#" class="text-slate-400 hover:text-red-700 underline">Not relevant</a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================
+         PLAYS — next move front and center
+         ============================================================ -->
+    <div id="plays" class="bg-white border border-slate-200 border-l-4 border-l-emerald-500 rounded-lg mb-6 overflow-hidden">
+      <div class="px-5 py-3 border-b border-slate-200 flex items-center justify-between">
+        <div class="text-sm font-semibold text-slate-900">Plays <span class="text-slate-400 font-normal ml-1">1</span></div>
+      </div>
+
+      <!-- Existing play -->
+      <div class="p-5">
+        <div class="flex items-start justify-between gap-3 mb-2 flex-wrap">
+          <div>
+            <div class="text-sm font-semibold text-slate-900">Champion-Led Expansion: SDR → Full Org</div>
+            <div class="text-xs text-slate-500 mt-0.5">Performance Graph · by Kyle P. · Apr 20</div>
+          </div>
+          <div class="flex items-center gap-2">
+            <a href="#" class="text-xs border border-slate-300 hover:border-teal-500 text-slate-700 px-2 py-1 rounded font-medium">Export</a>
+            <span class="pill bg-emerald-100 text-emerald-800">Active</span>
+          </div>
+        </div>
+
+        <div class="bg-slate-50 border-l-2 border-slate-300 px-3 py-2 text-sm text-slate-700 mb-3">
+          <span class="text-xs text-slate-500 uppercase tracking-wide font-semibold">Your instinct</span><br/>SDR team already uses us. Want to get to the new CRO through our SDR champion before Q3 budget review.
+        </div>
+
+        <!-- NEXT MOVE — the thing they do Monday -->
+        <div class="bg-teal-50 border border-teal-200 rounded p-3 mb-3">
+          <div class="text-[10px] uppercase tracking-wide text-teal-700 font-semibold mb-1">Next move · day 1</div>
+          <div class="flex items-center gap-2 flex-wrap text-sm">
+            <span class="inline-flex items-center text-[10px] font-semibold uppercase tracking-wide border rounded px-1.5 py-0.5 bg-slate-100 text-slate-800 border-slate-300">You (coach)</span>
+            <span class="font-medium text-slate-900">Kyle P.</span>
+            <span class="text-xs text-slate-500">· LinkedIn DM</span>
+          </div>
+          <div class="text-sm text-slate-800 mt-1">DM Mike Chen: "Saw your post on coaching culture — we're seeing the same shift with 3 of our customers. Would love to share what they're doing with manager-led coaching beyond leaderboards. Quick call this week?"</div>
+          <details class="mt-2 bg-white border border-teal-200 rounded">
+            <summary class="cursor-pointer px-3 py-2 text-xs font-semibold text-teal-800">Artifact — LinkedIn message</summary>
+            <div class="px-3 pb-3">
+              <pre class="whitespace-pre-wrap text-xs text-slate-800 bg-white border border-teal-200 rounded p-2 font-sans">Hey Mike — saw your post about building coaching culture that scales. We're hearing the same thing from SDR leaders at [Similar Co] and [Similar Co 2] — the leaderboard era is over, it's about manager accountability now.
+
+Since your team already uses Ambition, I'd love to show you what we've built for manager-led coaching (Ascend). 20 min, no pitch — just what others at your scale are doing.
+
+Open this week?</pre>
+              <button class="mt-2 text-xs bg-teal-600 hover:bg-teal-700 text-white px-2 py-1 rounded">Copy</button>
+            </div>
+          </details>
+        </div>
+
+        <!-- Remaining moves collapsed -->
+        <details class="mb-3">
+          <summary class="text-xs text-slate-500 hover:text-slate-900 cursor-pointer">All 4 moves</summary>
+          <ol class="space-y-3 mt-3">
+            <li class="text-sm flex gap-3">
+              <span class="shrink-0 w-6 h-6 rounded-full bg-navy-700 text-white text-xs flex items-center justify-center font-semibold">1</span>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <span class="inline-flex items-center text-[10px] font-semibold uppercase tracking-wide border rounded px-1.5 py-0.5 bg-slate-100 text-slate-800 border-slate-300">You (coach)</span>
+                  <span class="font-medium text-slate-900">Kyle P.</span>
+                  <span class="text-xs text-slate-500">· LinkedIn DM · day 1</span>
+                </div>
+                <div class="text-slate-700 mt-1">DM Mike Chen re: coaching culture post.</div>
+              </div>
+            </li>
+            <li class="text-sm flex gap-3">
+              <span class="shrink-0 w-6 h-6 rounded-full bg-navy-700 text-white text-xs flex items-center justify-center font-semibold">2</span>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <span class="inline-flex items-center text-[10px] font-semibold uppercase tracking-wide border rounded px-1.5 py-0.5 bg-emerald-100 text-emerald-900 border-emerald-300">Champion carries</span>
+                  <span class="font-medium text-slate-900">Mike Chen</span>
+                  <span class="text-xs text-slate-500">· Internal email · day 5</span>
+                </div>
+                <div class="text-slate-700 mt-1">Mike forwards a one-pager to Jenna Park: "We're already using this for SDRs — here's what it could do for AE managers."</div>
+              </div>
+            </li>
+            <li class="text-sm flex gap-3">
+              <span class="shrink-0 w-6 h-6 rounded-full bg-navy-700 text-white text-xs flex items-center justify-center font-semibold">3</span>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <span class="inline-flex items-center text-[10px] font-semibold uppercase tracking-wide border rounded px-1.5 py-0.5 bg-sky-100 text-sky-900 border-sky-300">Internal assist</span>
+                  <span class="font-medium text-slate-900">CSM (Sarah)</span>
+                  <span class="text-xs text-slate-500">· Call · day 7</span>
+                </div>
+                <div class="text-slate-700 mt-1">CSM shares usage data showing SDR team adoption + ROI. Positions renewal conversation as expansion opportunity.</div>
+              </div>
+            </li>
+            <li class="text-sm flex gap-3">
+              <span class="shrink-0 w-6 h-6 rounded-full bg-navy-700 text-white text-xs flex items-center justify-center font-semibold">4</span>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <span class="inline-flex items-center text-[10px] font-semibold uppercase tracking-wide border rounded px-1.5 py-0.5 bg-slate-100 text-slate-800 border-slate-300">You (coach)</span>
+                  <span class="font-medium text-slate-900">Kyle P.</span>
+                  <span class="text-xs text-slate-500">· Email · day 10</span>
+                </div>
+                <div class="text-slate-700 mt-1">Send Jenna a brief: "3 ways TriNet's peers use Ambition beyond SDR" — positions us as platform play, not point tool.</div>
+              </div>
+            </li>
+          </ol>
+        </details>
+
+        <div class="text-xs mb-2">
+          <span class="uppercase tracking-wide text-slate-500 font-semibold">Internal ask</span> · Loop in CSM Sarah before day 5 — she needs to prepare usage data for the champion handoff.
+        </div>
+
+        <details>
+          <summary class="text-xs text-slate-500 hover:text-slate-900 cursor-pointer">Update status</summary>
+          <div class="mt-2 text-xs text-slate-500">Status / next action / outcome forms go here.</div>
+        </details>
+      </div>
+
+      <!-- Composer -->
+      <details class="border-t border-slate-200 p-4 bg-slate-50">
+        <summary class="text-sm font-semibold text-slate-900 cursor-pointer">+ Start another play</summary>
+        <div class="mt-3 text-sm text-slate-500">Composer form goes here.</div>
+      </details>
+    </div>
+
+    <!-- ============================================================
+         REFERENCE TABS
+         ============================================================ -->
+    <div class="bg-white border border-slate-200 rounded-lg overflow-hidden">
+      <div class="border-b border-slate-200 px-4 flex gap-0 overflow-x-auto">
+        <a href="#" class="px-3 py-2.5 text-sm whitespace-nowrap border-b-2 border-navy-700 text-slate-900 font-medium">Signals <span class="text-xs text-slate-400 ml-0.5">4</span></a>
+        <a href="#" class="px-3 py-2.5 text-sm whitespace-nowrap border-b-2 border-transparent text-slate-500 hover:text-slate-700">Contacts <span class="text-xs text-slate-400 ml-0.5">2</span></a>
+        <a href="#" class="px-3 py-2.5 text-sm whitespace-nowrap border-b-2 border-transparent text-slate-500 hover:text-slate-700">Intel</a>
+        <a href="#" class="px-3 py-2.5 text-sm whitespace-nowrap border-b-2 border-transparent text-slate-500 hover:text-slate-700">Hypotheses <span class="text-xs text-slate-400 ml-0.5">1</span></a>
+        <a href="#" class="px-3 py-2.5 text-sm whitespace-nowrap border-b-2 border-transparent text-slate-500 hover:text-slate-700">Fields</a>
+      </div>
+      <div class="divide-y divide-slate-100">
+        <div class="px-4 py-3">
+          <div class="flex items-center gap-2 flex-wrap mb-1 text-xs">
+            <span class="pill bg-red-100 text-red-800">Defense</span>
+            <span class="text-slate-400">SEV 5</span>
+            <span class="text-slate-400">2w ago</span>
+          </div>
+          <div class="text-sm font-medium text-slate-900">New CRO Jenna Park cutting vendor stack from 14 to 6</div>
+          <div class="text-sm text-slate-700 mt-1">TriNet is on the cut list unless positioned as a platform play. SDR-only usage makes us look like a point tool.</div>
+        </div>
+        <div class="px-4 py-3">
+          <div class="flex items-center gap-2 flex-wrap mb-1 text-xs">
+            <span class="pill bg-sky-100 text-sky-800">Offense</span>
+            <span class="text-slate-400">SEV 4</span>
+            <span class="text-slate-400">1w ago</span>
+          </div>
+          <div class="text-sm font-medium text-slate-900">SDR Manager Mike Chen LinkedIn post on coaching culture</div>
+          <div class="text-sm text-slate-700 mt-1">Public signal that our champion is already thinking about the Ascend use case. Warm entry point for expansion conversation.</div>
+        </div>
+        <div class="px-4 py-3">
+          <div class="flex items-center gap-2 flex-wrap mb-1 text-xs">
+            <span class="pill bg-slate-100 text-slate-700">Context</span>
+            <span class="text-slate-400">SEV 2</span>
+            <span class="text-slate-400">3w ago</span>
+          </div>
+          <div class="text-sm font-medium text-slate-900">TriNet Q1 earnings: PEO margins down 3pts YoY</div>
+          <div class="text-sm text-slate-700 mt-1">Margin pressure supports the CRO's consolidation thesis. Every tool needs to justify ROI.</div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</body>
+</html>
