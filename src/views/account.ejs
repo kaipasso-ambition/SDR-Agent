@@ -204,21 +204,34 @@
 <% } %>
 
 <!-- ============ NOTES ============ -->
-<details class="bg-white border border-slate-200 rounded-lg mb-4 overflow-hidden" <% if (!account.notes) { %>open<% } %>>
-  <summary class="px-4 py-3 text-sm text-slate-700 cursor-pointer list-none select-none hover:bg-slate-50 flex items-center gap-2">
-    <span class="text-slate-400 text-[10px]">&#9998;</span>
-    <span class="font-medium">Notes</span>
-    <% if (account.notes) { %><span class="text-slate-400 text-xs ml-1">— <%= account.notes.length > 80 ? account.notes.slice(0,80) + '…' : account.notes %></span><% } %>
-  </summary>
-  <form method="POST" action="/accounts/<%= account.id %>/notes" class="px-4 pb-4 border-t border-slate-100 pt-3">
-    <textarea name="notes" rows="3" placeholder="Add context for future scans (e.g. 'SDR team uses Ambition, want to expand to AE team')"
-              class="w-full border border-slate-200 rounded px-3 py-2 text-sm text-slate-800 resize-y"><%= account.notes || '' %></textarea>
-    <div class="flex items-center justify-between mt-1.5">
-      <span class="text-[10px] text-slate-400">These notes feed into every scan and POV.</span>
-      <button type="submit" class="text-xs bg-slate-900 hover:bg-slate-800 text-white px-3 py-1 rounded">Save</button>
-    </div>
-  </form>
-</details>
+<% if (account.notes) { %>
+  <div class="bg-white border border-slate-200 rounded-lg mb-4 overflow-hidden">
+    <div class="px-4 py-3 text-sm text-slate-700 whitespace-pre-line leading-relaxed"><%= account.notes %></div>
+    <details>
+      <summary class="px-4 py-2 border-t border-slate-100 text-xs text-slate-500 cursor-pointer list-none select-none hover:bg-slate-50 flex items-center gap-2">
+        <span class="text-slate-400 text-[10px]">&#9998;</span> Edit notes
+      </summary>
+      <form method="POST" action="/accounts/<%= account.id %>/notes" class="px-4 pb-4 pt-2">
+        <textarea name="notes" rows="5" class="w-full border border-slate-200 rounded px-3 py-2 text-sm text-slate-800 resize-y"><%= account.notes %></textarea>
+        <div class="flex items-center justify-between mt-1.5">
+          <span class="text-[10px] text-slate-400">These notes feed into every scan and POV.</span>
+          <button type="submit" class="text-xs bg-slate-900 hover:bg-slate-800 text-white px-3 py-1 rounded">Save</button>
+        </div>
+      </form>
+    </details>
+  </div>
+<% } else { %>
+  <div class="bg-white border border-slate-200 rounded-lg mb-4 overflow-hidden">
+    <form method="POST" action="/accounts/<%= account.id %>/notes" class="px-4 py-4">
+      <div class="text-xs text-slate-500 font-medium mb-2">Add notes — meeting summaries, product usage, open issues. These feed every scan and POV.</div>
+      <textarea name="notes" rows="3" placeholder="e.g. 'SDR team uses Ambition for leaderboards. Coaching program launching Q3. VP Sales wants ROI metrics before renewal.'"
+                class="w-full border border-slate-200 rounded px-3 py-2 text-sm text-slate-800 resize-y"></textarea>
+      <div class="flex justify-end mt-1.5">
+        <button type="submit" class="text-xs bg-slate-900 hover:bg-slate-800 text-white px-3 py-1 rounded">Save</button>
+      </div>
+    </form>
+  </div>
+<% } %>
 
 <!-- ============ ACCOUNT FIELDS (fiscal, buyer timing) ============ -->
 <details class="bg-white border border-slate-200 rounded-lg mb-6 overflow-hidden">
