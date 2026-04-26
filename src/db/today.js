@@ -148,7 +148,7 @@ export async function listUnifiedBrief(userId, { limit = 50 } = {}) {
 // the last 60 days. Accounts with zero activity and no prospect scan
 // drop off unless includeQuiet is set (so the page isn't cluttered with
 // 150 empty cards, but the AE can still reveal them on demand).
-export async function listAccountTimeline(userId, { includeQuiet = false, statuses = null } = {}) {
+export async function listAccountTimeline(userId, { includeQuiet = false, includeDeprioritized = false, statuses = null } = {}) {
   const statusList = Array.isArray(statuses) && statuses.length > 0
     ? statuses
     : ['prospect', 'customer', 'churned'];
@@ -196,6 +196,7 @@ export async function listAccountTimeline(userId, { includeQuiet = false, status
       a.buyer_timing,
       a.sales_perf_topics,
       a.watched,
+      a.deprioritized,
       a.notes,
       a.owner_user_id,
       u.name                            AS owner_name,
@@ -232,11 +233,12 @@ export async function listAccountTimeline(userId, { includeQuiet = false, status
            OR rs.signal_count > 0
            OR ps.status IS NOT NULL
            OR pov.status IS NOT NULL)
+      AND ($4::boolean OR a.deprioritized = false)
     ORDER BY
       last_activity_at DESC NULLS LAST,
       a.account_name ASC
     `,
-    [userId, statusList, includeQuiet]
+    [userId, statusList, includeQuiet, includeDeprioritized]
   );
   return rows;
 }

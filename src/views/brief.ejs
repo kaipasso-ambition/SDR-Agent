@@ -52,7 +52,7 @@
   });
 
   function qs(overrides) {
-    const base = { sort: sort, status: statusFilter || '', quiet: includeQuiet ? '1' : '' };
+    const base = { sort: sort, status: statusFilter || '', quiet: includeQuiet ? '1' : '', depri: includeDeprioritized ? '1' : '' };
     const merged = Object.assign({}, base, overrides || {});
     const params = Object.keys(merged)
       .filter(function(k) { return merged[k] !== '' && merged[k] != null; })
@@ -159,12 +159,23 @@
   <% if (!includeQuiet && accounts.length < totalAccounts) { %>
     <a href="<%= qs({quiet: '1'}) %>"
        class="text-slate-500 hover:text-slate-900 underline">
-      Show all <%= totalAccounts %> accounts
+      Show all
     </a>
   <% } else if (includeQuiet) { %>
     <a href="<%= qs({quiet: ''}) %>"
        class="text-slate-500 hover:text-slate-900 underline">
-      Hide quiet accounts
+      Hide quiet
+    </a>
+  <% } %>
+  <% if (!includeDeprioritized) { %>
+    <a href="<%= qs({depri: '1'}) %>"
+       class="text-slate-500 hover:text-slate-900 underline">
+      Show deprioritized
+    </a>
+  <% } else { %>
+    <a href="<%= qs({depri: ''}) %>"
+       class="text-slate-500 hover:text-slate-900 underline">
+      Hide deprioritized
     </a>
   <% } %>
 </div>
@@ -206,7 +217,7 @@
       const iiResult = a.ii_status === 'completed' && a.ii_result ? a.ii_result : null;
       const hasIntel = (ucfResult && ucfResult.primary) || (iiResult && iiResult.insights && iiResult.insights.length > 0);
     %>
-      <div class="bg-white border border-slate-200 rounded-lg overflow-hidden">
+      <div class="<%= a.deprioritized ? 'bg-slate-50 border border-slate-200 rounded-lg overflow-hidden opacity-60' : 'bg-white border border-slate-200 rounded-lg overflow-hidden' %>">
 
         <%# === HEADER: account name + pills + scan button === %>
         <div class="px-4 py-3 flex items-start justify-between gap-3 flex-wrap">
@@ -235,6 +246,12 @@
             <% if (a.fiscal_year_end) { %>
               <span class="text-[11px] text-slate-500">FY <%= FY_MONTHS[a.fiscal_year_end] %></span>
             <% } %>
+            <form method="POST" action="/accounts/<%= a.account_id %>/deprioritize" class="inline">
+              <input type="hidden" name="back" value="/brief" />
+              <button type="submit" class="text-[11px] text-slate-400 hover:text-slate-700 underline" title="<%= a.deprioritized ? 'Reprioritize — show on Today' : 'Deprioritize — hide from Today' %>">
+                <%= a.deprioritized ? 'Reprioritize' : 'Deprioritize' %>
+              </button>
+            </form>
             <form method="POST" action="/accounts/<%= a.account_id %>/scan-all" class="inline">
               <button type="submit"
                       class="text-xs bg-slate-900 hover:bg-slate-800 text-white px-3 py-1.5 rounded font-medium disabled:bg-slate-400 disabled:cursor-wait"

@@ -408,7 +408,7 @@ export async function updateAccountNotes(id, notes) {
 }
 
 export async function updateAccountFields(id, fields) {
-  const allowed = ['fiscal_year_end', 'budget_start_month', 'buyer_timing', 'sales_perf_topics', 'watched'];
+  const allowed = ['fiscal_year_end', 'budget_start_month', 'buyer_timing', 'sales_perf_topics', 'watched', 'deprioritized'];
   const sets = [];
   const vals = [id];
   let i = 1;

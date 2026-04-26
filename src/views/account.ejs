@@ -145,12 +145,19 @@
       <% if (account.domain) { %><span class="text-xs text-slate-400"><%= account.domain %></span><% } %>
       <% if (account.industry) { %><span class="text-xs text-slate-400">· <%= account.industry %></span><% } %>
     </div>
-    <form method="POST" action="/accounts/<%= account.id %>/scan-all">
-      <button type="submit" class="text-sm bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded font-medium disabled:bg-slate-400 disabled:cursor-wait"
-              <% if (psRunning || povRunning) { %>disabled<% } %>>
-        <% if (psRunning || povRunning) { %>Scanning…<% } else { %>Scan account<% } %>
-      </button>
-    </form>
+    <div class="flex items-center gap-3">
+      <form method="POST" action="/accounts/<%= account.id %>/deprioritize" class="inline">
+        <button type="submit" class="text-xs text-slate-400 hover:text-slate-700 underline">
+          <%= account.deprioritized ? 'Reprioritize' : 'Deprioritize' %>
+        </button>
+      </form>
+      <form method="POST" action="/accounts/<%= account.id %>/scan-all">
+        <button type="submit" class="text-sm bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded font-medium disabled:bg-slate-400 disabled:cursor-wait"
+                <% if (psRunning || povRunning) { %>disabled<% } %>>
+          <% if (psRunning || povRunning) { %>Scanning…<% } else { %>Scan account<% } %>
+        </button>
+      </form>
+    </div>
   </div>
   <% if (rescanStatus === 'started') { %>
     <div class="mt-2 text-xs text-emerald-700 flex items-center gap-2">
@@ -188,11 +195,12 @@
       <span class="text-sm font-medium text-slate-700">This week:</span>
       <span class="text-sm text-slate-800"><%= pov.next_step || pov.strategy %></span>
     </div>
-    <% if (pov.recommended_play && !plays.some(function(p) { return p.status === 'active' || p.status === 'drafting'; })) { %>
+    <% if (pov.recommended_play) { %>
       <div class="pt-2">
+        <% var hasActivePlay = plays.some(function(p) { return p.status === 'active' || p.status === 'drafting'; }); %>
         <a href="/accounts/<%= account.id %>?new_play=1&instinct=<%= encodeURIComponent(pov.recommended_play) %>"
-           class="inline-flex items-center gap-1 text-sm bg-emerald-700 hover:bg-emerald-800 text-white px-3 py-1.5 rounded font-medium">
-          Run this play
+           class="inline-flex items-center gap-1 text-sm <%= hasActivePlay ? 'bg-slate-600 hover:bg-slate-700' : 'bg-emerald-700 hover:bg-emerald-800' %> text-white px-3 py-1.5 rounded font-medium">
+          <%= hasActivePlay ? 'Alternative angle' : 'Run this play' %>
         </a>
       </div>
     <% } %>
@@ -232,6 +240,24 @@
     </form>
   </div>
 <% } %>
+
+<%# === INTEL (why — use case fit + industry insight) === %>
+<%- include('partials/account_intel') %>
+
+<%# === SIGNALS (evidence) === %>
+<%- include('partials/account_signals') %>
+
+<%# === ACTIVE VOICES === %>
+<%- include('partials/account_voices') %>
+
+<%# === PLAYS (execution) === %>
+<%- include('partials/account_plays') %>
+
+<%# === CONTACTS === %>
+<%- include('partials/account_contacts') %>
+
+<%# === HYPOTHESES === %>
+<%- include('partials/account_hypotheses') %>
 
 <!-- ============ ACCOUNT FIELDS (fiscal, buyer timing) ============ -->
 <details class="bg-white border border-slate-200 rounded-lg mb-6 overflow-hidden">
@@ -277,21 +303,3 @@
     </div>
   </form>
 </details>
-
-<%# === SIGNALS === %>
-<%- include('partials/account_signals') %>
-
-<%# === ACTIVE VOICES === %>
-<%- include('partials/account_voices') %>
-
-<%# === CONTACTS === %>
-<%- include('partials/account_contacts') %>
-
-<%# === PLAYS === %>
-<%- include('partials/account_plays') %>
-
-<%# === HYPOTHESES === %>
-<%- include('partials/account_hypotheses') %>
-
-<%# === INTEL === %>
-<%- include('partials/account_intel') %>

@@ -1085,6 +1085,20 @@ webRouter.post('/accounts/:id/watch', requireAuth, async (req, res, next) => {
   }
 });
 
+webRouter.post('/accounts/:id/deprioritize', requireAuth, async (req, res, next) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.redirect('/accounts');
+    const current = await query('SELECT deprioritized FROM accounts_registry WHERE id = $1', [req.params.id]);
+    if (current.rows.length === 0) return res.redirect('/accounts');
+    const newVal = !current.rows[0].deprioritized;
+    await updateAccountFields(req.params.id, { deprioritized: newVal });
+    const back = req.body?.back || `/accounts/${req.params.id}`;
+    res.redirect(back);
+  } catch (err) {
+    next(err);
+  }
+});
+
 webRouter.post('/accounts/:id/fields/lookup-fiscal-year', requireAuth, async (req, res, next) => {
   try {
     if (!UUID_RE.test(req.params.id)) return res.redirect('/accounts');
@@ -1857,10 +1871,12 @@ webRouter.get('/brief', requireAuth, async (req, res, next) => {
     const statusFilter = allowedStatuses.has(req.query?.status) ? req.query.status : null;
 
     const includeQuiet = req.query?.quiet === '1';
+    const includeDeprioritized = req.query?.depri === '1';
 
     const [accounts, totalAccountRow, activeJobRow] = await Promise.all([
       listAccountTimeline(req.session.userId, {
         includeQuiet,
+        includeDeprioritized,
         statuses: statusFilter ? [statusFilter] : null,
       }),
       query(
@@ -1901,6 +1917,7 @@ webRouter.get('/brief', requireAuth, async (req, res, next) => {
       sort,
       statusFilter,
       includeQuiet,
+      includeDeprioritized,
       activeJob,
       runningJob,
       purgedCount,
