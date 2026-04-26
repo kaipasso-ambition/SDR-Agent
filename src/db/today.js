@@ -195,6 +195,7 @@ export async function listAccountTimeline(userId, { includeQuiet = false, status
       a.budget_start_month,
       a.buyer_timing,
       a.sales_perf_topics,
+      a.watched,
       a.notes,
       a.owner_user_id,
       u.name                            AS owner_name,

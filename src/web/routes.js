@@ -1071,6 +1071,20 @@ webRouter.post('/accounts/:id/fields', requireAuth, async (req, res, next) => {
   }
 });
 
+webRouter.post('/accounts/:id/watch', requireAuth, async (req, res, next) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.redirect('/accounts');
+    const current = await query('SELECT watched FROM accounts_registry WHERE id = $1', [req.params.id]);
+    if (current.rows.length === 0) return res.redirect('/accounts');
+    const newVal = !current.rows[0].watched;
+    await updateAccountFields(req.params.id, { watched: newVal });
+    const back = req.body?.back || `/accounts/${req.params.id}`;
+    res.redirect(back);
+  } catch (err) {
+    next(err);
+  }
+});
+
 webRouter.post('/accounts/:id/fields/lookup-fiscal-year', requireAuth, async (req, res, next) => {
   try {
     if (!UUID_RE.test(req.params.id)) return res.redirect('/accounts');

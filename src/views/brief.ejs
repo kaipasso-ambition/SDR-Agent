@@ -218,6 +218,12 @@
             <% if (hasPov && pov.priority) { %>
               <span class="pill <%= priorityColor[pov.priority] || priorityColor.cool %>"><%= pov.priority %></span>
             <% } %>
+            <form method="POST" action="/accounts/<%= a.account_id %>/watch" class="inline">
+              <input type="hidden" name="back" value="/brief" />
+              <button type="submit" class="pill cursor-pointer <%= a.watched ? 'bg-amber-100 text-amber-800 border border-amber-300' : 'bg-slate-50 text-slate-400 border border-slate-200 hover:border-slate-400' %>" title="<%= a.watched ? 'Remove from daily scan' : 'Add to daily scan' %>">
+                <%= a.watched ? 'Watching' : 'Watch' %>
+              </button>
+            </form>
             <% if (a.industry) { %>
               <span class="text-xs text-slate-400 hidden sm:inline">· <%= a.industry %></span>
             <% } %>

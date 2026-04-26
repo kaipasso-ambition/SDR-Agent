@@ -229,29 +229,40 @@ if (process.env.SIGNAL_SCAN_ENABLED === 'true') {
   cron.schedule(
     '0 6 * * *',
     async () => {
-      console.log('[scheduler] Starting daily signal scan');
       try {
-        const { rows } = await query(
+        const { rows: watched } = await query(
+          `SELECT id FROM accounts_registry WHERE watched = true`
+        );
+        if (watched.length === 0) {
+          console.log('[scheduler] daily scan — no watched accounts, skipping');
+          return;
+        }
+        const watchedIds = watched.map((r) => r.id);
+        console.log(`[scheduler] daily scan — ${watchedIds.length} watched account(s)`);
+
+        const { rows: jobRows } = await query(
           `INSERT INTO account_signal_jobs (status) VALUES ('running') RETURNING id`
         );
-        const jobId = rows[0].id;
-        const result = await runSignalScanCycle({ job_id: jobId });
+        const result = await runSignalScanCycle({
+          job_id: jobRows[0].id,
+          account_ids: watchedIds,
+        });
         const changed = result.accountsWithNewSignals || [];
         if (changed.length > 0) {
-          console.log(`[scheduler] signal scan done — refreshing POV for ${changed.length} account(s)`);
+          console.log(`[scheduler] scan done — refreshing POV for ${changed.length} account(s)`);
           for (const id of changed) {
             await regenerateAccountPov(id);
           }
         } else {
-          console.log('[scheduler] signal scan done — no new signals, skipping POV regen');
+          console.log('[scheduler] scan done — no new signals');
         }
       } catch (err) {
-        console.error('[scheduler] signal scan failed:', err);
+        console.error('[scheduler] daily scan failed:', err);
       }
     },
     { timezone: tz }
   );
-  console.log('[scheduler] daily signal scan cron registered (6am)');
+  console.log('[scheduler] daily signal scan cron registered (6am, watched accounts only)');
 } else {
   console.log('[scheduler] signal scan cron DISABLED (set SIGNAL_SCAN_ENABLED=true to enable)');
 }

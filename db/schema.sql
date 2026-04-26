@@ -268,6 +268,7 @@ ALTER TABLE accounts_registry ADD COLUMN IF NOT EXISTS fiscal_year_end INT;
 ALTER TABLE accounts_registry ADD COLUMN IF NOT EXISTS budget_start_month INT;
 ALTER TABLE accounts_registry ADD COLUMN IF NOT EXISTS buyer_timing TEXT;
 ALTER TABLE accounts_registry ADD COLUMN IF NOT EXISTS sales_perf_topics TEXT;
+ALTER TABLE accounts_registry ADD COLUMN IF NOT EXISTS watched BOOLEAN NOT NULL DEFAULT FALSE;
 
 CREATE TABLE IF NOT EXISTS champions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
