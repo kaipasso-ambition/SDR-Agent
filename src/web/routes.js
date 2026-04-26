@@ -2126,7 +2126,7 @@ webRouter.post('/accounts/:id/intel/use-case', requireAuth, async (req, res, nex
 
     const intel = await getAccountIntel(accountId);
     if (intel.use_case_fit?.status === 'running') {
-      return res.redirect(`/accounts/${accountId}#intel`);
+      return res.redirect(`/accounts/${accountId}?tab=intel`);
     }
 
     await setIntelRunning(accountId, 'use_case_fit');
@@ -2155,7 +2155,7 @@ webRouter.post('/accounts/:id/intel/use-case', requireAuth, async (req, res, nex
         try { await setIntelFailed(accountId, 'use_case_fit', err.message || String(err)); } catch (_) {}
       });
 
-    res.redirect(`/accounts/${accountId}#intel`);
+    res.redirect(`/accounts/${accountId}?tab=intel`);
   } catch (err) {
     next(err);
   }
@@ -2170,7 +2170,7 @@ webRouter.post('/accounts/:id/intel/industry', requireAuth, async (req, res, nex
 
     const intel = await getAccountIntel(accountId);
     if (intel.industry_insight?.status === 'running') {
-      return res.redirect(`/accounts/${accountId}#intel`);
+      return res.redirect(`/accounts/${accountId}?tab=intel`);
     }
 
     await setIntelRunning(accountId, 'industry_insight');
@@ -2190,7 +2190,7 @@ webRouter.post('/accounts/:id/intel/industry', requireAuth, async (req, res, nex
         try { await setIntelFailed(accountId, 'industry_insight', err.message || String(err)); } catch (_) {}
       });
 
-    res.redirect(`/accounts/${accountId}#intel`);
+    res.redirect(`/accounts/${accountId}?tab=intel`);
   } catch (err) {
     next(err);
   }
@@ -2278,7 +2278,7 @@ webRouter.post('/accounts/:id/intel/prospects/clear', requireAuth, async (req, r
       result.prospects.forEach((p) => { p.dismissed = true; });
       await setIntelResult(accountId, 'prospect_scan', result);
     }
-    res.redirect('/brief');
+    res.redirect(`/accounts/${accountId}?tab=voices`);
   } catch (err) {
     next(err);
   }
@@ -2308,7 +2308,7 @@ webRouter.post('/accounts/:id/intel/prospects/:idx/dismiss', requireAuth, async 
       }
       await setIntelResult(accountId, 'prospect_scan', result);
     }
-    res.redirect('/brief');
+    res.redirect(`/accounts/${accountId}?tab=voices`);
   } catch (err) {
     next(err);
   }
@@ -2370,7 +2370,7 @@ webRouter.post('/accounts/:id/prospects/:idx/find-path', requireAuth, async (req
       console.log(`[warm_path] ${accountRow.account_name} / ${prospect.name}: ${out.result?.stepping_stones?.length || 0} stepping stones, ${out.searches} searches, ${out.elapsed_ms}ms`);
     }).catch((e) => console.error('[warm_path]', e));
 
-    res.redirect('/brief');
+    res.redirect(`/accounts/${accountId}?tab=voices`);
   } catch (err) {
     next(err);
   }
@@ -3397,7 +3397,7 @@ webRouter.post('/accounts/:id/scan-all', requireAuth, async (req, res, next) => 
       }
     })().catch((err) => console.error('[scan-all] failed:', err));
 
-    res.redirect('/brief');
+    res.redirect(`/accounts/${accountId}?rescan=started`);
   } catch (err) {
     next(err);
   }
