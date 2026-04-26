@@ -3261,9 +3261,8 @@ webRouter.post('/accounts/:id/scan-all', requireAuth, async (req, res, next) => 
     const intel = await getAccountIntel(accountId);
     const prospectRunning = intel.prospect_scan?.status === 'running';
 
-    // --- Sequential scan: signals first, then prospects, then POV ---
-    // Running in series avoids doubling up on API rate limits and
-    // skips POV regen if both scans produce nothing new.
+    // --- Full pipeline: signals → prospects → use case fit → industry insight → POV ---
+    // Sequential to avoid rate limits. Each step feeds the next.
     const lastAt = await getLastScanForAccount(accountId);
     const ONE_DAY = 24 * 60 * 60 * 1000;
     const signalScanThrottled = lastAt && Date.now() - new Date(lastAt).getTime() < ONE_DAY;
@@ -3271,6 +3270,7 @@ webRouter.post('/accounts/:id/scan-all', requireAuth, async (req, res, next) => 
     (async () => {
       let signalResult = null;
       let prospectResult = null;
+      let gotNewData = false;
 
       // 1. Signal scan (throttled to once/24h)
       if (!signalScanThrottled) {
@@ -3284,6 +3284,7 @@ webRouter.post('/accounts/:id/scan-all', requireAuth, async (req, res, next) => 
             account_ids: [accountId],
             job_id: jobRows[0].id,
           });
+          if (signalResult && (signalResult.accountsWithNewSignals || []).length > 0) gotNewData = true;
         } catch (err) {
           console.error(`[scan-all] signal scan ${accountId} failed:`, err.message);
         }
@@ -3301,6 +3302,7 @@ webRouter.post('/accounts/:id/scan-all', requireAuth, async (req, res, next) => 
           } else {
             await setIntelResult(accountId, 'prospect_scan', out.result);
             prospectResult = out.result;
+            if (prospectResult.prospects && prospectResult.prospects.length > 0) gotNewData = true;
           }
         } catch (err) {
           console.error(`[scan-all] prospect scan ${accountId} failed:`, err.message);
@@ -3308,10 +3310,50 @@ webRouter.post('/accounts/:id/scan-all', requireAuth, async (req, res, next) => 
         }
       }
 
-      // 3. POV regen only if at least one scan produced new data
-      const hasNewSignals = signalResult && (signalResult.accountsWithNewSignals || []).length > 0;
-      const hasNewProspects = prospectResult && prospectResult.prospects && prospectResult.prospects.length > 0;
-      if (hasNewSignals || hasNewProspects) {
+      // 3. Use case fit (no web search — analyzes signals + account context)
+      try {
+        const freshBundle = await getAccountBundle(accountId);
+        const [contacts, dossier] = await Promise.all([
+          listContactsForAccount(accountId),
+          getDossier(accountId).catch(() => null),
+        ]);
+        await setIntelRunning(accountId, 'use_case_fit');
+        const out = await fitUseCase(freshBundle.account, {
+          signals: freshBundle.signals || [],
+          dossier,
+          contacts,
+        });
+        if (out.error || !out.result) {
+          await setIntelFailed(accountId, 'use_case_fit', out.error || 'no_result');
+        } else {
+          await setIntelResult(accountId, 'use_case_fit', out.result);
+          gotNewData = true;
+          console.log(`[scan-all] use-case fit ${accountId} — ${out.elapsed_ms}ms`);
+        }
+      } catch (err) {
+        console.error(`[scan-all] use-case fit ${accountId} failed:`, err.message);
+        try { await setIntelFailed(accountId, 'use_case_fit', err.message || String(err)); } catch (_) {}
+      }
+
+      // 4. Industry insight (web search for Challenger-style teach)
+      try {
+        const freshBundle = await getAccountBundle(accountId);
+        await setIntelRunning(accountId, 'industry_insight');
+        const out = await pullIndustryInsight(freshBundle.account);
+        if (out.error || !out.result) {
+          await setIntelFailed(accountId, 'industry_insight', out.error || 'no_result');
+        } else {
+          await setIntelResult(accountId, 'industry_insight', out.result);
+          gotNewData = true;
+          console.log(`[scan-all] industry insight ${accountId} — ${out.searches} searches, ${out.elapsed_ms}ms`);
+        }
+      } catch (err) {
+        console.error(`[scan-all] industry insight ${accountId} failed:`, err.message);
+        try { await setIntelFailed(accountId, 'industry_insight', err.message || String(err)); } catch (_) {}
+      }
+
+      // 5. POV — synthesize signals + prospects + use case + industry into briefing
+      if (gotNewData) {
         await regenerateAccountPov(accountId);
       } else {
         console.log(`[scan-all] ${accountId}: no new data — skipping POV regen`);
