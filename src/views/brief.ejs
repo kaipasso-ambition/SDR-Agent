@@ -66,7 +66,7 @@
   <div>
     <h1 class="text-2xl font-semibold">Today</h1>
     <p class="text-sm text-slate-500 mt-1">
-      Your book at a glance — what moved, who to reach, and the angle to lead with.
+      Your book at a glance — what's happening, where the opportunity is, and who needs to know.
     </p>
   </div>
   <div class="flex items-center gap-2">
@@ -177,7 +177,7 @@
 
       const pov = a.pov_result;
       const povRunning = a.pov_status === 'running';
-      const hasPov = a.pov_status === 'completed' && pov && pov.pov;
+      const hasPov = a.pov_status === 'completed' && pov && (pov.whats_happening || pov.pov);
 
       const signals = Array.isArray(a.signals) ? a.signals : [];
       const sigCount = Number(a.signal_count) || 0;
@@ -219,17 +219,28 @@
           </div>
         </div>
 
-        <%# === POV + PATH IN + STRATEGY: the main content === %>
+        <%# === ACCOUNT BRIEFING: three questions === %>
         <% if (hasPov) { %>
-          <div class="px-4 pb-3">
-            <div class="text-sm text-slate-800"><%= pov.pov %></div>
-            <% if (pov.path_in) { %>
-              <div class="mt-2 bg-emerald-50 border border-emerald-200 rounded px-3 py-2 text-sm text-emerald-900">
-                <span class="font-semibold">Path in:</span> <%= pov.path_in %>
+          <div class="px-4 pb-3 space-y-2">
+            <div>
+              <div class="text-[10px] uppercase tracking-wide text-slate-500 mb-0.5">What's happening</div>
+              <div class="text-sm text-slate-800"><%= pov.whats_happening || pov.pov %></div>
+            </div>
+            <% if (pov.where_is_the_opportunity || pov.path_in) { %>
+              <div>
+                <div class="text-[10px] uppercase tracking-wide text-emerald-700 mb-0.5">Where's the opportunity</div>
+                <div class="text-sm text-emerald-900"><%= pov.where_is_the_opportunity || pov.path_in %></div>
               </div>
             <% } %>
-            <div class="text-sm text-slate-700 mt-2">
-              <span class="font-medium">This week:</span> <%= pov.strategy %>
+            <% if (pov.who_needs_to_know) { %>
+              <div>
+                <div class="text-[10px] uppercase tracking-wide text-sky-700 mb-0.5">Who needs to know</div>
+                <div class="text-sm text-sky-900"><%= pov.who_needs_to_know %></div>
+              </div>
+            <% } %>
+            <div class="pt-1 border-t border-slate-100">
+              <span class="text-sm font-medium text-slate-700">This week:</span>
+              <span class="text-sm text-slate-800"><%= pov.next_step || pov.strategy %></span>
             </div>
           </div>
         <% } else if (povRunning) { %>
@@ -268,7 +279,7 @@
                 <% if (defCount > 0) { %><span class="text-red-700 ml-1"><%= defCount %> defense</span><% } %>
                 <% if (offCount > 0) { %><span class="text-sky-700 ml-1"><%= offCount %> offense</span><% } %>
               <% } else if (hasProspects) { %>
-                <%= visibleProspects.length %> prospect<%= visibleProspects.length === 1 ? '' : 's' %> showing intent
+                <%= visibleProspects.length %> active voice<%= visibleProspects.length === 1 ? '' : 's' %>
               <% } else if (psRunning) { %>
                 Scanning for prospects…
               <% } else if (psFailed) { %>
@@ -330,7 +341,7 @@
               <div class="<%= signals.length > 0 ? 'border-t border-slate-200' : '' %>">
                 <div class="px-4 py-2 bg-slate-50/50 flex items-center justify-between gap-2">
                   <div class="flex items-center gap-2">
-                    <span class="text-[10px] uppercase tracking-wide text-slate-500">People showing intent</span>
+                    <span class="text-[10px] uppercase tracking-wide text-slate-500">Active voices</span>
                     <% if (ps.opportunity_strength) { %>
                       <span class="pill <%= priorityColor[ps.opportunity_strength] || priorityColor.cool %> text-[10px]">
                         <%= ps.opportunity_strength %>
@@ -369,7 +380,7 @@
                           <% } %>
                           <% if (!hasStones && !pathRunning) { %>
                             <form method="POST" action="/accounts/<%= a.account_id %>/prospects/<%= origIdx %>/find-path" class="inline">
-                              <button type="submit" class="text-xs text-emerald-700 hover:text-emerald-900 underline">Find path in</button>
+                              <button type="submit" class="text-xs text-emerald-700 hover:text-emerald-900 underline">Find related contacts</button>
                             </form>
                           <% } %>
                           <form method="POST" action="/accounts/<%= a.account_id %>/intel/prospects/<%= origIdx %>/dismiss" class="inline"
@@ -383,7 +394,7 @@
                       <% if (pathRunning) { %>
                         <div class="mt-2 text-xs text-slate-500 flex items-center gap-2">
                           <span class="inline-block w-2 h-2 bg-slate-400 rounded-full animate-pulse"></span>
-                          Finding stepping stones to reach <%= p.name %>…
+                          Finding related contacts for <%= p.name %>…
                         </div>
                       <% } else if (hasStones) { %>
                         <div class="mt-2 ml-4 border-l-2 border-emerald-200 pl-3 space-y-2">
@@ -416,7 +427,7 @@
             <% } else if (psRunning) { %>
               <div class="px-4 py-3 text-sm text-slate-500 flex items-center gap-2">
                 <span class="inline-block w-2 h-2 bg-slate-400 rounded-full animate-pulse"></span>
-                Searching for people at <%= a.account_name %> showing buying signals…
+                Scanning for active voices at <%= a.account_name %>…
               </div>
             <% } else if (psFailed) { %>
               <div class="px-4 py-2 text-xs text-red-700">
