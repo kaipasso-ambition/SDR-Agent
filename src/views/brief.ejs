@@ -1,13 +1,13 @@
 <%
   const priorityColor = {
-    hot:  'bg-red-100 text-red-800',
-    warm: 'bg-amber-100 text-amber-800',
-    cool: 'bg-slate-100 text-slate-600',
+    hot:  'bg-red-50 text-red-700 ring-1 ring-red-200',
+    warm: 'bg-amber-50 text-amber-700 ring-1 ring-amber-200',
+    cool: 'bg-slate-50 text-slate-500',
   };
   const statusColor = {
-    customer: 'bg-emerald-100 text-emerald-800',
-    prospect: 'bg-sky-100 text-sky-800',
-    churned:  'bg-amber-100 text-amber-800',
+    customer: 'bg-teal-50 text-teal-700',
+    prospect: 'bg-sky-50 text-sky-700',
+    churned:  'bg-slate-100 text-slate-500',
   };
 
   function agoLabel(d) {
@@ -65,23 +65,23 @@
 <% } %>
 
 <% if (runningJob) { %>
-  <div class="bg-emerald-50 border border-emerald-200 rounded-lg p-3 mb-5 flex items-center gap-3">
-    <span class="inline-block w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
-    <div class="flex-1 text-sm text-emerald-900">
+  <div class="bg-teal-50 border border-teal-200 rounded-lg p-3 mb-5 flex items-center gap-3">
+    <span class="inline-block w-2 h-2 bg-teal-500 rounded-full animate-pulse"></span>
+    <div class="flex-1 text-sm text-teal-800">
       Scanning — <%= activeJob.accounts_scanned || 0 %> scanned, <%= activeJob.signals_detected || 0 %> new.
     </div>
   </div>
   <script>setTimeout(function(){ location.reload(); }, 15000);</script>
 <% } else if (activeJob && activeJob.status === 'failed') { %>
-  <div class="bg-red-50 border border-red-200 rounded-lg p-3 mb-5">
-    <div class="flex items-center gap-2 text-sm text-red-800 font-medium">
+  <div class="bg-slate-50 border border-slate-200 rounded-lg p-3 mb-5">
+    <div class="flex items-center gap-2 text-sm text-red-700 font-medium">
       Scan failed<% if (activeJob.errors) { %> — <%= activeJob.errors %> error<%= activeJob.errors === 1 ? '' : 's' %><% } %>
     </div>
     <% if (activeJob.error) { %>
-      <p class="text-xs text-red-700 mt-1"><%= activeJob.error.includes('usage limit') || activeJob.error.includes('rate_limit') ? 'API spend limit reached.' : activeJob.error %></p>
+      <p class="text-xs text-slate-500 mt-1"><%= activeJob.error.includes('usage limit') || activeJob.error.includes('rate_limit') ? 'API spend limit reached.' : activeJob.error %></p>
     <% } %>
     <form method="POST" action="/signals/scan" class="mt-2">
-      <button type="submit" class="text-xs bg-red-700 hover:bg-red-800 text-white px-3 py-1 rounded">Retry</button>
+      <button type="submit" class="text-xs bg-navy-700 hover:bg-navy-800 text-white px-3 py-1 rounded">Retry</button>
     </form>
   </div>
 <% } else if (anyRunning) { %>
@@ -141,7 +141,7 @@
     <% } %>
   </div>
 <% } else { %>
-  <div class="space-y-3">
+  <div class="space-y-2.5">
     <% accounts.forEach(function(a) {
       const pov = a.pov_result;
       const povRunning = a.pov_status === 'running';
@@ -155,32 +155,30 @@
       const prospectCount = (psResult && Array.isArray(psResult.prospects))
         ? psResult.prospects.filter(function(p) { return !p.dismissed; }).length : 0;
       const activePlays = Number(a.active_plays) || 0;
+      var priDot = '';
+      if (hasPov && pov.priority === 'hot') priDot = 'bg-red-500';
+      else if (hasPov && pov.priority === 'warm') priDot = 'bg-amber-400';
     %>
-      <%
-        var priBorder = 'border-l-slate-200';
-        if (hasPov && pov.priority === 'hot') priBorder = 'border-l-red-500';
-        else if (hasPov && pov.priority === 'warm') priBorder = 'border-l-amber-400';
-      %>
       <a href="/accounts/<%= a.account_id %>"
-         class="block <%= a.deprioritized ? 'opacity-50' : '' %> bg-white border border-slate-200 border-l-4 <%= priBorder %> rounded-lg hover:border-slate-400 transition-colors overflow-hidden">
+         class="block <%= a.deprioritized ? 'opacity-50' : '' %> bg-white border border-slate-200 rounded-lg hover:shadow-md hover:border-slate-300 transition-all overflow-hidden">
 
-        <%# === HEADER: Name + pills + meta === %>
-        <div class="px-5 pt-4 pb-1 flex items-center gap-2 flex-wrap">
-          <span class="font-semibold text-slate-900"><%= a.account_name %></span>
-          <span class="pill <%= statusColor[a.account_status] || 'bg-slate-100 text-slate-700' %> text-[10px]"><%= a.account_status %></span>
-          <% if (hasPov && pov.priority) { %>
-            <span class="pill <%= priorityColor[pov.priority] || priorityColor.cool %> text-[10px]"><%= pov.priority %></span>
-          <% } %>
+        <%# === HEADER === %>
+        <div class="px-5 pt-4 pb-1.5 flex items-center gap-2.5 flex-wrap">
+          <div class="flex items-center gap-2">
+            <% if (priDot) { %><span class="inline-block w-2 h-2 rounded-full <%= priDot %> shrink-0"></span><% } %>
+            <span class="font-semibold text-navy-800"><%= a.account_name %></span>
+          </div>
+          <span class="pill <%= statusColor[a.account_status] || 'bg-slate-50 text-slate-500' %> text-[10px]"><%= a.account_status %></span>
           <% if (ucfResult && ucfResult.primary) { %>
-            <span class="pill bg-navy-700 text-white text-[10px]"><%= ucfResult.primary.label %></span>
+            <span class="pill bg-navy-50 text-navy-700 text-[10px]"><%= ucfResult.primary.label %></span>
           <% } %>
           <% if (a.watched) { %>
-            <span class="pill bg-amber-100 text-amber-800 text-[10px]">watching</span>
+            <span class="pill bg-teal-50 text-teal-700 text-[10px]">watching</span>
           <% } %>
           <span class="ml-auto text-[11px] text-slate-400 shrink-0">
             <% if (sigCount > 0) { %>
               <%= sigCount %> signal<%= sigCount === 1 ? '' : 's' %>
-              <% if (defCount > 0) { %><span class="text-red-600"><%= defCount %> def</span><% } %>
+              <% if (defCount > 0) { %><span class="text-red-600 font-medium"><%= defCount %> def</span><% } %>
               ·
             <% } %>
             <%= agoLabel(a.last_activity_at) %>
@@ -189,48 +187,48 @@
 
         <%# === POV BODY === %>
         <% if (hasPov) { %>
-          <div class="px-5 pb-1 space-y-1.5">
-            <div class="text-sm text-slate-800"><%= pov.whats_happening || pov.pov %></div>
+          <div class="px-5 pb-1.5 space-y-1">
+            <div class="text-sm text-slate-700 leading-relaxed"><%= pov.whats_happening || pov.pov %></div>
             <% if (pov.where_is_the_opportunity || pov.path_in) { %>
-              <div class="text-sm text-emerald-800"><span class="text-emerald-600 font-medium">Opportunity:</span> <%= pov.where_is_the_opportunity || pov.path_in %></div>
+              <div class="text-sm text-teal-700"><span class="font-medium">Opportunity:</span> <%= pov.where_is_the_opportunity || pov.path_in %></div>
             <% } %>
           </div>
 
           <% if (pov.next_step || pov.strategy || pov.recommended_play) { %>
-            <div class="px-5 pb-1 mt-1">
+            <div class="px-5 pb-1.5 mt-0.5 space-y-1">
               <% if (pov.next_step || pov.strategy) { %>
                 <div class="text-sm">
-                  <span class="font-medium text-slate-500">This week:</span>
-                  <span class="text-slate-800"><%= pov.next_step || pov.strategy %></span>
+                  <span class="font-medium text-navy-400">This week:</span>
+                  <span class="text-slate-700"><%= pov.next_step || pov.strategy %></span>
                 </div>
               <% } %>
               <% if (pov.recommended_play) { %>
-                <div class="text-sm mt-1">
-                  <span class="font-medium text-slate-500">Recommended play:</span>
-                  <span class="text-slate-800"><%= pov.recommended_play %></span>
+                <div class="text-sm">
+                  <span class="font-medium text-navy-400">Recommended play:</span>
+                  <span class="text-slate-700"><%= pov.recommended_play %></span>
                 </div>
               <% } %>
             </div>
           <% } %>
         <% } else if (povRunning) { %>
-          <div class="px-5 pb-1 text-xs text-slate-400 flex items-center gap-2">
-            <span class="inline-block w-1.5 h-1.5 bg-slate-400 rounded-full animate-pulse"></span> Building POV…
+          <div class="px-5 pb-1.5 text-xs text-slate-400 flex items-center gap-2">
+            <span class="inline-block w-1.5 h-1.5 bg-teal-400 rounded-full animate-pulse"></span> Building POV…
           </div>
         <% } else if (scanning) { %>
-          <div class="px-5 pb-1 text-xs text-slate-400 flex items-center gap-2">
-            <span class="inline-block w-1.5 h-1.5 bg-slate-400 rounded-full animate-pulse"></span> Scanning…
+          <div class="px-5 pb-1.5 text-xs text-slate-400 flex items-center gap-2">
+            <span class="inline-block w-1.5 h-1.5 bg-teal-400 rounded-full animate-pulse"></span> Scanning…
           </div>
         <% } else { %>
-          <div class="px-5 pb-1 text-sm text-slate-400">Not scanned yet</div>
+          <div class="px-5 pb-1.5 text-sm text-slate-400">Not scanned yet</div>
         <% } %>
 
-        <%# === FOOTER: quick stats === %>
-        <div class="px-5 pb-3 pt-2 flex items-center gap-3 text-[11px] text-slate-400">
+        <%# === FOOTER === %>
+        <div class="px-5 pb-3.5 pt-1.5 flex items-center gap-4 text-[11px] text-slate-400">
           <% if (prospectCount > 0) { %>
-            <span><%= prospectCount %> prospect<%= prospectCount === 1 ? '' : 's' %></span>
+            <span><%= prospectCount %> voice<%= prospectCount === 1 ? '' : 's' %></span>
           <% } %>
           <% if (activePlays > 0) { %>
-            <span class="text-emerald-600"><%= activePlays %> active play<%= activePlays === 1 ? '' : 's' %></span>
+            <span class="text-teal-600"><%= activePlays %> active play<%= activePlays === 1 ? '' : 's' %></span>
           <% } %>
           <% if (a.notes) { %>
             <span>has notes</span>
