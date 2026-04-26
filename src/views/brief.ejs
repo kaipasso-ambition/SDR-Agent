@@ -50,7 +50,7 @@
     <form method="POST" action="/signals/scan" class="shrink-0"
           onsubmit="return confirm('Scan all <%= totalAccounts %> accounts? ~$0.10 each. Estimated: ~$<%= (totalAccounts * 0.12).toFixed(2) %>.');">
       <button type="submit"
-              class="text-sm bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded font-medium disabled:bg-slate-400 disabled:cursor-wait"
+              class="text-sm bg-navy-700 hover:bg-navy-800 text-white px-4 py-2 rounded font-medium disabled:bg-slate-400 disabled:cursor-wait"
               <% if (runningJob) { %>disabled<% } %>>
         <% if (runningJob) { %>Scanning…<% } else { %>Scan all accounts<% } %>
       </button>
@@ -95,7 +95,7 @@
       const label = s === '' ? 'All' : s.charAt(0).toUpperCase() + s.slice(1);
     %>
       <a href="<%= qs({status: s}) %>"
-         class="px-2.5 py-1 rounded border <%= active ? 'bg-slate-900 text-white border-slate-900' : 'bg-white border-slate-300 text-slate-700 hover:border-slate-500' %>">
+         class="px-2.5 py-1 rounded border <%= active ? 'bg-navy-700 text-white border-navy-700' : 'bg-white border-slate-300 text-slate-700 hover:border-slate-500' %>">
         <%= label %>
       </a>
     <% }); %>
@@ -105,11 +105,11 @@
 
   <div class="flex items-center gap-1">
     <a href="<%= qs({sort: 'priority'}) %>"
-       class="px-2.5 py-1 rounded border <%= sort === 'priority' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white border-slate-300 text-slate-700 hover:border-slate-500' %>">
+       class="px-2.5 py-1 rounded border <%= sort === 'priority' ? 'bg-navy-700 text-white border-navy-700' : 'bg-white border-slate-300 text-slate-700 hover:border-slate-500' %>">
       Priority
     </a>
     <a href="<%= qs({sort: 'newest'}) %>"
-       class="px-2.5 py-1 rounded border <%= sort === 'newest' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white border-slate-300 text-slate-700 hover:border-slate-500' %>">
+       class="px-2.5 py-1 rounded border <%= sort === 'newest' ? 'bg-navy-700 text-white border-navy-700' : 'bg-white border-slate-300 text-slate-700 hover:border-slate-500' %>">
       Newest
     </a>
   </div>
@@ -156,8 +156,13 @@
         ? psResult.prospects.filter(function(p) { return !p.dismissed; }).length : 0;
       const activePlays = Number(a.active_plays) || 0;
     %>
+      <%
+        var priBorder = 'border-l-slate-200';
+        if (hasPov && pov.priority === 'hot') priBorder = 'border-l-red-500';
+        else if (hasPov && pov.priority === 'warm') priBorder = 'border-l-amber-400';
+      %>
       <a href="/accounts/<%= a.account_id %>"
-         class="block <%= a.deprioritized ? 'opacity-50' : '' %> bg-white border border-slate-200 rounded-lg hover:border-slate-400 transition-colors overflow-hidden">
+         class="block <%= a.deprioritized ? 'opacity-50' : '' %> bg-white border border-slate-200 border-l-4 <%= priBorder %> rounded-lg hover:border-slate-400 transition-colors overflow-hidden">
 
         <%# === HEADER: Name + pills + meta === %>
         <div class="px-5 pt-4 pb-1 flex items-center gap-2 flex-wrap">
@@ -167,7 +172,7 @@
             <span class="pill <%= priorityColor[pov.priority] || priorityColor.cool %> text-[10px]"><%= pov.priority %></span>
           <% } %>
           <% if (ucfResult && ucfResult.primary) { %>
-            <span class="pill bg-slate-900 text-white text-[10px]"><%= ucfResult.primary.label %></span>
+            <span class="pill bg-navy-700 text-white text-[10px]"><%= ucfResult.primary.label %></span>
           <% } %>
           <% if (a.watched) { %>
             <span class="pill bg-amber-100 text-amber-800 text-[10px]">watching</span>

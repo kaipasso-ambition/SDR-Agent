@@ -20,7 +20,7 @@
       <% hypotheses.forEach(function(h) { %>
         <li class="p-4">
           <div class="flex items-center gap-2 flex-wrap mb-1">
-            <span class="pill bg-slate-900 text-white"><%= useCaseLabel[h.use_case] || h.use_case %></span>
+            <span class="pill bg-navy-700 text-white"><%= useCaseLabel[h.use_case] || h.use_case %></span>
             <span class="pill bg-sky-100 text-sky-800"><%= h.target_persona_id %></span>
             <span class="text-xs text-slate-500">confidence <%= h.confidence %>/5</span>
             <% if (h.status === 'validated') { %><span class="pill bg-emerald-100 text-emerald-800">validated</span><% } %>
@@ -61,7 +61,7 @@
                 </select>
                 <label class="flex items-center gap-1"><span class="text-slate-500">conf</span>
                   <input type="number" min="1" max="5" name="confidence" value="<%= h.confidence %>" class="w-14 border border-slate-300 rounded px-2 py-1" /></label>
-                <button type="submit" class="bg-slate-900 hover:bg-slate-800 text-white rounded font-medium">Save</button>
+                <button type="submit" class="bg-navy-700 hover:bg-navy-800 text-white rounded font-medium">Save</button>
               </div>
               <button type="submit" formaction="/hypotheses/<%= h.id %>/delete" class="text-red-600 hover:text-red-800 text-xs">Remove</button>
             </form>
@@ -88,7 +88,7 @@
           <% }); %>
         </div>
       <% } %>
-      <button type="submit" class="bg-slate-900 hover:bg-slate-800 text-white text-xs px-3 py-1.5 rounded font-medium disabled:bg-slate-400 disabled:cursor-wait"
+      <button type="submit" class="bg-navy-700 hover:bg-navy-800 text-white text-xs px-3 py-1.5 rounded font-medium disabled:bg-slate-400 disabled:cursor-wait"
               <% if (hgenRunning || !signals || signals.length === 0) { %>disabled<% } %>>
         <% if (hgenRunning) { %>Drafting…<% } else { %>Generate hypotheses<% } %>
       </button>

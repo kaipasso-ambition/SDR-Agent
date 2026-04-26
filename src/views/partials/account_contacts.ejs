@@ -43,7 +43,7 @@
               <label class="block"><span class="text-slate-500">Notes</span>
                 <textarea name="notes" rows="2" class="w-full border border-slate-300 rounded px-2 py-1 mt-0.5"><%= node.notes || '' %></textarea></label>
               <div class="flex items-center gap-2">
-                <button type="submit" class="bg-slate-900 hover:bg-slate-800 text-white px-3 py-1 rounded font-medium">Save</button>
+                <button type="submit" class="bg-navy-700 hover:bg-navy-800 text-white px-3 py-1 rounded font-medium">Save</button>
                 <button type="submit" formaction="/contacts/<%= node.id %>/delete" class="text-red-600 hover:text-red-800">Remove</button>
               </div>
             </form>
@@ -70,7 +70,7 @@
         <option value="">— reports to (top of org) —</option>
         <% contacts.forEach(function(c) { %><option value="<%= c.id %>"><%= c.name %> (<%= c.title || '—' %>)</option><% }); %>
       </select>
-      <button type="submit" class="bg-slate-900 hover:bg-slate-800 text-white px-3 py-1 rounded font-medium">Add contact</button>
+      <button type="submit" class="bg-navy-700 hover:bg-navy-800 text-white px-3 py-1 rounded font-medium">Add contact</button>
     </form>
   </details>
 </div>

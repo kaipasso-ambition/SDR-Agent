@@ -5,6 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title><%= typeof title !== 'undefined' ? title + ' · ' : '' %>Ambition SDR</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            navy: { 50: '#EEF0F4', 100: '#D5DAE3', 200: '#ABB5C7', 300: '#8190AB', 400: '#576B8F', 500: '#3A4F73', 600: '#2A3B5C', 700: '#1E2D4F', 800: '#152140', 900: '#0D1529' },
+            teal:  { 50: '#E6F7F3', 100: '#C0EDE3', 200: '#8CDCC8', 300: '#55CAAD', 400: '#2FBA96', 500: '#2AAA8A', 600: '#239074', 700: '#1B705A', 800: '#145243', 900: '#0E3A2F' },
+          },
+        },
+      },
+    }
+  </script>
   <style>
     body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
     .pill { display: inline-block; padding: 2px 8px; border-radius: 9999px; font-size: 11px; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; }
@@ -20,26 +32,26 @@
       // primary real estate. Dropdowns are plain <details> + a small
       // outside-click helper below.
     %>
-    <nav class="bg-white border-b border-slate-200 relative z-20">
+    <nav class="bg-navy-700 relative z-20">
       <div class="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
         <div class="flex items-center gap-5">
-          <a href="/" class="font-semibold text-slate-900">Ambition SDR</a>
+          <a href="/" class="font-semibold text-white tracking-wide">AMBITION</a>
 
-          <a href="/brief" class="text-sm text-slate-600 hover:text-slate-900 flex items-center gap-1.5">
+          <a href="/brief" class="text-sm text-navy-200 hover:text-white flex items-center gap-1.5">
             Today
             <% if (typeof signalsUnacked !== 'undefined' && signalsUnacked > 0) { %>
-              <span class="inline-flex items-center justify-center bg-red-600 text-white text-[10px] font-semibold rounded-full min-w-[18px] h-[18px] px-1.5 leading-none"><%= signalsUnacked %></span>
+              <span class="inline-flex items-center justify-center bg-teal-500 text-white text-[10px] font-semibold rounded-full min-w-[18px] h-[18px] px-1.5 leading-none"><%= signalsUnacked %></span>
             <% } %>
           </a>
 
-          <a href="/accounts" class="text-sm text-slate-600 hover:text-slate-900">Accounts</a>
+          <a href="/accounts" class="text-sm text-navy-200 hover:text-white">Accounts</a>
 
-          <a href="/settings" class="text-sm text-slate-600 hover:text-slate-900">Settings</a>
+          <a href="/settings" class="text-sm text-navy-200 hover:text-white">Settings</a>
         </div>
-        <div class="flex items-center gap-3 text-sm text-slate-500">
+        <div class="flex items-center gap-3 text-sm text-navy-300">
           <span><%= user.name || user.email %></span>
           <form method="POST" action="/logout" class="inline">
-            <button type="submit" class="text-slate-500 hover:text-slate-900 underline">Log out</button>
+            <button type="submit" class="text-navy-300 hover:text-white underline">Log out</button>
           </form>
         </div>
       </div>

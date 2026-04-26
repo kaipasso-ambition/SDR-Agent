@@ -1,6 +1,6 @@
 <div>
   <!-- Composer -->
-  <details id="play-composer" class="border-b border-slate-200 p-4 bg-slate-50" <% if (composerOpen) { %>open<% } %>>
+  <details id="play-composer" class="border-b border-slate-200 p-4 bg-slate-50" <% if (composerOpen || plays.length === 0) { %>open<% } %>>
     <summary class="text-sm font-semibold text-slate-900 cursor-pointer">
       + Start a play
       <% if (triggerSignal) { %><span class="text-xs text-slate-500 font-normal">· triggered by "<%= triggerSignal.title %>"</span><% } %>
@@ -41,7 +41,7 @@
           </div>
         </div>
       <% } %>
-      <button type="submit" id="play-build-btn" class="bg-slate-900 hover:bg-slate-800 disabled:bg-slate-400 disabled:cursor-wait text-white px-4 py-2 rounded font-medium text-sm inline-flex items-center gap-2">
+      <button type="submit" id="play-build-btn" class="bg-navy-700 hover:bg-navy-800 disabled:bg-slate-400 disabled:cursor-wait text-white px-4 py-2 rounded font-medium text-sm inline-flex items-center gap-2">
         <svg id="play-build-spinner" class="hidden animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path></svg>
         <span id="play-build-label">Build the play →</span>
       </button>
@@ -66,7 +66,7 @@
 
   <!-- Existing plays -->
   <% if (plays.length === 0) { %>
-    <div class="p-4 text-sm text-slate-500">No plays yet. Start one above or click <strong>Run this play</strong> from the POV.</div>
+    <div class="p-4 text-sm text-slate-500">No plays yet. Describe your instinct above, or click <strong>Run this play</strong> from the POV to get a sequenced plan.</div>
   <% } else { %>
     <ul class="divide-y divide-slate-100">
       <% plays.forEach(function(p) {
@@ -93,45 +93,77 @@
             <span class="text-xs text-slate-500 uppercase tracking-wide font-semibold">Your instinct</span><br/><%= p.instinct %>
           </div>
           <% if (exp.moves && exp.moves.length > 0) { %>
-            <ol class="space-y-3 mb-3">
-              <% exp.moves.forEach(function(m) {
-                var am = actorMeta[m.actor_type] || actorMeta.ae;
-                var hasArt = m.artifact && m.artifact.content && String(m.artifact.content).trim();
-              %>
-                <li class="text-sm flex gap-3">
-                  <span class="shrink-0 w-6 h-6 rounded-full bg-slate-900 text-white text-xs flex items-center justify-center font-semibold"><%= m.step %></span>
-                  <div class="flex-1 min-w-0">
-                    <div class="flex items-center gap-2 flex-wrap">
-                      <span class="inline-flex items-center text-[10px] font-semibold uppercase tracking-wide border rounded px-1.5 py-0.5 <%= am.cls %>"><%= am.label %></span>
-                      <span class="font-medium text-slate-900"><%= m.actor %></span>
-                      <span class="text-xs text-slate-500">· <%= m.channel %> · day <%= m.days_from_now %></span>
-                    </div>
-                    <div class="text-slate-700 mt-1"><%= m.ask %></div>
-                    <% if (m.rationale) { %><div class="text-xs text-slate-500 italic mt-0.5"><%= m.rationale %></div><% } %>
-                    <% if (hasArt) { %>
-                      <% var artId = 'artifact-' + p.id + '-' + m.step; %>
-                      <details class="mt-2 bg-emerald-50/50 border border-emerald-200 rounded">
-                        <summary class="cursor-pointer px-3 py-2 text-xs font-semibold text-emerald-900">Artifact<% if (m.artifact.for_actor === 'champion') { %> — for the champion<% } %></summary>
-                        <div class="px-3 pb-3">
-                          <pre id="<%= artId %>" class="whitespace-pre-wrap text-xs text-slate-800 bg-white border border-emerald-200 rounded p-2 font-sans"><%= m.artifact.content %></pre>
-                          <button type="button" class="mt-2 text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-2 py-1 rounded"
-                                  onclick="(function(btn){var el=document.getElementById('<%= artId %>');navigator.clipboard.writeText(el.innerText).then(function(){var o=btn.textContent;btn.textContent='Copied';setTimeout(function(){btn.textContent=o;},1500);});})(this)">Copy</button>
-                        </div>
-                      </details>
-                    <% } %>
-                  </div>
-                </li>
-              <% }); %>
-            </ol>
-            <% if (exp.stakeholder_narratives && Object.keys(exp.stakeholder_narratives).length > 0) { %>
-              <div class="mb-3 border border-slate-200 rounded p-3 bg-white">
-                <div class="uppercase tracking-wide text-[10px] text-slate-500 font-semibold mb-2">Stakeholder narratives</div>
-                <ul class="space-y-1.5 text-xs">
-                  <% Object.keys(exp.stakeholder_narratives).forEach(function(name) { %>
-                    <li><span class="font-semibold text-slate-900"><%= name %>:</span> <span class="text-slate-700"><%= exp.stakeholder_narratives[name] %></span></li>
-                  <% }); %>
-                </ul>
+            <%
+              var nextMove = exp.moves[0];
+              var nextAm = actorMeta[nextMove.actor_type] || actorMeta.ae;
+              var nextHasArt = nextMove.artifact && nextMove.artifact.content && String(nextMove.artifact.content).trim();
+            %>
+            <div class="bg-teal-50 border border-teal-200 rounded p-3 mb-3">
+              <div class="text-[10px] uppercase tracking-wide text-teal-700 font-semibold mb-1">Next move · day <%= nextMove.days_from_now %></div>
+              <div class="flex items-center gap-2 flex-wrap text-sm">
+                <span class="inline-flex items-center text-[10px] font-semibold uppercase tracking-wide border rounded px-1.5 py-0.5 <%= nextAm.cls %>"><%= nextAm.label %></span>
+                <span class="font-medium text-slate-900"><%= nextMove.actor %></span>
+                <span class="text-xs text-slate-500">· <%= nextMove.channel %></span>
               </div>
+              <div class="text-sm text-slate-800 mt-1"><%= nextMove.ask %></div>
+              <% if (nextHasArt) { %>
+                <% var nextArtId = 'artifact-' + p.id + '-next'; %>
+                <details class="mt-2 bg-white border border-teal-200 rounded">
+                  <summary class="cursor-pointer px-3 py-2 text-xs font-semibold text-teal-800">Artifact<% if (nextMove.artifact.for_actor === 'champion') { %> — for the champion<% } %></summary>
+                  <div class="px-3 pb-3">
+                    <pre id="<%= nextArtId %>" class="whitespace-pre-wrap text-xs text-slate-800 bg-white border border-teal-200 rounded p-2 font-sans"><%= nextMove.artifact.content %></pre>
+                    <button type="button" class="mt-2 text-xs bg-teal-600 hover:bg-teal-700 text-white px-2 py-1 rounded"
+                            onclick="(function(btn){var el=document.getElementById('<%= nextArtId %>');navigator.clipboard.writeText(el.innerText).then(function(){var o=btn.textContent;btn.textContent='Copied';setTimeout(function(){btn.textContent=o;},1500);});})(this)">Copy</button>
+                  </div>
+                </details>
+              <% } %>
+            </div>
+            <% if (exp.moves.length > 1) { %>
+              <details class="mb-3">
+                <summary class="text-xs text-slate-500 hover:text-slate-900 cursor-pointer">All <%= exp.moves.length %> moves</summary>
+                <ol class="space-y-3 mt-3">
+                  <% exp.moves.forEach(function(m) {
+                    var am = actorMeta[m.actor_type] || actorMeta.ae;
+                    var hasArt = m.artifact && m.artifact.content && String(m.artifact.content).trim();
+                  %>
+                    <li class="text-sm flex gap-3">
+                      <span class="shrink-0 w-6 h-6 rounded-full bg-navy-700 text-white text-xs flex items-center justify-center font-semibold"><%= m.step %></span>
+                      <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-2 flex-wrap">
+                          <span class="inline-flex items-center text-[10px] font-semibold uppercase tracking-wide border rounded px-1.5 py-0.5 <%= am.cls %>"><%= am.label %></span>
+                          <span class="font-medium text-slate-900"><%= m.actor %></span>
+                          <span class="text-xs text-slate-500">· <%= m.channel %> · day <%= m.days_from_now %></span>
+                        </div>
+                        <div class="text-slate-700 mt-1"><%= m.ask %></div>
+                        <% if (m.rationale) { %><div class="text-xs text-slate-500 italic mt-0.5"><%= m.rationale %></div><% } %>
+                        <% if (hasArt) { %>
+                          <% var artId = 'artifact-' + p.id + '-' + m.step; %>
+                          <details class="mt-2 bg-emerald-50/50 border border-emerald-200 rounded">
+                            <summary class="cursor-pointer px-3 py-2 text-xs font-semibold text-emerald-900">Artifact<% if (m.artifact.for_actor === 'champion') { %> — for the champion<% } %></summary>
+                            <div class="px-3 pb-3">
+                              <pre id="<%= artId %>" class="whitespace-pre-wrap text-xs text-slate-800 bg-white border border-emerald-200 rounded p-2 font-sans"><%= m.artifact.content %></pre>
+                              <button type="button" class="mt-2 text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-2 py-1 rounded"
+                                      onclick="(function(btn){var el=document.getElementById('<%= artId %>');navigator.clipboard.writeText(el.innerText).then(function(){var o=btn.textContent;btn.textContent='Copied';setTimeout(function(){btn.textContent=o;},1500);});})(this)">Copy</button>
+                            </div>
+                          </details>
+                        <% } %>
+                      </div>
+                    </li>
+                  <% }); %>
+                </ol>
+              </details>
+            <% } %>
+            <% if (exp.stakeholder_narratives && Object.keys(exp.stakeholder_narratives).length > 0) { %>
+              <details class="mb-3">
+                <summary class="text-xs text-slate-500 hover:text-slate-900 cursor-pointer">Stakeholder narratives</summary>
+                <div class="mt-2 border border-slate-200 rounded p-3 bg-white">
+                  <ul class="space-y-1.5 text-xs">
+                    <% Object.keys(exp.stakeholder_narratives).forEach(function(name) { %>
+                      <li><span class="font-semibold text-slate-900"><%= name %>:</span> <span class="text-slate-700"><%= exp.stakeholder_narratives[name] %></span></li>
+                    <% }); %>
+                  </ul>
+                </div>
+              </details>
             <% } %>
           <% } else { %>
             <div class="bg-amber-50 border border-amber-200 rounded p-3 text-xs text-amber-900 mb-3">
@@ -158,7 +190,7 @@
               </div>
               <textarea name="outcome_notes" rows="2" placeholder="What happened?" class="w-full border border-slate-300 rounded px-2 py-1"><%= p.outcome_notes || '' %></textarea>
               <div class="flex items-center gap-2">
-                <button type="submit" class="bg-slate-900 hover:bg-slate-800 text-white px-3 py-1 rounded font-medium">Save</button>
+                <button type="submit" class="bg-navy-700 hover:bg-navy-800 text-white px-3 py-1 rounded font-medium">Save</button>
                 <button type="submit" formaction="/plays/<%= p.id %>/rebuild" class="text-slate-600 hover:text-slate-900 underline">Rebuild</button>
                 <button type="submit" formaction="/plays/<%= p.id %>/delete" class="text-red-600 hover:text-red-800 underline">Delete</button>
               </div>

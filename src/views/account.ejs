@@ -152,7 +152,7 @@
         </button>
       </form>
       <form method="POST" action="/accounts/<%= account.id %>/scan-all">
-        <button type="submit" class="text-sm bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded font-medium disabled:bg-slate-400 disabled:cursor-wait"
+        <button type="submit" class="text-sm bg-navy-700 hover:bg-navy-800 text-white px-4 py-2 rounded font-medium disabled:bg-slate-400 disabled:cursor-wait"
                 <% if (psRunning || povRunning) { %>disabled<% } %>>
           <% if (psRunning || povRunning) { %>Scanning…<% } else { %>Scan account<% } %>
         </button>
@@ -172,10 +172,31 @@
   <script>setTimeout(function(){ location.reload(); }, 8000);</script>
 <% } %>
 
+<!-- ============ HEALTH STRIP ============ -->
+<%
+  var hasChampion = contacts.some(function(c) { return c.deal_role === 'champion'; });
+  var hasEconBuyer = contacts.some(function(c) { return c.deal_role === 'economic_buyer'; });
+  var hasActivePlay = plays.some(function(p) { return p.status === 'active' || p.status === 'drafting'; });
+  var hasPov = pov && (pov.whats_happening || pov.pov);
+  var hasUseCase = ucfResult && ucfResult.primary;
+  var gaps = [];
+  if (!hasPov) gaps.push('POV');
+  if (!hasUseCase) gaps.push('Use case');
+  if (!hasChampion) gaps.push('Champion');
+  if (!hasEconBuyer) gaps.push('Econ buyer');
+  if (!hasActivePlay) gaps.push('Active play');
+  if (visibleProspects.length === 0) gaps.push('Voices');
+%>
+<% if (gaps.length > 0) { %>
+  <div class="bg-amber-50 border border-amber-200 rounded-lg px-4 py-2.5 mb-6 text-sm text-amber-800">
+    <span class="font-medium">Gaps:</span> <%= gaps.join(' · ') %>
+  </div>
+<% } %>
+
 <!-- ================================================================
      DEBRIEF — POV + Intel summary + Notes
      ================================================================ -->
-<div class="bg-white border border-slate-200 rounded-lg mb-6 overflow-hidden">
+<div class="bg-white border border-slate-200 border-l-4 border-l-navy-700 rounded-lg mb-6 overflow-hidden">
 
   <%# === POV === %>
   <% if (pov) { %>
@@ -208,7 +229,7 @@
           </div>
           <% var hasActivePlay = plays.some(function(p) { return p.status === 'active' || p.status === 'drafting'; }); %>
           <a href="/accounts/<%= account.id %>?new_play=1&instinct=<%= encodeURIComponent(pov.recommended_play) %>#plays-section"
-             class="inline-flex items-center gap-1 text-sm <%= hasActivePlay ? 'bg-slate-600 hover:bg-slate-700' : 'bg-emerald-700 hover:bg-emerald-800' %> text-white px-3 py-1.5 rounded font-medium">
+             class="inline-flex items-center gap-1 text-sm <%= hasActivePlay ? 'bg-navy-600 hover:bg-navy-700' : 'bg-teal-600 hover:bg-teal-700' %> text-white px-3 py-1.5 rounded font-medium">
             <%= hasActivePlay ? 'Alternative angle' : 'Run this play' %>
           </a>
         </div>
@@ -232,7 +253,7 @@
           <span class="text-[10px] uppercase tracking-wide text-slate-500 font-semibold w-16 shrink-0 pt-0.5">Use case</span>
           <div class="min-w-0">
             <div class="flex items-center gap-2 flex-wrap">
-              <span class="pill bg-slate-900 text-white"><%= ucfResult.primary.label %></span>
+              <span class="pill bg-navy-700 text-white"><%= ucfResult.primary.label %></span>
               <% if (ucfResult.primary.audience) { %><span class="pill bg-sky-100 text-sky-800"><%= ucfResult.primary.audience %></span><% } %>
               <% if (ucfResult.primary.confidence) { %><span class="text-xs text-slate-400">conf <%= ucfResult.primary.confidence %>/5</span><% } %>
             </div>
@@ -273,7 +294,7 @@
         <form method="POST" action="/accounts/<%= account.id %>/notes" class="mt-2">
           <textarea name="notes" rows="4" class="w-full border border-slate-200 rounded px-3 py-2 text-sm text-slate-800 resize-y"><%= account.notes %></textarea>
           <div class="flex justify-end mt-1.5">
-            <button type="submit" class="text-xs bg-slate-900 hover:bg-slate-800 text-white px-3 py-1 rounded">Save</button>
+            <button type="submit" class="text-xs bg-navy-700 hover:bg-navy-800 text-white px-3 py-1 rounded">Save</button>
           </div>
         </form>
       </details>
@@ -282,7 +303,7 @@
         <textarea name="notes" rows="2" placeholder="Add notes — meeting summaries, product usage, open issues. These feed every scan and POV."
                   class="w-full border border-slate-200 rounded px-3 py-2 text-sm text-slate-800 resize-y"></textarea>
         <div class="flex justify-end mt-1.5">
-          <button type="submit" class="text-xs bg-slate-900 hover:bg-slate-800 text-white px-3 py-1 rounded">Save</button>
+          <button type="submit" class="text-xs bg-navy-700 hover:bg-navy-800 text-white px-3 py-1 rounded">Save</button>
         </div>
       </form>
     <% } %>
@@ -293,7 +314,7 @@
 <!-- ================================================================
      VOICES — always visible, not behind a tab
      ================================================================ -->
-<div id="voices-section" class="bg-white border border-slate-200 rounded-lg mb-6 overflow-hidden">
+<div id="voices-section" class="bg-white border border-slate-200 border-l-4 border-l-teal-500 rounded-lg mb-6 overflow-hidden">
   <div class="px-5 py-3 border-b border-slate-200 flex items-center justify-between">
     <div class="text-sm font-semibold text-slate-900">
       Voices
@@ -313,7 +334,7 @@
 <!-- ================================================================
      PLAYS — always visible, not behind a tab
      ================================================================ -->
-<div id="plays-section" class="bg-white border border-slate-200 rounded-lg mb-6 overflow-hidden">
+<div id="plays-section" class="bg-white border border-slate-200 border-l-4 border-l-emerald-500 rounded-lg mb-6 overflow-hidden">
   <div class="px-5 py-3 border-b border-slate-200 flex items-center justify-between">
     <div class="text-sm font-semibold text-slate-900">
       Plays
@@ -395,7 +416,7 @@
             <textarea name="sales_perf_topics" rows="2" placeholder="e.g. 'SDR ramp, manager coaching cadence, forecast discipline'" class="w-full border border-slate-300 rounded px-2 py-1.5 mt-0.5 text-sm"><%= account.sales_perf_topics || '' %></textarea>
           </label>
           <div class="flex items-center gap-3">
-            <button type="submit" class="text-xs bg-slate-900 hover:bg-slate-800 text-white px-3 py-1 rounded">Save fields</button>
+            <button type="submit" class="text-xs bg-navy-700 hover:bg-navy-800 text-white px-3 py-1 rounded">Save fields</button>
             <form method="POST" action="/accounts/<%= account.id %>/fields/lookup-fiscal-year" class="inline">
               <button type="submit" class="text-xs text-slate-500 hover:text-slate-900 underline">Auto-lookup fiscal year</button>
             </form>

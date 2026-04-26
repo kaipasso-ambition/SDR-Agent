@@ -8,7 +8,7 @@
         <div class="text-[10px] text-slate-500">Which Ambition use case fits this account.</div>
       </div>
       <form method="POST" action="/accounts/<%= account.id %>/intel/use-case" class="shrink-0">
-        <button type="submit" class="text-xs bg-slate-900 hover:bg-slate-800 text-white px-3 py-1.5 rounded font-medium disabled:bg-slate-400 disabled:cursor-wait"
+        <button type="submit" class="text-xs bg-navy-700 hover:bg-navy-800 text-white px-3 py-1.5 rounded font-medium disabled:bg-slate-400 disabled:cursor-wait"
                 <% if (ucfRunning) { %>disabled<% } %>>
           <% if (ucfRunning) { %>Thinking…<% } else if (ucfResult) { %>Re-run<% } else { %>Identify<% } %>
         </button>
@@ -27,9 +27,9 @@
     <% } else { %>
       <div class="p-4 space-y-2">
         <% [ucfResult.primary, ucfResult.secondary].filter(Boolean).forEach(function(p, idx) { %>
-          <div class="<%= idx === 0 ? 'border-2 border-slate-900' : 'border border-slate-200' %> rounded p-3">
+          <div class="<%= idx === 0 ? 'border-2 border-navy-700' : 'border border-slate-200' %> rounded p-3">
             <div class="flex items-center gap-2 flex-wrap mb-1">
-              <span class="pill <%= idx === 0 ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700' %>"><%= p.label %></span>
+              <span class="pill <%= idx === 0 ? 'bg-navy-700 text-white' : 'bg-slate-100 text-slate-700' %>"><%= p.label %></span>
               <% if (p.audience) { %><span class="pill bg-sky-100 text-sky-800"><%= p.audience %></span><% } %>
               <% if (p.confidence) { %><span class="text-xs text-slate-500">conf <%= p.confidence %>/5</span><% } %>
             </div>
@@ -49,7 +49,7 @@
         <div class="text-[10px] text-slate-500">Challenger-style teach for this buyer's industry.</div>
       </div>
       <form method="POST" action="/accounts/<%= account.id %>/intel/industry" class="shrink-0">
-        <button type="submit" class="text-xs bg-slate-900 hover:bg-slate-800 text-white px-3 py-1.5 rounded font-medium disabled:bg-slate-400 disabled:cursor-wait"
+        <button type="submit" class="text-xs bg-navy-700 hover:bg-navy-800 text-white px-3 py-1.5 rounded font-medium disabled:bg-slate-400 disabled:cursor-wait"
                 <% if (indRunning) { %>disabled<% } %>>
           <% if (indRunning) { %>Searching…<% } else if (indResult) { %>Re-run<% } else { %>Pull insight<% } %>
         </button>
