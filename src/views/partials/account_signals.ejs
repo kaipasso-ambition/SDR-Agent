@@ -1,13 +1,7 @@
-<% if (sigCount > 0) { %>
-<details class="bg-white border border-slate-200 rounded-lg mb-4 overflow-hidden" open>
-  <summary class="px-4 py-3 text-sm font-medium text-slate-700 cursor-pointer list-none select-none hover:bg-slate-50">
-    <%= sigCount %> signal<%= sigCount === 1 ? '' : 's' %>
-    <% var defC = signals.filter(function(s){ return s.risk_class === 'defense_risk'; }).length; %>
-    <% var offC = signals.filter(function(s){ return s.risk_class === 'offense_opportunity'; }).length; %>
-    <% if (defC > 0) { %><span class="text-red-700 ml-1">(<%= defC %> defense)</span><% } %>
-    <% if (offC > 0) { %><span class="text-sky-700 ml-1">(<%= offC %> offense)</span><% } %>
-  </summary>
-  <div class="divide-y divide-slate-100 border-t border-slate-100">
+<% if (sigCount === 0) { %>
+  <div class="p-4 text-sm text-slate-500">No signals in the last 60 days. Click <strong>Scan account</strong> to pull news.</div>
+<% } else { %>
+  <div class="divide-y divide-slate-100">
     <% signals.forEach(function(s) {
       var displayDate = s.event_date || s.detected_at;
     %>
@@ -34,7 +28,7 @@
             <a href="/accounts/<%= account.id %>?new_play=1&signal=<%= s.id %>" class="text-xs text-slate-700 hover:text-slate-900 underline">Build play</a>
             <form method="POST" action="/signals/<%= s.id %>/dismiss" class="inline"
                   onsubmit="var r=prompt('Why not relevant? (optional)','');if(r===null)return false;this.querySelector('[name=reason]').value=r;return true;">
-              <input type="hidden" name="back" value="/accounts/<%= account.id %>" />
+              <input type="hidden" name="back" value="/accounts/<%= account.id %>?tab=signals" />
               <input type="hidden" name="reason" value="" />
               <button type="submit" class="text-xs text-slate-400 hover:text-red-700 underline">Dismiss</button>
             </form>
@@ -43,5 +37,4 @@
       </div>
     <% }); %>
   </div>
-</details>
 <% } %>

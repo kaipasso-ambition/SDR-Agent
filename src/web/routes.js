@@ -981,6 +981,10 @@ webRouter.get('/accounts/:id', requireAuth, async (req, res, next) => {
       prefillInstinct = parts.join(' — ');
     }
 
+    const validTabs = new Set(['signals', 'voices', 'plays', 'contacts', 'intel', 'hypotheses', 'fields']);
+    let tab = validTabs.has(req.query?.tab) ? req.query.tab : 'signals';
+    if (req.query?.new_play === '1') tab = 'plays';
+
     res.render('account', {
       title: bundle.account.account_name,
       account: bundle.account,
@@ -995,6 +999,7 @@ webRouter.get('/accounts/:id', requireAuth, async (req, res, next) => {
       composerOpen: req.query?.new_play === '1',
       rescanStatus: typeof req.query?.rescan === 'string' ? req.query.rescan : null,
       personas: PERSONAS,
+      tab,
     });
   } catch (err) {
     next(err);
@@ -1334,7 +1339,7 @@ webRouter.post('/revisit/:opportunity_id/triggers/:trigger_index/play', requireA
       console.error('[revisit/triggers/play build] expansion failed:', err.message);
     }
 
-    res.redirect(`/accounts/${accountId}#play-${play.id}`);
+    res.redirect(`/accounts/${accountId}?tab=plays`);
   } catch (err) {
     console.error('[revisit/triggers/play]', err);
     next(err);
@@ -1686,7 +1691,7 @@ webRouter.post('/expand/:account_id/triggers/:trigger_index/play', requireAuth, 
       console.error('[expand/triggers/play build] expansion failed:', err.message);
     }
 
-    res.redirect(`/accounts/${accountId}#play-${play.id}`);
+    res.redirect(`/accounts/${accountId}?tab=plays`);
   } catch (err) {
     console.error('[expand/triggers/play]', err);
     next(err);
@@ -2046,7 +2051,7 @@ webRouter.post('/signals/:id/play', requireAuth, async (req, res, next) => {
       }
 
       await setSignalPlaying(signal.id).catch(() => {});
-      return res.redirect(`/accounts/${signal.account_id}#play-${play.id}`);
+      return res.redirect(`/accounts/${signal.account_id}?tab=plays`);
     }
 
     if (action === 'draft_outbound') {
@@ -2384,7 +2389,7 @@ webRouter.post('/accounts/:id/hypotheses/generate', requireAuth, async (req, res
 
     const intel = await getAccountIntel(accountId);
     if (intel.hypotheses_gen?.status === 'running') {
-      return res.redirect(`/accounts/${accountId}#hypotheses`);
+      return res.redirect(`/accounts/${accountId}?tab=hypotheses`);
     }
 
     // Selected signals from the checkbox group. Empty = use all pulse
@@ -2453,7 +2458,7 @@ webRouter.post('/accounts/:id/hypotheses/generate', requireAuth, async (req, res
         try { await setIntelFailed(accountId, 'hypotheses_gen', err.message || String(err)); } catch (_) {}
       });
 
-    res.redirect(`/accounts/${accountId}#hypotheses`);
+    res.redirect(`/accounts/${accountId}?tab=hypotheses`);
   } catch (err) {
     next(err);
   }
@@ -2508,7 +2513,7 @@ webRouter.post('/contacts/:id', requireAuth, async (req, res, next) => {
       else if (UUID_RE.test(v) && v !== contact.id) patch.reports_to_contact_id = v;
     }
     await updateContact(contact.id, patch);
-    res.redirect(`/accounts/${contact.account_id}`);
+    res.redirect(`/accounts/${contact.account_id}?tab=contacts`);
   } catch (err) {
     next(err);
   }
@@ -2520,7 +2525,7 @@ webRouter.post('/contacts/:id/delete', requireAuth, async (req, res, next) => {
     const contact = await getContactById(req.params.id);
     if (!contact) return res.redirect('/accounts');
     await deleteContact(contact.id);
-    res.redirect(`/accounts/${contact.account_id}`);
+    res.redirect(`/accounts/${contact.account_id}?tab=contacts`);
   } catch (err) {
     next(err);
   }
@@ -2578,7 +2583,7 @@ webRouter.post('/hypotheses/:id', requireAuth, async (req, res, next) => {
     const narrative = pickNarrative(req.body);
     if (narrative !== undefined) patch.narrative = narrative;
     await updateHypothesis(h.id, patch);
-    res.redirect(`/accounts/${h.account_id}`);
+    res.redirect(`/accounts/${h.account_id}?tab=hypotheses`);
   } catch (err) {
     next(err);
   }
@@ -2590,7 +2595,7 @@ webRouter.post('/hypotheses/:id/delete', requireAuth, async (req, res, next) => 
     const h = await getHypothesisById(req.params.id);
     if (!h) return res.redirect('/accounts');
     await deleteHypothesis(h.id);
-    res.redirect(`/accounts/${h.account_id}`);
+    res.redirect(`/accounts/${h.account_id}?tab=hypotheses`);
   } catch (err) {
     next(err);
   }
@@ -2684,7 +2689,7 @@ webRouter.post('/accounts/:id/plays', requireAuth, async (req, res, next) => {
       await setSignalPlaying(triggered_by_signal_id).catch(() => {});
     }
 
-    res.redirect(`/accounts/${accountId}#play-${play.id}`);
+    res.redirect(`/accounts/${accountId}?tab=plays`);
   } catch (err) {
     next(err);
   }
@@ -2720,7 +2725,7 @@ webRouter.post('/plays/:id', requireAuth, async (req, res, next) => {
       patch.closed_at = null;
     }
     await updatePlay(play.id, patch);
-    res.redirect(`/accounts/${play.account_id}#play-${play.id}`);
+    res.redirect(`/accounts/${play.account_id}?tab=plays`);
   } catch (err) {
     next(err);
   }
@@ -2762,7 +2767,7 @@ webRouter.post('/plays/:id/rebuild', requireAuth, async (req, res, next) => {
         status: play.status === 'drafting' ? 'active' : play.status,
       });
     }
-    res.redirect(`/accounts/${accountId}#play-${play.id}`);
+    res.redirect(`/accounts/${accountId}?tab=plays`);
   } catch (err) {
     next(err);
   }
@@ -2774,7 +2779,7 @@ webRouter.post('/plays/:id/delete', requireAuth, async (req, res, next) => {
     const play = await getPlayById(req.params.id);
     if (!play) return res.redirect('/accounts');
     await deletePlay(play.id);
-    res.redirect(`/accounts/${play.account_id}`);
+    res.redirect(`/accounts/${play.account_id}?tab=plays`);
   } catch (err) {
     next(err);
   }

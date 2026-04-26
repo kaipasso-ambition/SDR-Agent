@@ -1,48 +1,23 @@
 <%
-  const FY_MONTHS = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-
-  const statusColor = {
-    customer: 'bg-emerald-100 text-emerald-800',
-    prospect: 'bg-sky-100 text-sky-800',
-    churned:  'bg-amber-100 text-amber-800',
-  };
   const priorityColor = {
     hot:  'bg-red-100 text-red-800',
     warm: 'bg-amber-100 text-amber-800',
     cool: 'bg-slate-100 text-slate-600',
   };
-  const riskPill = {
-    defense_risk:        'bg-red-100 text-red-800',
-    offense_opportunity: 'bg-sky-100 text-sky-800',
-    neutral:             'bg-slate-100 text-slate-700',
-  };
-  const riskLabel = {
-    defense_risk:        'Defense',
-    offense_opportunity: 'Offense',
-    neutral:             'Context',
-  };
-  const signalTypeLabel = {
-    linkedin_post: 'LinkedIn',
-    press_quote:   'Press',
-    conference:    'Conference',
-    job_posting:   'Job posting',
-    podcast:       'Podcast',
-    blog:          'Blog',
-    other:         'Web',
+  const statusColor = {
+    customer: 'bg-emerald-100 text-emerald-800',
+    prospect: 'bg-sky-100 text-sky-800',
+    churned:  'bg-amber-100 text-amber-800',
   };
 
-  function daysAgo(d) {
-    if (!d) return null;
-    const ms = Date.now() - new Date(d).getTime();
-    if (ms < 0) return 0;
-    return Math.floor(ms / 86400000);
-  }
   function agoLabel(d) {
-    const n = daysAgo(d);
-    if (n === null) return '';
+    if (!d) return '';
+    const ms = Date.now() - new Date(d).getTime();
+    if (ms < 0) return '';
+    const n = Math.floor(ms / 86400000);
     if (n === 0) return 'today';
     if (n === 1) return 'yesterday';
-    if (n < 7)  return n + 'd ago';
+    if (n < 7) return n + 'd ago';
     if (n < 60) return Math.floor(n / 7) + 'w ago';
     return Math.floor(n / 30) + 'mo ago';
   }
@@ -65,19 +40,15 @@
 <div class="mb-6 flex items-start justify-between gap-4 flex-wrap">
   <div>
     <h1 class="text-2xl font-semibold">Today</h1>
-    <p class="text-sm text-slate-500 mt-1">
-      Your book at a glance — what's happening, where the opportunity is, and who needs to know.
-    </p>
+    <p class="text-sm text-slate-500 mt-1">Triage your book. Decide which accounts need your attention this week.</p>
   </div>
   <div class="flex items-center gap-2">
     <form method="POST" action="/signals/purge-stale" class="shrink-0"
           onsubmit="return confirm('Dismiss every active signal older than 60 days or with no event date?');">
-      <button type="submit" class="text-xs text-slate-500 hover:text-red-700 underline px-2">
-        Purge stale intel
-      </button>
+      <button type="submit" class="text-xs text-slate-500 hover:text-red-700 underline px-2">Purge stale</button>
     </form>
     <form method="POST" action="/signals/scan" class="shrink-0"
-          onsubmit="return confirm('Scan all <%= totalAccounts %> accounts? This uses ~1 API call per account (~$0.10 each). Estimated cost: ~$<%= (totalAccounts * 0.12).toFixed(2) %>.');">
+          onsubmit="return confirm('Scan all <%= totalAccounts %> accounts? ~$0.10 each. Estimated: ~$<%= (totalAccounts * 0.12).toFixed(2) %>.');">
       <button type="submit"
               class="text-sm bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded font-medium disabled:bg-slate-400 disabled:cursor-wait"
               <% if (runningJob) { %>disabled<% } %>>
@@ -97,23 +68,20 @@
   <div class="bg-emerald-50 border border-emerald-200 rounded-lg p-3 mb-5 flex items-center gap-3">
     <span class="inline-block w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
     <div class="flex-1 text-sm text-emerald-900">
-      Scanning accounts — <%= activeJob.accounts_scanned || 0 %> scanned, <%= activeJob.signals_detected || 0 %> new. ~30-45s per account.
+      Scanning — <%= activeJob.accounts_scanned || 0 %> scanned, <%= activeJob.signals_detected || 0 %> new.
     </div>
   </div>
   <script>setTimeout(function(){ location.reload(); }, 15000);</script>
 <% } else if (activeJob && activeJob.status === 'failed') { %>
   <div class="bg-red-50 border border-red-200 rounded-lg p-3 mb-5">
     <div class="flex items-center gap-2 text-sm text-red-800 font-medium">
-      Scan failed
-      <% if (activeJob.errors) { %> — <%= activeJob.errors %> error<%= activeJob.errors === 1 ? '' : 's' %><% } %>
+      Scan failed<% if (activeJob.errors) { %> — <%= activeJob.errors %> error<%= activeJob.errors === 1 ? '' : 's' %><% } %>
     </div>
     <% if (activeJob.error) { %>
-      <p class="text-xs text-red-700 mt-1"><%= activeJob.error.includes('usage limit') || activeJob.error.includes('rate_limit') ? 'API spend limit reached. Check your Anthropic console usage limits and try again.' : activeJob.error %></p>
+      <p class="text-xs text-red-700 mt-1"><%= activeJob.error.includes('usage limit') || activeJob.error.includes('rate_limit') ? 'API spend limit reached.' : activeJob.error %></p>
     <% } %>
     <form method="POST" action="/signals/scan" class="mt-2">
-      <button type="submit" class="text-xs bg-red-700 hover:bg-red-800 text-white px-3 py-1 rounded">
-        Retry scan
-      </button>
+      <button type="submit" class="text-xs bg-red-700 hover:bg-red-800 text-white px-3 py-1 rounded">Retry</button>
     </form>
   </div>
 <% } else if (anyRunning) { %>
@@ -122,7 +90,6 @@
 
 <div class="mb-4 flex items-center gap-3 text-xs flex-wrap">
   <div class="flex items-center gap-1">
-    <span class="text-slate-500 mr-1">Status:</span>
     <% ['', 'customer', 'prospect', 'churned'].forEach(function(s) {
       const active = (statusFilter || '') === s;
       const label = s === '' ? 'All' : s.charAt(0).toUpperCase() + s.slice(1);
@@ -137,18 +104,13 @@
   <span class="text-slate-300">·</span>
 
   <div class="flex items-center gap-1">
-    <span class="text-slate-500 mr-1">Sort:</span>
-    <a href="<%= qs({sort: 'newest'}) %>"
-       class="px-2.5 py-1 rounded border <%= sort === 'newest' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white border-slate-300 text-slate-700 hover:border-slate-500' %>">
-      Newest
-    </a>
     <a href="<%= qs({sort: 'priority'}) %>"
        class="px-2.5 py-1 rounded border <%= sort === 'priority' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white border-slate-300 text-slate-700 hover:border-slate-500' %>">
       Priority
     </a>
-    <a href="<%= qs({sort: 'oldest'}) %>"
-       class="px-2.5 py-1 rounded border <%= sort === 'oldest' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white border-slate-300 text-slate-700 hover:border-slate-500' %>">
-      Oldest
+    <a href="<%= qs({sort: 'newest'}) %>"
+       class="px-2.5 py-1 rounded border <%= sort === 'newest' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white border-slate-300 text-slate-700 hover:border-slate-500' %>">
+      Newest
     </a>
   </div>
 
@@ -157,374 +119,91 @@
   <span class="text-slate-400"><%= accounts.length %> of <%= totalAccounts %></span>
 
   <% if (!includeQuiet && accounts.length < totalAccounts) { %>
-    <a href="<%= qs({quiet: '1'}) %>"
-       class="text-slate-500 hover:text-slate-900 underline">
-      Show all
-    </a>
+    <a href="<%= qs({quiet: '1'}) %>" class="text-slate-500 hover:text-slate-900 underline">Show all</a>
   <% } else if (includeQuiet) { %>
-    <a href="<%= qs({quiet: ''}) %>"
-       class="text-slate-500 hover:text-slate-900 underline">
-      Hide quiet
-    </a>
+    <a href="<%= qs({quiet: ''}) %>" class="text-slate-500 hover:text-slate-900 underline">Hide quiet</a>
   <% } %>
   <% if (!includeDeprioritized) { %>
-    <a href="<%= qs({depri: '1'}) %>"
-       class="text-slate-500 hover:text-slate-900 underline">
-      Show deprioritized
-    </a>
+    <a href="<%= qs({depri: '1'}) %>" class="text-slate-500 hover:text-slate-900 underline">Show deprioritized</a>
   <% } else { %>
-    <a href="<%= qs({depri: ''}) %>"
-       class="text-slate-500 hover:text-slate-900 underline">
-      Hide deprioritized
-    </a>
+    <a href="<%= qs({depri: ''}) %>" class="text-slate-500 hover:text-slate-900 underline">Hide deprioritized</a>
   <% } %>
 </div>
 
 <% if (!accounts || accounts.length === 0) { %>
   <div class="bg-white border border-slate-200 rounded-lg p-8 text-center text-slate-500">
     <% if (statusFilter) { %>
-      No <%= statusFilter %> accounts with activity in the last 60 days.
+      No <%= statusFilter %> accounts with activity.
       <a href="<%= qs({status: ''}) %>" class="underline">Clear filter</a>
     <% } else { %>
       <div class="text-base text-slate-700 mb-1">No activity yet.</div>
-      Click <strong>Scan all accounts</strong> to start. ~30-45s per account.
+      Click <strong>Scan all accounts</strong> to start.
     <% } %>
   </div>
 <% } else { %>
-  <div class="space-y-4">
+  <div class="space-y-2">
     <% accounts.forEach(function(a) {
-      const ps = a.prospect_scan_result;
-      const psRunning = a.prospect_scan_status === 'running';
-      const visibleProspects = (a.prospect_scan_status === 'completed' && ps && Array.isArray(ps.prospects))
-        ? ps.prospects.filter(function(p) { return !p.dismissed; })
-        : [];
-      const hasProspects = visibleProspects.length > 0;
-      const noProspects  = a.prospect_scan_status === 'completed' && ps && visibleProspects.length === 0;
-      const psFailed     = a.prospect_scan_status === 'failed';
-
       const pov = a.pov_result;
       const povRunning = a.pov_status === 'running';
       const hasPov = a.pov_status === 'completed' && pov && (pov.whats_happening || pov.pov);
-
-      const signals = Array.isArray(a.signals) ? a.signals : [];
       const sigCount = Number(a.signal_count) || 0;
       const defCount = Number(a.defense_count) || 0;
       const offCount = Number(a.offense_count) || 0;
-
-      const detailCount = sigCount + visibleProspects.length;
-
       const ucfResult = a.ucf_status === 'completed' && a.ucf_result ? a.ucf_result : null;
-      const iiResult = a.ii_status === 'completed' && a.ii_result ? a.ii_result : null;
-      const hasIntel = (ucfResult && ucfResult.primary) || (iiResult && iiResult.insights && iiResult.insights.length > 0);
+      const scanning = a.prospect_scan_status === 'running' || a.pov_status === 'running';
     %>
-      <div class="<%= a.deprioritized ? 'bg-slate-50 border border-slate-200 rounded-lg overflow-hidden opacity-60' : 'bg-white border border-slate-200 rounded-lg overflow-hidden' %>">
+      <a href="/accounts/<%= a.account_id %>"
+         class="block <%= a.deprioritized ? 'opacity-50' : '' %> bg-white border border-slate-200 rounded-lg hover:border-slate-400 transition-colors overflow-hidden">
 
-        <%# === HEADER: account name + pills + scan button === %>
-        <div class="px-4 py-3 flex items-start justify-between gap-3 flex-wrap">
-          <div class="flex items-center gap-2 min-w-0 flex-1 flex-wrap">
-            <a href="/accounts/<%= a.account_id %>" class="font-medium text-slate-900 hover:text-emerald-700 truncate">
-              <%= a.account_name %>
-            </a>
-            <span class="pill <%= statusColor[a.account_status] || 'bg-slate-100 text-slate-700' %>"><%= a.account_status %></span>
-            <% if (hasPov && pov.priority) { %>
-              <span class="pill <%= priorityColor[pov.priority] || priorityColor.cool %>"><%= pov.priority %></span>
+        <%# === ROW 1: Name + pills + meta === %>
+        <div class="px-4 pt-3 pb-1 flex items-center gap-2 flex-wrap">
+          <span class="font-medium text-slate-900"><%= a.account_name %></span>
+          <span class="pill <%= statusColor[a.account_status] || 'bg-slate-100 text-slate-700' %> text-[10px]"><%= a.account_status %></span>
+          <% if (hasPov && pov.priority) { %>
+            <span class="pill <%= priorityColor[pov.priority] || priorityColor.cool %> text-[10px]"><%= pov.priority %></span>
+          <% } %>
+          <% if (ucfResult && ucfResult.primary) { %>
+            <span class="pill bg-slate-900 text-white text-[10px]"><%= ucfResult.primary.label %></span>
+          <% } %>
+          <% if (a.watched) { %>
+            <span class="pill bg-amber-100 text-amber-800 text-[10px]">watching</span>
+          <% } %>
+          <span class="ml-auto text-[11px] text-slate-400 shrink-0">
+            <% if (sigCount > 0) { %>
+              <%= sigCount %> signal<%= sigCount === 1 ? '' : 's' %>
+              <% if (defCount > 0) { %><span class="text-red-600"><%= defCount %> defense</span><% } %>
+              ·
             <% } %>
-            <form method="POST" action="/accounts/<%= a.account_id %>/watch" class="inline">
-              <input type="hidden" name="back" value="/brief" />
-              <button type="submit" class="pill cursor-pointer <%= a.watched ? 'bg-amber-100 text-amber-800 border border-amber-300' : 'bg-slate-50 text-slate-400 border border-slate-200 hover:border-slate-400' %>" title="<%= a.watched ? 'Remove from daily scan' : 'Add to daily scan' %>">
-                <%= a.watched ? 'Watching' : 'Watch' %>
-              </button>
-            </form>
-            <% if (a.industry) { %>
-              <span class="text-xs text-slate-400 hidden sm:inline">· <%= a.industry %></span>
-            <% } %>
-            <% if (a.last_activity_at) { %>
-              <span class="text-[11px] text-slate-400"><%= agoLabel(a.last_activity_at) %></span>
-            <% } %>
-          </div>
-          <div class="flex items-center gap-3 shrink-0 flex-wrap">
-            <% if (a.fiscal_year_end) { %>
-              <span class="text-[11px] text-slate-500">FY <%= FY_MONTHS[a.fiscal_year_end] %></span>
-            <% } %>
-            <form method="POST" action="/accounts/<%= a.account_id %>/deprioritize" class="inline">
-              <input type="hidden" name="back" value="/brief" />
-              <button type="submit" class="text-[11px] text-slate-400 hover:text-slate-700 underline" title="<%= a.deprioritized ? 'Reprioritize — show on Today' : 'Deprioritize — hide from Today' %>">
-                <%= a.deprioritized ? 'Reprioritize' : 'Deprioritize' %>
-              </button>
-            </form>
-            <form method="POST" action="/accounts/<%= a.account_id %>/scan-all" class="inline">
-              <button type="submit"
-                      class="text-xs bg-slate-900 hover:bg-slate-800 text-white px-3 py-1.5 rounded font-medium disabled:bg-slate-400 disabled:cursor-wait"
-                      <% if (psRunning || povRunning) { %>disabled<% } %>>
-                <% if (psRunning || povRunning) { %>Scanning…<% } else if (sigCount > 0 || hasProspects || noProspects) { %>Rescan<% } else { %>Scan<% } %>
-              </button>
-            </form>
-          </div>
+            <%= agoLabel(a.last_activity_at) %>
+          </span>
         </div>
 
-        <%# === ACCOUNT BRIEFING: three questions === %>
+        <%# === ROW 2: POV one-liner (what's happening) === %>
         <% if (hasPov) { %>
-          <div class="px-4 pb-3 space-y-2">
-            <div>
-              <div class="text-[10px] uppercase tracking-wide text-slate-500 mb-0.5">What's happening</div>
-              <div class="text-sm text-slate-800"><%= pov.whats_happening || pov.pov %></div>
-            </div>
-            <% if (pov.where_is_the_opportunity || pov.path_in) { %>
-              <div>
-                <div class="text-[10px] uppercase tracking-wide text-emerald-700 mb-0.5">Where's the opportunity</div>
-                <div class="text-sm text-emerald-900"><%= pov.where_is_the_opportunity || pov.path_in %></div>
-              </div>
-            <% } %>
-            <% if (pov.who_needs_to_know) { %>
-              <div>
-                <div class="text-[10px] uppercase tracking-wide text-sky-700 mb-0.5">Who needs to know</div>
-                <div class="text-sm text-sky-900"><%= pov.who_needs_to_know %></div>
-              </div>
-            <% } %>
-            <div class="pt-1 border-t border-slate-100">
-              <span class="text-sm font-medium text-slate-700">This week:</span>
-              <span class="text-sm text-slate-800"><%= pov.next_step || pov.strategy %></span>
-            </div>
-            <% if (pov.recommended_play) { %>
-              <div class="pt-2">
-                <a href="/accounts/<%= a.account_id %>?new_play=1&instinct=<%= encodeURIComponent(pov.recommended_play) %>"
-                   class="inline-flex items-center gap-1 text-sm bg-emerald-700 hover:bg-emerald-800 text-white px-3 py-1.5 rounded font-medium">
-                  Run this play
-                </a>
-              </div>
-            <% } %>
-          </div>
+          <div class="px-4 pb-1 text-sm text-slate-700"><%= pov.whats_happening || pov.pov %></div>
         <% } else if (povRunning) { %>
-          <div class="px-4 pb-3 text-xs text-slate-500 flex items-center gap-2">
-            <span class="inline-block w-2 h-2 bg-slate-400 rounded-full animate-pulse"></span>
-            Building point of view…
+          <div class="px-4 pb-1 text-xs text-slate-400 flex items-center gap-2">
+            <span class="inline-block w-1.5 h-1.5 bg-slate-400 rounded-full animate-pulse"></span> Building POV…
+          </div>
+        <% } else if (scanning) { %>
+          <div class="px-4 pb-1 text-xs text-slate-400 flex items-center gap-2">
+            <span class="inline-block w-1.5 h-1.5 bg-slate-400 rounded-full animate-pulse"></span> Scanning…
           </div>
         <% } %>
 
-        <%# === INTEL: use case fit + industry insight === %>
-        <% if (hasIntel) { %>
-          <div class="px-4 py-2 border-t border-slate-100 flex flex-wrap gap-x-6 gap-y-1">
-            <% if (ucfResult && ucfResult.primary) { %>
-              <div class="flex items-center gap-1.5 text-xs">
-                <span class="text-[10px] uppercase tracking-wide text-slate-500 font-semibold">Use case</span>
-                <span class="pill bg-slate-900 text-white"><%= ucfResult.primary.label %></span>
-                <% if (ucfResult.primary.audience) { %><span class="pill bg-sky-100 text-sky-800"><%= ucfResult.primary.audience %></span><% } %>
-                <% if (ucfResult.primary.confidence) { %><span class="text-slate-400">conf <%= ucfResult.primary.confidence %>/5</span><% } %>
-              </div>
-            <% } %>
-            <% if (iiResult && iiResult.insights && iiResult.insights.length > 0) { %>
-              <div class="flex items-center gap-1.5 text-xs min-w-0">
-                <span class="text-[10px] uppercase tracking-wide text-slate-500 font-semibold">Industry</span>
-                <span class="text-slate-700 truncate"><%= iiResult.insights[0].headline %></span>
-              </div>
-            <% } %>
+        <%# === ROW 3: Next step === %>
+        <% if (hasPov && (pov.next_step || pov.strategy)) { %>
+          <div class="px-4 pb-3 text-sm">
+            <span class="font-medium text-slate-500">This week:</span>
+            <span class="text-slate-800"><%= pov.next_step || pov.strategy %></span>
           </div>
+        <% } else if (!hasPov && !povRunning && !scanning) { %>
+          <div class="px-4 pb-3 text-xs text-slate-400">Not scanned yet</div>
+        <% } else { %>
+          <div class="pb-2"></div>
         <% } %>
 
-        <%# === INLINE NOTES: AE context that feeds future scans === %>
-        <% if (a.notes) { %>
-          <div class="px-4 py-2 border-t border-slate-100 text-xs text-slate-600 leading-relaxed">
-            <span class="text-[10px] text-slate-400 uppercase tracking-wide font-semibold mr-1">Notes:</span>
-            <%= a.notes.length > 140 ? a.notes.slice(0, 140) + '…' : a.notes %>
-          </div>
-        <% } %>
-        <details class="border-t border-slate-100">
-          <summary class="px-4 py-2 text-xs text-slate-500 cursor-pointer list-none select-none hover:bg-slate-50 flex items-center gap-2">
-            <span class="text-slate-400 text-[10px]">&#9998;</span>
-            <%= a.notes ? 'Edit notes' : 'Add notes' %>
-          </summary>
-          <form method="POST" action="/accounts/<%= a.account_id %>/notes" class="px-4 pb-3">
-            <input type="hidden" name="back" value="/brief" />
-            <textarea name="notes" rows="2" placeholder="Add context for future scans (e.g. 'SDR team uses Ambition, want to expand to AE team')"
-                      class="w-full border border-slate-200 rounded px-3 py-2 text-sm text-slate-800 resize-y"><%= a.notes || '' %></textarea>
-            <div class="flex items-center justify-between mt-1.5">
-              <span class="text-[10px] text-slate-400">These notes feed into every scan and POV for this account.</span>
-              <button type="submit" class="text-xs bg-slate-900 hover:bg-slate-800 text-white px-3 py-1 rounded">Save</button>
-            </div>
-          </form>
-        </details>
-
-        <%# === SUPPORTING DETAIL: signals + prospects in a collapsible section === %>
-        <% if (detailCount > 0 || psRunning || psFailed) { %>
-          <details class="border-t border-slate-100 group">
-            <summary class="px-4 py-2 text-xs text-slate-500 cursor-pointer list-none select-none hover:bg-slate-50 flex items-center gap-2">
-              <span class="text-slate-400 text-[10px] group-open:rotate-90 transition-transform">&#9654;</span>
-              <% if (sigCount > 0 && hasProspects) { %>
-                <%= sigCount %> signal<%= sigCount === 1 ? '' : 's' %><% if (defCount > 0) { %> (<span class="text-red-700"><%= defCount %> defense</span>)<% } %> + <%= visibleProspects.length %> prospect<%= visibleProspects.length === 1 ? '' : 's' %>
-              <% } else if (sigCount > 0) { %>
-                <%= sigCount %> signal<%= sigCount === 1 ? '' : 's' %>
-                <% if (defCount > 0) { %><span class="text-red-700 ml-1"><%= defCount %> defense</span><% } %>
-                <% if (offCount > 0) { %><span class="text-sky-700 ml-1"><%= offCount %> offense</span><% } %>
-              <% } else if (hasProspects) { %>
-                <%= visibleProspects.length %> active voice<%= visibleProspects.length === 1 ? '' : 's' %>
-              <% } else if (psRunning) { %>
-                Scanning for prospects…
-              <% } else if (psFailed) { %>
-                Prospect scan failed
-              <% } %>
-            </summary>
-
-            <% if (signals.length > 0) { %>
-              <div class="divide-y divide-slate-100">
-                <% signals.slice(0, 5).forEach(function(s) {
-                     const displayDate = s.event_date || s.detected_at;
-                %>
-                  <div class="px-4 py-3">
-                    <div class="flex items-start justify-between gap-3">
-                      <div class="min-w-0 flex-1">
-                        <div class="flex items-center gap-2 flex-wrap mb-1 text-xs">
-                          <% if (s.risk_class) { %>
-                            <span class="pill <%= riskPill[s.risk_class] || riskPill.neutral %>">
-                              <%= riskLabel[s.risk_class] || 'Context' %>
-                            </span>
-                          <% } %>
-                          <span class="text-slate-400">SEV <%= s.severity %></span>
-                          <span class="text-slate-400"><%= agoLabel(displayDate) %></span>
-                        </div>
-                        <div class="text-sm font-medium text-slate-900"><%= s.title %></div>
-                        <% if (s.so_what) { %>
-                          <div class="text-sm text-slate-700 mt-1"><%= s.so_what %></div>
-                        <% } else if (s.summary) { %>
-                          <div class="text-sm text-slate-700 mt-1"><%= s.summary %></div>
-                        <% } %>
-                      </div>
-                      <div class="flex flex-col items-end gap-1.5 shrink-0">
-                        <% if (s.source_url) { %>
-                          <a href="<%= s.source_url %>" target="_blank" rel="noopener" class="text-xs text-slate-500 hover:text-slate-900 underline">Source ↗</a>
-                        <% } %>
-                        <form method="POST" action="/signals/<%= s.id %>/play" class="inline">
-                          <input type="hidden" name="back" value="/brief" />
-                          <button type="submit" class="text-xs text-slate-700 hover:text-slate-900 underline">Build play</button>
-                        </form>
-                        <form method="POST" action="/signals/<%= s.id %>/dismiss" class="inline"
-                              onsubmit="var r=prompt('Why not relevant? (optional — helps improve future scans)','');if(r===null)return false;this.querySelector('[name=reason]').value=r;return true;">
-                          <input type="hidden" name="back" value="/brief" />
-                          <input type="hidden" name="reason" value="" />
-                          <button type="submit" class="text-xs text-slate-400 hover:text-red-700 underline">Not relevant</button>
-                        </form>
-                      </div>
-                    </div>
-                  </div>
-                <% }); %>
-                <% if (signals.length > 5) { %>
-                  <div class="px-4 py-2 text-xs text-slate-500">
-                    <a href="/accounts/<%= a.account_id %>" class="underline">+ <%= signals.length - 5 %> more on account page</a>
-                  </div>
-                <% } %>
-              </div>
-            <% } %>
-
-            <% if (hasProspects) { %>
-              <div class="<%= signals.length > 0 ? 'border-t border-slate-200' : '' %>">
-                <div class="px-4 py-2 bg-slate-50/50 flex items-center justify-between gap-2">
-                  <div class="flex items-center gap-2">
-                    <span class="text-[10px] uppercase tracking-wide text-slate-500">Active voices</span>
-                    <% if (ps.opportunity_strength) { %>
-                      <span class="pill <%= priorityColor[ps.opportunity_strength] || priorityColor.cool %> text-[10px]">
-                        <%= ps.opportunity_strength %>
-                      </span>
-                    <% } %>
-                  </div>
-                  <form method="POST" action="/accounts/<%= a.account_id %>/intel/prospects/clear" class="inline"
-                        onsubmit="return confirm('Hide all prospects from view? Data is preserved for strategy context.');">
-                    <button type="submit" class="text-[10px] text-slate-400 hover:text-red-700 underline">Hide all</button>
-                  </form>
-                </div>
-                <div class="divide-y divide-slate-100">
-                  <% visibleProspects.forEach(function(p) {
-                       var origIdx = ps.prospects.indexOf(p);
-                       var hasStones = Array.isArray(p.stepping_stones) && p.stepping_stones.length > 0;
-                       var pathRunning = p.warm_path_status === 'running';
-                       var pathEmpty = p.warm_path_status === 'empty';
-                  %>
-                    <div class="px-4 py-3">
-                      <div class="flex items-start justify-between gap-3">
-                        <div class="min-w-0 flex-1">
-                          <div class="flex items-center gap-2 flex-wrap">
-                            <span class="font-medium text-slate-900"><%= p.name %></span>
-                            <span class="text-xs text-slate-500"><%= p.title %></span>
-                            <span class="pill bg-sky-50 text-sky-800 text-[10px]"><%= signalTypeLabel[p.signal_type] || p.signal_type %></span>
-                            <% if (p.signal_date) { %><span class="text-[11px] text-slate-400"><%= p.signal_date %></span><% } %>
-                          </div>
-                          <div class="text-sm text-slate-800 mt-1"><%= p.signal %></div>
-                          <% if (p.why_it_matters) { %>
-                            <div class="text-xs text-slate-500 mt-1 italic"><%= p.why_it_matters %></div>
-                          <% } %>
-                        </div>
-                        <div class="flex flex-col items-end gap-1.5 shrink-0">
-                          <% if (p.source_url) { %>
-                            <a href="<%= p.source_url %>" target="_blank" rel="noopener" class="text-xs text-slate-500 hover:text-slate-900 underline">Source ↗</a>
-                          <% } %>
-                          <% if (!hasStones && !pathRunning) { %>
-                            <form method="POST" action="/accounts/<%= a.account_id %>/prospects/<%= origIdx %>/find-path" class="inline">
-                              <button type="submit" class="text-xs text-emerald-700 hover:text-emerald-900 underline">Find related contacts</button>
-                            </form>
-                          <% } %>
-                          <form method="POST" action="/accounts/<%= a.account_id %>/intel/prospects/<%= origIdx %>/dismiss" class="inline"
-                                onsubmit="var r=prompt('Why not relevant? (optional)','');if(r===null)return false;this.querySelector('[name=reason]').value=r;return true;">
-                            <input type="hidden" name="reason" value="" />
-                            <button type="submit" class="text-[11px] text-slate-400 hover:text-red-700 underline">Not relevant</button>
-                          </form>
-                        </div>
-                      </div>
-
-                      <% if (pathRunning) { %>
-                        <div class="mt-2 text-xs text-slate-500 flex items-center gap-2">
-                          <span class="inline-block w-2 h-2 bg-slate-400 rounded-full animate-pulse"></span>
-                          Finding related contacts for <%= p.name %>…
-                        </div>
-                      <% } else if (hasStones) { %>
-                        <div class="mt-2 ml-4 border-l-2 border-emerald-200 pl-3 space-y-2">
-                          <% if (p.approach_summary) { %>
-                            <div class="text-xs text-emerald-800 font-medium"><%= p.approach_summary %></div>
-                          <% } %>
-                          <% p.stepping_stones.forEach(function(ss) { %>
-                            <div class="text-sm">
-                              <div class="flex items-center gap-2 flex-wrap">
-                                <span class="font-medium text-slate-900"><%= ss.name %></span>
-                                <span class="text-xs text-slate-500"><%= ss.title %></span>
-                                <% if (ss.source_url) { %>
-                                  <a href="<%= ss.source_url %>" target="_blank" rel="noopener" class="text-[11px] text-slate-400 hover:text-slate-700 underline">↗</a>
-                                <% } %>
-                              </div>
-                              <% if (ss.relationship) { %>
-                                <div class="text-xs text-slate-500"><%= ss.relationship %></div>
-                              <% } %>
-                              <div class="text-xs text-emerald-800 mt-0.5"><%= ss.message_angle %></div>
-                            </div>
-                          <% }); %>
-                        </div>
-                      <% } else if (pathEmpty) { %>
-                        <div class="mt-2 text-xs text-slate-500"><%= p.approach_summary || 'No stepping stones found.' %></div>
-                      <% } %>
-                    </div>
-                  <% }); %>
-                </div>
-              </div>
-            <% } else if (psRunning) { %>
-              <div class="px-4 py-3 text-sm text-slate-500 flex items-center gap-2">
-                <span class="inline-block w-2 h-2 bg-slate-400 rounded-full animate-pulse"></span>
-                Scanning for active voices at <%= a.account_name %>…
-              </div>
-            <% } else if (psFailed) { %>
-              <div class="px-4 py-2 text-xs text-red-700">
-                Prospect scan failed. Click <strong>Rescan</strong> to try again.
-              </div>
-            <% } %>
-          </details>
-        <% } else if (noProspects && signals.length === 0) { %>
-          <div class="px-4 py-2 border-t border-slate-100 text-xs text-slate-500">
-            No signals or prospects in the last 60 days.
-          </div>
-        <% } %>
-
-        <% if (signals.length === 0 && !hasProspects && !psRunning && !noProspects && !psFailed && !hasPov && !povRunning) { %>
-          <div class="px-4 py-4 text-xs text-slate-500">
-            No recent intel. Click <strong>Scan</strong> to pull news + prospects for this account.
-          </div>
-        <% } %>
-
-      </div>
+      </a>
     <% }); %>
   </div>
 <% } %>

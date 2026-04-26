@@ -172,134 +172,207 @@
   <script>setTimeout(function(){ location.reload(); }, 8000);</script>
 <% } %>
 
-<!-- ============ POV CARD ============ -->
-<% if (pov) { %>
-  <div class="bg-white border border-slate-200 rounded-lg p-5 mb-6 space-y-3">
-    <div>
-      <div class="text-[10px] uppercase tracking-wide text-slate-500 mb-0.5">What's happening</div>
-      <div class="text-sm text-slate-800"><%= pov.whats_happening || pov.pov %></div>
-    </div>
-    <% if (pov.where_is_the_opportunity || pov.path_in) { %>
-      <div>
-        <div class="text-[10px] uppercase tracking-wide text-emerald-700 mb-0.5">Where's the opportunity</div>
-        <div class="text-sm text-emerald-900"><%= pov.where_is_the_opportunity || pov.path_in %></div>
-      </div>
-    <% } %>
-    <% if (pov.who_needs_to_know) { %>
-      <div>
-        <div class="text-[10px] uppercase tracking-wide text-sky-700 mb-0.5">Who needs to know</div>
-        <div class="text-sm text-sky-900"><%= pov.who_needs_to_know %></div>
-      </div>
-    <% } %>
-    <div class="pt-2 border-t border-slate-100">
-      <span class="text-sm font-medium text-slate-700">This week:</span>
-      <span class="text-sm text-slate-800"><%= pov.next_step || pov.strategy %></span>
-    </div>
-    <% if (pov.recommended_play) { %>
-      <div class="pt-2">
-        <% var hasActivePlay = plays.some(function(p) { return p.status === 'active' || p.status === 'drafting'; }); %>
-        <a href="/accounts/<%= account.id %>?new_play=1&instinct=<%= encodeURIComponent(pov.recommended_play) %>"
-           class="inline-flex items-center gap-1 text-sm <%= hasActivePlay ? 'bg-slate-600 hover:bg-slate-700' : 'bg-emerald-700 hover:bg-emerald-800' %> text-white px-3 py-1.5 rounded font-medium">
-          <%= hasActivePlay ? 'Alternative angle' : 'Run this play' %>
-        </a>
-      </div>
-    <% } %>
-  </div>
-<% } else if (povRunning) { %>
-  <div class="bg-white border border-slate-200 rounded-lg p-4 mb-6 text-sm text-slate-500 flex items-center gap-2">
-    <span class="inline-block w-2 h-2 bg-slate-400 rounded-full animate-pulse"></span> Building point of view…
-  </div>
-<% } %>
+<!-- ================================================================
+     DEBRIEF — one screen, no scrolling. The 30-second read.
+     POV + Intel summary + Notes + Action
+     ================================================================ -->
+<div class="bg-white border border-slate-200 rounded-lg mb-8 overflow-hidden">
 
-<!-- ============ NOTES ============ -->
-<% if (account.notes) { %>
-  <div class="bg-white border border-slate-200 rounded-lg mb-4 overflow-hidden">
-    <div class="px-4 py-3 text-sm text-slate-700 whitespace-pre-line leading-relaxed"><%= account.notes %></div>
-    <details>
-      <summary class="px-4 py-2 border-t border-slate-100 text-xs text-slate-500 cursor-pointer list-none select-none hover:bg-slate-50 flex items-center gap-2">
-        <span class="text-slate-400 text-[10px]">&#9998;</span> Edit notes
-      </summary>
-      <form method="POST" action="/accounts/<%= account.id %>/notes" class="px-4 pb-4 pt-2">
-        <textarea name="notes" rows="5" class="w-full border border-slate-200 rounded px-3 py-2 text-sm text-slate-800 resize-y"><%= account.notes %></textarea>
-        <div class="flex items-center justify-between mt-1.5">
-          <span class="text-[10px] text-slate-400">These notes feed into every scan and POV.</span>
+  <%# === POV === %>
+  <% if (pov) { %>
+    <div class="p-5 space-y-3">
+      <div>
+        <div class="text-[10px] uppercase tracking-wide text-slate-500 mb-0.5">What's happening</div>
+        <div class="text-sm text-slate-800"><%= pov.whats_happening || pov.pov %></div>
+      </div>
+      <% if (pov.where_is_the_opportunity || pov.path_in) { %>
+        <div>
+          <div class="text-[10px] uppercase tracking-wide text-emerald-700 mb-0.5">Where's the opportunity</div>
+          <div class="text-sm text-emerald-900"><%= pov.where_is_the_opportunity || pov.path_in %></div>
+        </div>
+      <% } %>
+      <% if (pov.who_needs_to_know) { %>
+        <div>
+          <div class="text-[10px] uppercase tracking-wide text-sky-700 mb-0.5">Who needs to know</div>
+          <div class="text-sm text-sky-900"><%= pov.who_needs_to_know %></div>
+        </div>
+      <% } %>
+      <div class="pt-2 border-t border-slate-100">
+        <span class="text-sm font-medium text-slate-700">This week:</span>
+        <span class="text-sm text-slate-800"><%= pov.next_step || pov.strategy %></span>
+      </div>
+      <% if (pov.recommended_play) { %>
+        <div class="pt-1">
+          <% var hasActivePlay = plays.some(function(p) { return p.status === 'active' || p.status === 'drafting'; }); %>
+          <a href="/accounts/<%= account.id %>?new_play=1&instinct=<%= encodeURIComponent(pov.recommended_play) %>#workbench"
+             class="inline-flex items-center gap-1 text-sm <%= hasActivePlay ? 'bg-slate-600 hover:bg-slate-700' : 'bg-emerald-700 hover:bg-emerald-800' %> text-white px-3 py-1.5 rounded font-medium">
+            <%= hasActivePlay ? 'Alternative angle' : 'Run this play' %>
+          </a>
+        </div>
+      <% } %>
+    </div>
+  <% } else if (povRunning) { %>
+    <div class="p-5 text-sm text-slate-500 flex items-center gap-2">
+      <span class="inline-block w-2 h-2 bg-slate-400 rounded-full animate-pulse"></span> Building point of view…
+    </div>
+  <% } else { %>
+    <div class="p-5 text-sm text-slate-500">No POV yet. Click <strong>Scan account</strong> to generate.</div>
+  <% } %>
+
+  <%# === INTEL SUMMARY — inline, not a separate card === %>
+  <% var hasUcf = ucfResult && ucfResult.primary; %>
+  <% var hasInd = indResult && indResult.insights && indResult.insights.length > 0; %>
+  <% if (hasUcf || hasInd || ucfRunning || indRunning) { %>
+    <div class="px-5 py-3 border-t border-slate-100 space-y-2">
+      <% if (hasUcf) { %>
+        <div class="flex items-start gap-3">
+          <span class="text-[10px] uppercase tracking-wide text-slate-500 font-semibold w-16 shrink-0 pt-0.5">Use case</span>
+          <div class="min-w-0">
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="pill bg-slate-900 text-white"><%= ucfResult.primary.label %></span>
+              <% if (ucfResult.primary.audience) { %><span class="pill bg-sky-100 text-sky-800"><%= ucfResult.primary.audience %></span><% } %>
+              <% if (ucfResult.primary.confidence) { %><span class="text-xs text-slate-400">conf <%= ucfResult.primary.confidence %>/5</span><% } %>
+            </div>
+            <% if (ucfResult.primary.why) { %>
+              <div class="text-xs text-slate-600 mt-1"><%= ucfResult.primary.why %></div>
+            <% } %>
+          </div>
+        </div>
+      <% } else if (ucfRunning) { %>
+        <div class="flex items-center gap-2 text-xs text-slate-400">
+          <span class="inline-block w-1.5 h-1.5 bg-slate-400 rounded-full animate-pulse"></span> Identifying use case…
+        </div>
+      <% } %>
+      <% if (hasInd) { %>
+        <div class="flex items-start gap-3">
+          <span class="text-[10px] uppercase tracking-wide text-slate-500 font-semibold w-16 shrink-0 pt-0.5">Industry</span>
+          <div class="min-w-0 text-xs text-slate-700">
+            <div class="font-medium"><%= indResult.insights[0].headline %></div>
+            <% if (indResult.insights[0].the_reframe) { %>
+              <div class="text-slate-500 mt-0.5"><%= indResult.insights[0].the_reframe %></div>
+            <% } %>
+          </div>
+        </div>
+      <% } else if (indRunning) { %>
+        <div class="flex items-center gap-2 text-xs text-slate-400">
+          <span class="inline-block w-1.5 h-1.5 bg-slate-400 rounded-full animate-pulse"></span> Searching industry insight…
+        </div>
+      <% } %>
+    </div>
+  <% } %>
+
+  <%# === NOTES — visible in the debrief, editable inline === %>
+  <div class="px-5 py-3 border-t border-slate-100">
+    <% if (account.notes) { %>
+      <div class="text-sm text-slate-700 whitespace-pre-line leading-relaxed"><%= account.notes %></div>
+      <details class="mt-2">
+        <summary class="text-xs text-slate-400 cursor-pointer list-none select-none hover:text-slate-700">Edit notes</summary>
+        <form method="POST" action="/accounts/<%= account.id %>/notes" class="mt-2">
+          <textarea name="notes" rows="4" class="w-full border border-slate-200 rounded px-3 py-2 text-sm text-slate-800 resize-y"><%= account.notes %></textarea>
+          <div class="flex justify-end mt-1.5">
+            <button type="submit" class="text-xs bg-slate-900 hover:bg-slate-800 text-white px-3 py-1 rounded">Save</button>
+          </div>
+        </form>
+      </details>
+    <% } else { %>
+      <form method="POST" action="/accounts/<%= account.id %>/notes">
+        <textarea name="notes" rows="2" placeholder="Add notes — meeting summaries, product usage, open issues. These feed every scan and POV."
+                  class="w-full border border-slate-200 rounded px-3 py-2 text-sm text-slate-800 resize-y"></textarea>
+        <div class="flex justify-end mt-1.5">
           <button type="submit" class="text-xs bg-slate-900 hover:bg-slate-800 text-white px-3 py-1 rounded">Save</button>
         </div>
       </form>
-    </details>
+    <% } %>
   </div>
-<% } else { %>
-  <div class="bg-white border border-slate-200 rounded-lg mb-4 overflow-hidden">
-    <form method="POST" action="/accounts/<%= account.id %>/notes" class="px-4 py-4">
-      <div class="text-xs text-slate-500 font-medium mb-2">Add notes — meeting summaries, product usage, open issues. These feed every scan and POV.</div>
-      <textarea name="notes" rows="3" placeholder="e.g. 'SDR team uses Ambition for leaderboards. Coaching program launching Q3. VP Sales wants ROI metrics before renewal.'"
-                class="w-full border border-slate-200 rounded px-3 py-2 text-sm text-slate-800 resize-y"></textarea>
-      <div class="flex justify-end mt-1.5">
-        <button type="submit" class="text-xs bg-slate-900 hover:bg-slate-800 text-white px-3 py-1 rounded">Save</button>
+
+</div>
+
+<!-- ================================================================
+     WORKBENCH — where you execute. Tabs keep everything accessible
+     without vertical scroll overload.
+     ================================================================ -->
+<div id="workbench" class="bg-white border border-slate-200 rounded-lg overflow-hidden">
+
+  <%# Tab bar %>
+  <%
+    var tabs = [
+      { id: 'signals', label: 'Signals', count: sigCount },
+      { id: 'voices', label: 'Voices', count: visibleProspects.length },
+      { id: 'plays', label: 'Plays', count: plays.length },
+      { id: 'contacts', label: 'Contacts', count: contacts.length },
+      { id: 'intel', label: 'Intel', count: null },
+      { id: 'hypotheses', label: 'Hypotheses', count: hypotheses.length },
+      { id: 'fields', label: 'Fields', count: null },
+    ];
+    var activeTab = typeof tab !== 'undefined' && tab ? tab : 'signals';
+  %>
+  <div class="border-b border-slate-200 px-4 flex gap-0 overflow-x-auto">
+    <% tabs.forEach(function(t) { %>
+      <a href="/accounts/<%= account.id %>?tab=<%= t.id %><%= composerOpen ? '&new_play=1' : '' %>"
+         class="px-3 py-2.5 text-sm whitespace-nowrap border-b-2 <%= activeTab === t.id ? 'border-slate-900 text-slate-900 font-medium' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300' %>">
+        <%= t.label %>
+        <% if (t.count != null && t.count > 0) { %>
+          <span class="text-xs text-slate-400 ml-0.5"><%= t.count %></span>
+        <% } %>
+      </a>
+    <% }); %>
+  </div>
+
+  <%# Tab content %>
+  <div class="p-0">
+    <% if (activeTab === 'signals') { %>
+      <%- include('partials/account_signals') %>
+    <% } else if (activeTab === 'voices') { %>
+      <%- include('partials/account_voices') %>
+    <% } else if (activeTab === 'plays') { %>
+      <%- include('partials/account_plays') %>
+    <% } else if (activeTab === 'contacts') { %>
+      <%- include('partials/account_contacts') %>
+    <% } else if (activeTab === 'intel') { %>
+      <%- include('partials/account_intel') %>
+    <% } else if (activeTab === 'hypotheses') { %>
+      <%- include('partials/account_hypotheses') %>
+    <% } else if (activeTab === 'fields') { %>
+      <!-- Account fields -->
+      <div class="p-4">
+        <form method="POST" action="/accounts/<%= account.id %>/fields" class="space-y-3 text-sm">
+          <div class="grid grid-cols-2 gap-3">
+            <label class="block">
+              <span class="text-xs text-slate-500">Fiscal year ends</span>
+              <select name="fiscal_year_end" class="w-full border border-slate-300 rounded px-2 py-1.5 mt-0.5 text-sm">
+                <option value="">Unknown</option>
+                <% for (var m = 1; m <= 12; m++) { %>
+                  <option value="<%= m %>" <%= account.fiscal_year_end === m ? 'selected' : '' %>><%= FY_MONTHS[m] %></option>
+                <% } %>
+              </select>
+            </label>
+            <label class="block">
+              <span class="text-xs text-slate-500">Budget cycle starts</span>
+              <select name="budget_start_month" class="w-full border border-slate-300 rounded px-2 py-1.5 mt-0.5 text-sm">
+                <option value="">Unknown</option>
+                <% for (var m = 1; m <= 12; m++) { %>
+                  <option value="<%= m %>" <%= account.budget_start_month === m ? 'selected' : '' %>><%= FY_MONTHS[m] %></option>
+                <% } %>
+              </select>
+            </label>
+          </div>
+          <label class="block">
+            <span class="text-xs text-slate-500">Buyer timing notes</span>
+            <input name="buyer_timing" value="<%= account.buyer_timing || '' %>" placeholder="e.g. 'Q3 budget review, renewal in Oct'" class="w-full border border-slate-300 rounded px-2 py-1.5 mt-0.5 text-sm" />
+          </label>
+          <label class="block">
+            <span class="text-xs text-slate-500">Sales performance topics</span>
+            <textarea name="sales_perf_topics" rows="2" placeholder="e.g. 'SDR ramp, manager coaching cadence, forecast discipline'" class="w-full border border-slate-300 rounded px-2 py-1.5 mt-0.5 text-sm"><%= account.sales_perf_topics || '' %></textarea>
+          </label>
+          <div class="flex items-center gap-3">
+            <button type="submit" class="text-xs bg-slate-900 hover:bg-slate-800 text-white px-3 py-1 rounded">Save fields</button>
+            <form method="POST" action="/accounts/<%= account.id %>/fields/lookup-fiscal-year" class="inline">
+              <button type="submit" class="text-xs text-slate-500 hover:text-slate-900 underline">Auto-lookup fiscal year</button>
+            </form>
+          </div>
+        </form>
       </div>
-    </form>
+    <% } %>
   </div>
-<% } %>
 
-<%# === INTEL (why — use case fit + industry insight) === %>
-<%- include('partials/account_intel') %>
-
-<%# === SIGNALS (evidence) === %>
-<%- include('partials/account_signals') %>
-
-<%# === ACTIVE VOICES === %>
-<%- include('partials/account_voices') %>
-
-<%# === PLAYS (execution) === %>
-<%- include('partials/account_plays') %>
-
-<%# === CONTACTS === %>
-<%- include('partials/account_contacts') %>
-
-<%# === HYPOTHESES === %>
-<%- include('partials/account_hypotheses') %>
-
-<!-- ============ ACCOUNT FIELDS (fiscal, buyer timing) ============ -->
-<details class="bg-white border border-slate-200 rounded-lg mb-6 overflow-hidden">
-  <summary class="px-4 py-3 text-sm text-slate-700 cursor-pointer list-none select-none hover:bg-slate-50 flex items-center gap-2">
-    <span class="text-slate-400 text-[10px]">&#9881;</span>
-    <span class="font-medium">Account fields</span>
-    <% if (account.fiscal_year_end) { %><span class="text-slate-400 text-xs ml-1">FY ends <%= FY_MONTHS[account.fiscal_year_end] %></span><% } %>
-  </summary>
-  <form method="POST" action="/accounts/<%= account.id %>/fields" class="px-4 pb-4 border-t border-slate-100 pt-3 space-y-3 text-sm">
-    <div class="grid grid-cols-2 gap-3">
-      <label class="block">
-        <span class="text-xs text-slate-500">Fiscal year ends</span>
-        <select name="fiscal_year_end" class="w-full border border-slate-300 rounded px-2 py-1.5 mt-0.5 text-sm">
-          <option value="">Unknown</option>
-          <% for (var m = 1; m <= 12; m++) { %>
-            <option value="<%= m %>" <%= account.fiscal_year_end === m ? 'selected' : '' %>><%= FY_MONTHS[m] %></option>
-          <% } %>
-        </select>
-      </label>
-      <label class="block">
-        <span class="text-xs text-slate-500">Budget cycle starts</span>
-        <select name="budget_start_month" class="w-full border border-slate-300 rounded px-2 py-1.5 mt-0.5 text-sm">
-          <option value="">Unknown</option>
-          <% for (var m = 1; m <= 12; m++) { %>
-            <option value="<%= m %>" <%= account.budget_start_month === m ? 'selected' : '' %>><%= FY_MONTHS[m] %></option>
-          <% } %>
-        </select>
-      </label>
-    </div>
-    <label class="block">
-      <span class="text-xs text-slate-500">Buyer timing notes</span>
-      <input name="buyer_timing" value="<%= account.buyer_timing || '' %>" placeholder="e.g. 'Q3 budget review, renewal in Oct'" class="w-full border border-slate-300 rounded px-2 py-1.5 mt-0.5 text-sm" />
-    </label>
-    <label class="block">
-      <span class="text-xs text-slate-500">Sales performance topics</span>
-      <textarea name="sales_perf_topics" rows="2" placeholder="e.g. 'SDR ramp, manager coaching cadence, forecast discipline'" class="w-full border border-slate-300 rounded px-2 py-1.5 mt-0.5 text-sm"><%= account.sales_perf_topics || '' %></textarea>
-    </label>
-    <div class="flex items-center gap-3">
-      <button type="submit" class="text-xs bg-slate-900 hover:bg-slate-800 text-white px-3 py-1 rounded">Save fields</button>
-      <form method="POST" action="/accounts/<%= account.id %>/fields/lookup-fiscal-year" class="inline">
-        <button type="submit" class="text-xs text-slate-500 hover:text-slate-900 underline">Auto-lookup fiscal year</button>
-      </form>
-    </div>
-  </form>
-</details>
+</div>
