@@ -1,30 +1,30 @@
 <%
-  const FY_MONTHS = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  const statusColor = {
+  var FY_MONTHS = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var statusColor = {
     customer: 'bg-emerald-100 text-emerald-800',
     prospect: 'bg-sky-100 text-sky-800',
     churned:  'bg-amber-100 text-amber-800',
   };
-  const priorityColor = {
+  var priorityColor = {
     hot:  'bg-red-100 text-red-800',
     warm: 'bg-amber-100 text-amber-800',
     cool: 'bg-slate-100 text-slate-600',
   };
-  const riskPill = {
+  var riskPill = {
     defense_risk:        'bg-red-100 text-red-800',
     offense_opportunity: 'bg-sky-100 text-sky-800',
     neutral:             'bg-slate-100 text-slate-700',
   };
-  const riskLabel = {
+  var riskLabel = {
     defense_risk:        'Defense',
     offense_opportunity: 'Offense',
     neutral:             'Context',
   };
-  const signalTypeLabel = {
+  var signalTypeLabel = {
     linkedin_post: 'LinkedIn', press_quote: 'Press', conference: 'Conference',
     job_posting: 'Job posting', podcast: 'Podcast', blog: 'Blog', other: 'Web',
   };
-  const dealRoleMeta = {
+  var dealRoleMeta = {
     economic_buyer: { label: 'Economic buyer', pill: 'bg-violet-100 text-violet-800' },
     champion:       { label: 'Champion',        pill: 'bg-emerald-100 text-emerald-800' },
     coach:          { label: 'Coach',           pill: 'bg-sky-100 text-sky-800' },
@@ -33,14 +33,14 @@
     blocker:        { label: 'Blocker',         pill: 'bg-red-100 text-red-800' },
     unknown:        { label: 'Unclassified',    pill: 'bg-slate-100 text-slate-500' },
   };
-  const stanceMeta = {
+  var stanceMeta = {
     hot: { label: 'Hot', cls: 'text-red-600 font-medium' },
     warm: { label: 'Warm', cls: 'text-orange-600' },
     neutral: { label: 'Neutral', cls: 'text-slate-500' },
     cold: { label: 'Cold', cls: 'text-sky-700' },
     hostile: { label: 'Hostile', cls: 'text-red-700 font-medium' },
   };
-  const playStatusMeta = {
+  var playStatusMeta = {
     drafting:  { label: 'Drafting',  cls: 'bg-amber-100 text-amber-800' },
     active:    { label: 'Active',    cls: 'bg-emerald-100 text-emerald-800' },
     paused:    { label: 'Paused',    cls: 'bg-slate-100 text-slate-700' },
@@ -48,12 +48,12 @@
     lost:      { label: 'Lost',      cls: 'bg-slate-100 text-slate-500' },
     abandoned: { label: 'Abandoned', cls: 'bg-slate-100 text-slate-500' },
   };
-  const actorMeta = {
+  var actorMeta = {
     champion:           { label: 'Champion carries', cls: 'bg-emerald-100 text-emerald-900 border-emerald-300' },
     ae:                 { label: 'You (coach)',       cls: 'bg-slate-100 text-slate-800 border-slate-300' },
     internal_colleague: { label: 'Internal assist',   cls: 'bg-sky-100 text-sky-900 border-sky-300' },
   };
-  const useCaseLabel = {
+  var useCaseLabel = {
     performance_graph: 'Performance Graph', ascend_coaching: 'Ascend coaching',
     gtm_governance: 'GTM Governance', manager_enablement: 'Manager enablement',
     rep_ramp: 'Rep ramp', multi_team_rollup: 'Multi-team roll-up',
@@ -61,11 +61,11 @@
 
   function daysAgo(d) {
     if (!d) return null;
-    const ms = Date.now() - new Date(d).getTime();
+    var ms = Date.now() - new Date(d).getTime();
     return ms < 0 ? 0 : Math.floor(ms / 86400000);
   }
   function agoLabel(d) {
-    const n = daysAgo(d);
+    var n = daysAgo(d);
     if (n === null) return '';
     if (n === 0) return 'today';
     if (n === 1) return 'yesterday';
@@ -75,42 +75,42 @@
   }
 
   // POV
-  const pov = intel?.account_pov?.status === 'completed' ? intel.account_pov.result : null;
-  const povRunning = intel?.account_pov?.status === 'running';
+  var pov = intel?.account_pov?.status === 'completed' ? intel.account_pov.result : null;
+  var povRunning = intel?.account_pov?.status === 'running';
 
   // Prospects
-  const ps = intel?.prospect_scan;
-  const psResult = ps?.status === 'completed' ? ps.result : null;
-  const psRunning = ps?.status === 'running';
-  const psFailed = ps?.status === 'failed';
-  const visibleProspects = (psResult && Array.isArray(psResult.prospects))
+  var ps = intel?.prospect_scan;
+  var psResult = ps?.status === 'completed' ? ps.result : null;
+  var psRunning = ps?.status === 'running';
+  var psFailed = ps?.status === 'failed';
+  var visibleProspects = (psResult && Array.isArray(psResult.prospects))
     ? psResult.prospects.filter(function(p) { return !p.dismissed; }) : [];
 
   // Signals
-  const sigCount = signals.length;
+  var sigCount = signals.length;
 
   // Contacts tree
-  const byId = new Map(contacts.map(function(c) { return [c.id, Object.assign({}, c, { children: [] })]; }));
-  const roots = [];
-  for (const c of byId.values()) {
-    const pid = c.reports_to_contact_id;
+  var byId = new Map(contacts.map(function(c) { return [c.id, Object.assign({}, c, { children: [] })]; }));
+  var roots = [];
+  for (var c of byId.values()) {
+    var pid = c.reports_to_contact_id;
     if (pid && byId.has(pid)) byId.get(pid).children.push(c);
     else roots.push(c);
   }
-  const contactRows = [];
+  var contactRows = [];
   function walk(node, depth) { contactRows.push({ node: node, depth: depth }); node.children.forEach(function(ch) { walk(ch, depth + 1); }); }
   roots.forEach(function(r) { walk(r, 0); });
 
   // Intel
-  const ucf = intel?.use_case_fit;
-  const ucfRunning = ucf?.status === 'running';
-  const ucfResult = ucf?.status === 'completed' && ucf.result ? ucf.result : null;
-  const ind = intel?.industry_insight;
-  const indRunning = ind?.status === 'running';
-  const indResult = ind?.status === 'completed' && ind.result ? ind.result : null;
-  const hgen = intel?.hypotheses_gen;
-  const hgenRunning = hgen?.status === 'running';
-  const anyIntelRunning = ucfRunning || indRunning || hgenRunning || psRunning || povRunning;
+  var ucf = intel?.use_case_fit;
+  var ucfRunning = ucf?.status === 'running';
+  var ucfResult = ucf?.status === 'completed' && ucf.result ? ucf.result : null;
+  var ind = intel?.industry_insight;
+  var indRunning = ind?.status === 'running';
+  var indResult = ind?.status === 'completed' && ind.result ? ind.result : null;
+  var hgen = intel?.hypotheses_gen;
+  var hgenRunning = hgen?.status === 'running';
+  var anyIntelRunning = ucfRunning || indRunning || hgenRunning || psRunning || povRunning;
 %>
 
 <!-- ============ HEADER ============ -->
