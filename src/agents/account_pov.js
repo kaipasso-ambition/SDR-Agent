@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { ACCOUNT_POV_PROMPT } from '../prompts/account_pov.js';
+import { callWithRetry } from '../lib/api_retry.js';
 
 const client = new Anthropic();
 
@@ -49,7 +50,7 @@ ${industryInsight ? `Industry insight intel:\n${JSON.stringify(industryInsight, 
 Write the account briefing. Return JSON only.`;
 
   const t0 = Date.now();
-  const response = await client.messages.create({
+  const response = await callWithRetry(client, {
     model: 'claude-haiku-4-5-20251001',
     max_tokens: 800,
     system: ACCOUNT_POV_PROMPT,

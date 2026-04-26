@@ -100,6 +100,21 @@
     </div>
   </div>
   <script>setTimeout(function(){ location.reload(); }, 15000);</script>
+<% } else if (activeJob && activeJob.status === 'failed') { %>
+  <div class="bg-red-50 border border-red-200 rounded-lg p-3 mb-5">
+    <div class="flex items-center gap-2 text-sm text-red-800 font-medium">
+      Scan failed
+      <% if (activeJob.errors) { %> — <%= activeJob.errors %> error<%= activeJob.errors === 1 ? '' : 's' %><% } %>
+    </div>
+    <% if (activeJob.error) { %>
+      <p class="text-xs text-red-700 mt-1"><%= activeJob.error.includes('usage limit') || activeJob.error.includes('rate_limit') ? 'API spend limit reached. Check your Anthropic console usage limits and try again.' : activeJob.error %></p>
+    <% } %>
+    <form method="POST" action="/signals/scan" class="mt-2">
+      <button type="submit" class="text-xs bg-red-700 hover:bg-red-800 text-white px-3 py-1 rounded">
+        Retry scan
+      </button>
+    </form>
+  </div>
 <% } else if (anyRunning) { %>
   <script>setTimeout(function(){ location.reload(); }, 8000);</script>
 <% } %>

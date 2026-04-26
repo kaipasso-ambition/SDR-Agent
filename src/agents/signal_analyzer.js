@@ -13,6 +13,7 @@ import { SIGNAL_ANALYSIS_PROMPT } from '../prompts/signal_analysis.js';
 import { listAccounts, getAccountById } from '../db/accounts_registry.js';
 import { insertSignals, buildDedupKey, getDismissedSignals } from '../db/signals.js';
 import { query } from '../db/index.js';
+import { callWithRetry } from '../lib/api_retry.js';
 
 const client = new Anthropic();
 
@@ -52,7 +53,7 @@ ${feedbackBlock}
 Return a JSON array of signals per the instructions. Every signal must include "event_date" in YYYY-MM-DD format, on or after ${cutoff}.
 `.trim();
 
-  const response = await client.messages.create({
+  const response = await callWithRetry(client, {
     model: 'claude-sonnet-4-20250514',
     max_tokens: 4000,
     system: SIGNAL_ANALYSIS_PROMPT,
@@ -194,6 +195,7 @@ export async function runSignalScanCycle({
   let detected = 0;
   let skippedDedup = 0;
   let errors = 0;
+  let lastError = null;
 
   for (const account of accounts) {
     try {
@@ -218,8 +220,9 @@ export async function runSignalScanCycle({
       });
     } catch (err) {
       errors++;
+      lastError = err.message;
       console.error(`[signal_analyzer] ${account.account_name} failed:`, err.message);
-      await updateJob({ errors });
+      await updateJob({ errors, error: err.message.slice(0, 500) });
     }
 
     // Gentle pacing to keep web_search rate inside Anthropic's per-minute
@@ -233,6 +236,7 @@ export async function runSignalScanCycle({
     signals_detected: detected,
     signals_skipped_dedup: skippedDedup,
     errors,
+    error: lastError ? lastError.slice(0, 500) : null,
     finished_at: new Date(),
   });
 

@@ -5,6 +5,7 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { PROSPECT_SCANNER_PROMPT } from '../prompts/prospect_scanner.js';
+import { callWithRetry } from '../lib/api_retry.js';
 
 const client = new Anthropic();
 
@@ -41,7 +42,7 @@ ${feedbackBlock}
 Find 2-3 people AT ${account.account_name} whose recent signal falls within the window above. Every prospect MUST include signal_date_iso in YYYY-MM-DD format on or after ${cutoff}. Drop any person whose signal is older. Return the JSON.`;
 
   const t0 = Date.now();
-  const response = await client.messages.create({
+  const response = await callWithRetry(client, {
     model: 'claude-sonnet-4-20250514',
     max_tokens: 3000,
     system: PROSPECT_SCANNER_PROMPT,

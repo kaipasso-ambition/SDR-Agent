@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { WARM_PATH_PROMPT } from '../prompts/warm_path.js';
+import { callWithRetry } from '../lib/api_retry.js';
 
 const client = new Anthropic();
 
@@ -17,7 +18,7 @@ TARGET PERSON (too senior for cold outreach):
 Find 2-3 people who report to or work closely with ${targetName} at ${account.account_name}. For each, write a message angle that connects to ${targetName}'s priorities. Return JSON.`;
 
   const t0 = Date.now();
-  const response = await client.messages.create({
+  const response = await callWithRetry(client, {
     model: 'claude-sonnet-4-20250514',
     max_tokens: 3000,
     system: WARM_PATH_PROMPT,
