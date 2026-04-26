@@ -981,9 +981,8 @@ webRouter.get('/accounts/:id', requireAuth, async (req, res, next) => {
       prefillInstinct = parts.join(' — ');
     }
 
-    const validTabs = new Set(['signals', 'voices', 'plays', 'contacts', 'intel', 'hypotheses', 'fields']);
-    let tab = validTabs.has(req.query?.tab) ? req.query.tab : 'signals';
-    if (req.query?.new_play === '1') tab = 'plays';
+    const validTabs = new Set(['signals', 'contacts', 'intel', 'hypotheses', 'fields']);
+    const tab = validTabs.has(req.query?.tab) ? req.query.tab : 'signals';
 
     res.render('account', {
       title: bundle.account.account_name,
@@ -1339,7 +1338,7 @@ webRouter.post('/revisit/:opportunity_id/triggers/:trigger_index/play', requireA
       console.error('[revisit/triggers/play build] expansion failed:', err.message);
     }
 
-    res.redirect(`/accounts/${accountId}?tab=plays`);
+    res.redirect(`/accounts/${accountId}#plays-section`);
   } catch (err) {
     console.error('[revisit/triggers/play]', err);
     next(err);
@@ -1691,7 +1690,7 @@ webRouter.post('/expand/:account_id/triggers/:trigger_index/play', requireAuth, 
       console.error('[expand/triggers/play build] expansion failed:', err.message);
     }
 
-    res.redirect(`/accounts/${accountId}?tab=plays`);
+    res.redirect(`/accounts/${accountId}#plays-section`);
   } catch (err) {
     console.error('[expand/triggers/play]', err);
     next(err);
@@ -2051,7 +2050,7 @@ webRouter.post('/signals/:id/play', requireAuth, async (req, res, next) => {
       }
 
       await setSignalPlaying(signal.id).catch(() => {});
-      return res.redirect(`/accounts/${signal.account_id}?tab=plays`);
+      return res.redirect(`/accounts/${signal.account_id}#plays-section`);
     }
 
     if (action === 'draft_outbound') {
@@ -2278,7 +2277,7 @@ webRouter.post('/accounts/:id/intel/prospects/clear', requireAuth, async (req, r
       result.prospects.forEach((p) => { p.dismissed = true; });
       await setIntelResult(accountId, 'prospect_scan', result);
     }
-    res.redirect(`/accounts/${accountId}?tab=voices`);
+    res.redirect(`/accounts/${accountId}#voices-section`);
   } catch (err) {
     next(err);
   }
@@ -2308,7 +2307,7 @@ webRouter.post('/accounts/:id/intel/prospects/:idx/dismiss', requireAuth, async 
       }
       await setIntelResult(accountId, 'prospect_scan', result);
     }
-    res.redirect(`/accounts/${accountId}?tab=voices`);
+    res.redirect(`/accounts/${accountId}#voices-section`);
   } catch (err) {
     next(err);
   }
@@ -2370,7 +2369,7 @@ webRouter.post('/accounts/:id/prospects/:idx/find-path', requireAuth, async (req
       console.log(`[warm_path] ${accountRow.account_name} / ${prospect.name}: ${out.result?.stepping_stones?.length || 0} stepping stones, ${out.searches} searches, ${out.elapsed_ms}ms`);
     }).catch((e) => console.error('[warm_path]', e));
 
-    res.redirect(`/accounts/${accountId}?tab=voices`);
+    res.redirect(`/accounts/${accountId}#voices-section`);
   } catch (err) {
     next(err);
   }
@@ -2689,7 +2688,7 @@ webRouter.post('/accounts/:id/plays', requireAuth, async (req, res, next) => {
       await setSignalPlaying(triggered_by_signal_id).catch(() => {});
     }
 
-    res.redirect(`/accounts/${accountId}?tab=plays`);
+    res.redirect(`/accounts/${accountId}#plays-section`);
   } catch (err) {
     next(err);
   }
@@ -2725,7 +2724,7 @@ webRouter.post('/plays/:id', requireAuth, async (req, res, next) => {
       patch.closed_at = null;
     }
     await updatePlay(play.id, patch);
-    res.redirect(`/accounts/${play.account_id}?tab=plays`);
+    res.redirect(`/accounts/${play.account_id}#plays-section`);
   } catch (err) {
     next(err);
   }
@@ -2767,7 +2766,7 @@ webRouter.post('/plays/:id/rebuild', requireAuth, async (req, res, next) => {
         status: play.status === 'drafting' ? 'active' : play.status,
       });
     }
-    res.redirect(`/accounts/${accountId}?tab=plays`);
+    res.redirect(`/accounts/${accountId}#plays-section`);
   } catch (err) {
     next(err);
   }
@@ -2779,7 +2778,7 @@ webRouter.post('/plays/:id/delete', requireAuth, async (req, res, next) => {
     const play = await getPlayById(req.params.id);
     if (!play) return res.redirect('/accounts');
     await deletePlay(play.id);
-    res.redirect(`/accounts/${play.account_id}?tab=plays`);
+    res.redirect(`/accounts/${play.account_id}#plays-section`);
   } catch (err) {
     next(err);
   }

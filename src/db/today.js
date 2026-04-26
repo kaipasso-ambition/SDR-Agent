@@ -184,6 +184,14 @@ export async function listAccountTimeline(userId, { includeQuiet = false, includ
         AND s.event_date IS NOT NULL
         AND s.event_date >= (CURRENT_DATE - INTERVAL '60 days')::date
       GROUP BY s.account_id
+    ),
+    play_counts AS (
+      SELECT
+        p.account_id,
+        COUNT(*)::int AS total_plays,
+        COUNT(*) FILTER (WHERE p.status IN ('active', 'drafting'))::int AS active_plays
+      FROM account_plays p
+      GROUP BY p.account_id
     )
     SELECT
       a.id                              AS account_id,
@@ -215,6 +223,7 @@ export async function listAccountTimeline(userId, { includeQuiet = false, includ
       ucf.result                        AS ucf_result,
       ii.status                         AS ii_status,
       ii.result                         AS ii_result,
+      COALESCE(pc.active_plays, 0)      AS active_plays,
       GREATEST(
         COALESCE(rs.last_signal_at,    'epoch'::timestamptz),
         COALESCE(ps.completed_at,       'epoch'::timestamptz),
@@ -223,6 +232,7 @@ export async function listAccountTimeline(userId, { includeQuiet = false, includ
     FROM accounts_registry a
     LEFT JOIN users u                ON u.id = a.owner_user_id
     LEFT JOIN recent_signals rs      ON rs.account_id = a.id
+    LEFT JOIN play_counts pc         ON pc.account_id = a.id
     LEFT JOIN account_intel ps       ON ps.account_id = a.id AND ps.kind = 'prospect_scan'
     LEFT JOIN account_intel pov      ON pov.account_id = a.id AND pov.kind = 'account_pov'
     LEFT JOIN account_intel ucf      ON ucf.account_id = a.id AND ucf.kind = 'use_case_fit'
