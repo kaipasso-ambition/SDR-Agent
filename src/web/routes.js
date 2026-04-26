@@ -2191,8 +2191,8 @@ webRouter.post('/accounts/:id/intel/prospects', requireAuth, async (req, res, ne
         }
         await setIntelResult(accountId, 'prospect_scan', out.result);
         console.log(`[intel] prospect scan for ${accountId} — ${out.result.prospects.length} prospects, ${out.searches} searches, ${out.elapsed_ms}ms`);
+        await regenerateAccountPov(accountId);
       })
-      .then(() => regenerateAccountPov(accountId))
       .catch(async (err) => {
         console.error(`[intel] prospect scan ${accountId} failed:`, err);
         try { await setIntelFailed(accountId, 'prospect_scan', err.message || String(err)); } catch (_) {}
@@ -3190,15 +3190,17 @@ webRouter.post('/signals/scan', requireAuth, async (req, res, next) => {
       account_ids,
       job_id: jobId,
     })
-      .then(async () => {
+      .then(async (result) => {
+        const changed = result.accountsWithNewSignals || [];
         if (account_ids && account_ids.length > 0) {
+          // Single-account scan: always regen POV (user explicitly asked)
           for (const id of account_ids) { await regenerateAccountPov(id); }
+        } else if (changed.length > 0) {
+          // Full-book scan: only regen POV for accounts that got new signals
+          for (const id of changed) { await regenerateAccountPov(id); }
+          console.log(`[signals/scan] POV regen for ${changed.length} account(s) with new signals (skipped ${result.scanned - changed.length})`);
         } else {
-          // Full-book scan: regen POV for every customer account that
-          // was in scope. Do this serially to respect the Haiku rate
-          // and keep load predictable.
-          const customers = await listAccounts({ status: 'customer' });
-          for (const a of customers) { await regenerateAccountPov(a.id); }
+          console.log('[signals/scan] no new signals found — skipping POV regen');
         }
       })
       .catch((err) => console.error('[signals/scan] background failed:', err));
@@ -3233,7 +3235,12 @@ webRouter.post('/accounts/:id/signals/rescan', requireAuth, async (req, res, nex
       account_ids: [req.params.id],
       job_id: jobId,
     })
-      .then(() => regenerateAccountPov(req.params.id))
+      .then((result) => {
+        if ((result.accountsWithNewSignals || []).length > 0) {
+          return regenerateAccountPov(req.params.id);
+        }
+        console.log(`[accounts/rescan] ${req.params.id}: no new signals — skipping POV regen`);
+      })
       .catch((err) => console.error('[accounts/rescan]', err));
 
     res.redirect(`/accounts/${req.params.id}?rescan=started`);
@@ -3257,48 +3264,62 @@ webRouter.post('/accounts/:id/scan-all', requireAuth, async (req, res, next) => 
     const intel = await getAccountIntel(accountId);
     const prospectRunning = intel.prospect_scan?.status === 'running';
 
-    // --- Signal scan (fire-and-forget, throttled to once/24h) ---
+    // --- Sequential scan: signals first, then prospects, then POV ---
+    // Running in series avoids doubling up on API rate limits and
+    // skips POV regen if both scans produce nothing new.
     const lastAt = await getLastScanForAccount(accountId);
     const ONE_DAY = 24 * 60 * 60 * 1000;
     const signalScanThrottled = lastAt && Date.now() - new Date(lastAt).getTime() < ONE_DAY;
 
-    let signalPromise = Promise.resolve();
-    if (!signalScanThrottled) {
-      const { rows: jobRows } = await query(
-        `INSERT INTO account_signal_jobs (user_id, status) VALUES ($1, 'running') RETURNING id`,
-        [req.session.userId]
-      );
-      const jobId = jobRows[0].id;
-      signalPromise = runSignalScanCycle({
-        user_id: req.session.userId,
-        account_ids: [accountId],
-        job_id: jobId,
-      });
-    }
+    (async () => {
+      let signalResult = null;
+      let prospectResult = null;
 
-    // --- Prospect scan (fire-and-forget via account_intel) ---
-    let prospectPromise = Promise.resolve();
-    if (!prospectRunning) {
-      const dismissedProspects = (intel.prospect_scan?.result?.prospects || [])
-        .filter((p) => p.dismissed);
-      await setIntelRunning(accountId, 'prospect_scan');
-      prospectPromise = (async () => {
-        const out = await scanProspects(bundle.account, { dismissedProspects });
-        if (out.error || !out.result) {
-          await setIntelFailed(accountId, 'prospect_scan', out.error || 'no_result');
-          return;
+      // 1. Signal scan (throttled to once/24h)
+      if (!signalScanThrottled) {
+        try {
+          const { rows: jobRows } = await query(
+            `INSERT INTO account_signal_jobs (user_id, status) VALUES ($1, 'running') RETURNING id`,
+            [req.session.userId]
+          );
+          signalResult = await runSignalScanCycle({
+            user_id: req.session.userId,
+            account_ids: [accountId],
+            job_id: jobRows[0].id,
+          });
+        } catch (err) {
+          console.error(`[scan-all] signal scan ${accountId} failed:`, err.message);
         }
-        await setIntelResult(accountId, 'prospect_scan', out.result);
-      })().catch(async (err) => {
-        console.error(`[scan-all] prospect scan ${accountId} failed:`, err);
-        try { await setIntelFailed(accountId, 'prospect_scan', err.message || String(err)); } catch (_) {}
-      });
-    }
+      }
 
-    // --- POV regen once both finish ---
-    Promise.allSettled([signalPromise, prospectPromise])
-      .then(() => regenerateAccountPov(accountId))
-      .catch((err) => console.error('[scan-all] POV regen failed:', err));
+      // 2. Prospect scan (skip if already running)
+      if (!prospectRunning) {
+        try {
+          const dismissedProspects = (intel.prospect_scan?.result?.prospects || [])
+            .filter((p) => p.dismissed);
+          await setIntelRunning(accountId, 'prospect_scan');
+          const out = await scanProspects(bundle.account, { dismissedProspects });
+          if (out.error || !out.result) {
+            await setIntelFailed(accountId, 'prospect_scan', out.error || 'no_result');
+          } else {
+            await setIntelResult(accountId, 'prospect_scan', out.result);
+            prospectResult = out.result;
+          }
+        } catch (err) {
+          console.error(`[scan-all] prospect scan ${accountId} failed:`, err.message);
+          try { await setIntelFailed(accountId, 'prospect_scan', err.message || String(err)); } catch (_) {}
+        }
+      }
+
+      // 3. POV regen only if at least one scan produced new data
+      const hasNewSignals = signalResult && (signalResult.accountsWithNewSignals || []).length > 0;
+      const hasNewProspects = prospectResult && prospectResult.prospects && prospectResult.prospects.length > 0;
+      if (hasNewSignals || hasNewProspects) {
+        await regenerateAccountPov(accountId);
+      } else {
+        console.log(`[scan-all] ${accountId}: no new data — skipping POV regen`);
+      }
+    })().catch((err) => console.error('[scan-all] failed:', err));
 
     res.redirect('/brief');
   } catch (err) {

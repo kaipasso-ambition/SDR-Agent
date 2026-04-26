@@ -196,6 +196,7 @@ export async function runSignalScanCycle({
   let skippedDedup = 0;
   let errors = 0;
   let lastError = null;
+  const accountsWithNewSignals = [];
 
   for (const account of accounts) {
     try {
@@ -210,6 +211,7 @@ export async function runSignalScanCycle({
         const { inserted, updated } = await insertSignals(signals, job_id);
         detected += inserted;
         skippedDedup += updated;
+        if (inserted > 0) accountsWithNewSignals.push(account.id);
         console.log(`[signal_analyzer] ${account.account_name}: +${inserted} new, ${updated} dedup (searches=${searches})`);
       }
 
@@ -241,5 +243,5 @@ export async function runSignalScanCycle({
   });
 
   console.log(`[signal_analyzer] DONE scanned=${scanned} new=${detected} dedup=${skippedDedup} errors=${errors}`);
-  return { scanned, detected, skippedDedup, errors };
+  return { scanned, detected, skippedDedup, errors, accountsWithNewSignals };
 }

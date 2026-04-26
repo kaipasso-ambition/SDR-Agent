@@ -76,7 +76,8 @@
         Purge stale intel
       </button>
     </form>
-    <form method="POST" action="/signals/scan" class="shrink-0">
+    <form method="POST" action="/signals/scan" class="shrink-0"
+          onsubmit="return confirm('Scan all <%= totalAccounts %> accounts? This uses ~1 API call per account (~$0.10 each). Estimated cost: ~$<%= (totalAccounts * 0.12).toFixed(2) %>.');">
       <button type="submit"
               class="text-sm bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded font-medium disabled:bg-slate-400 disabled:cursor-wait"
               <% if (runningJob) { %>disabled<% } %>>
