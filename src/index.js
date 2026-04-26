@@ -219,29 +219,39 @@ cron.schedule(
   { timezone: tz }
 );
 
-// Signal scan: walk customer accounts once a week, web_search each, and
-// insert fresh signals. Monday 6am so the Brief is populated by the time
-// the AE opens the app. Gated behind SIGNAL_SCAN_ENABLED until we've
-// validated the prompt against TriNet/DocuSign/Procore via the manual
-// POST /signals/scan route. Flip the env var once we're happy.
+// Daily intel sweep: signal scan all accounts, then regen POV for any
+// account where new signals landed. Runs 6am daily so "Today" shows
+// what moved overnight. ~$0.10/account for signals + ~$0.01/account
+// for POV regen (Haiku). Only accounts with new findings get a POV
+// refresh. Set SIGNAL_SCAN_ENABLED=true to activate.
 if (process.env.SIGNAL_SCAN_ENABLED === 'true') {
+  const { regenerateAccountPov } = await import('./lib/pov_regen.js');
   cron.schedule(
-    '0 6 * * 1',
+    '0 6 * * *',
     async () => {
-      console.log('[scheduler] Starting weekly signal scan');
+      console.log('[scheduler] Starting daily signal scan');
       try {
         const { rows } = await query(
           `INSERT INTO account_signal_jobs (status) VALUES ('running') RETURNING id`
         );
         const jobId = rows[0].id;
-        await runSignalScanCycle({ job_id: jobId });
+        const result = await runSignalScanCycle({ job_id: jobId });
+        const changed = result.accountsWithNewSignals || [];
+        if (changed.length > 0) {
+          console.log(`[scheduler] signal scan done — refreshing POV for ${changed.length} account(s)`);
+          for (const id of changed) {
+            await regenerateAccountPov(id);
+          }
+        } else {
+          console.log('[scheduler] signal scan done — no new signals, skipping POV regen');
+        }
       } catch (err) {
         console.error('[scheduler] signal scan failed:', err);
       }
     },
     { timezone: tz }
   );
-  console.log('[scheduler] signal scan cron registered (Mon 6am)');
+  console.log('[scheduler] daily signal scan cron registered (6am)');
 } else {
   console.log('[scheduler] signal scan cron DISABLED (set SIGNAL_SCAN_ENABLED=true to enable)');
 }

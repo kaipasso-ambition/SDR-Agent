@@ -87,6 +87,7 @@ import { generateHypotheses } from '../agents/hypothesis_generator.js';
 import { lookupFiscalYear } from '../agents/fiscal_lookup.js';
 import { scanProspects } from '../agents/prospect_scanner.js';
 import { generateAccountPov } from '../agents/account_pov.js';
+import { regenerateAccountPov } from '../lib/pov_regen.js';
 import { findWarmPath } from '../agents/warm_path.js';
 import {
   getAccountIntel,
@@ -3370,39 +3371,7 @@ webRouter.post('/accounts/:id/scan-all', requireAuth, async (req, res, next) => 
 // signals + prospect scan + metadata and runs the Haiku POV agent.
 // Safe to call after any scan completes — if there's nothing material,
 // the agent honestly says "no active signals".
-async function regenerateAccountPov(accountId) {
-  try {
-    const bundle = await getAccountBundle(accountId);
-    if (!bundle) return;
-    const [signals, intel] = await Promise.all([
-      getSignalsForAccount(accountId, { limit: 10 }),
-      getAccountIntel(accountId),
-    ]);
-    const prospects = intel.prospect_scan?.status === 'completed'
-      ? (intel.prospect_scan.result?.prospects || [])
-      : [];
-    const useCaseFit = intel.use_case_fit?.status === 'completed' ? intel.use_case_fit.result : null;
-    const industryInsight = intel.industry_insight?.status === 'completed' ? intel.industry_insight.result : null;
-
-    await setIntelRunning(accountId, 'account_pov');
-    const out = await generateAccountPov({
-      account: bundle.account,
-      signals,
-      prospects,
-      useCaseFit,
-      industryInsight,
-    });
-    if (out.error || !out.result) {
-      await setIntelFailed(accountId, 'account_pov', out.error || 'no_result');
-      return;
-    }
-    await setIntelResult(accountId, 'account_pov', out.result);
-    console.log(`[pov] ${accountId} — ${out.elapsed_ms}ms, priority=${out.result.priority}`);
-  } catch (err) {
-    console.error(`[pov] ${accountId} failed:`, err);
-    try { await setIntelFailed(accountId, 'account_pov', err.message || String(err)); } catch (_) {}
-  }
-}
+// regenerateAccountPov imported from src/lib/pov_regen.js
 
 // ---------- Helpers ----------
 
