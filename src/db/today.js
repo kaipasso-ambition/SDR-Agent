@@ -209,6 +209,10 @@ export async function listAccountTimeline(userId, { includeQuiet = false, status
       pov.status                        AS pov_status,
       pov.result                        AS pov_result,
       pov.completed_at                  AS pov_at,
+      ucf.status                        AS ucf_status,
+      ucf.result                        AS ucf_result,
+      ii.status                         AS ii_status,
+      ii.result                         AS ii_result,
       GREATEST(
         COALESCE(rs.last_signal_at,    'epoch'::timestamptz),
         COALESCE(ps.completed_at,       'epoch'::timestamptz),
@@ -219,6 +223,8 @@ export async function listAccountTimeline(userId, { includeQuiet = false, status
     LEFT JOIN recent_signals rs      ON rs.account_id = a.id
     LEFT JOIN account_intel ps       ON ps.account_id = a.id AND ps.kind = 'prospect_scan'
     LEFT JOIN account_intel pov      ON pov.account_id = a.id AND pov.kind = 'account_pov'
+    LEFT JOIN account_intel ucf      ON ucf.account_id = a.id AND ucf.kind = 'use_case_fit'
+    LEFT JOIN account_intel ii       ON ii.account_id  = a.id AND ii.kind  = 'industry_insight'
     WHERE (a.owner_user_id = $1 OR a.owner_user_id IS NULL)
       AND a.status = ANY($2::text[])
       AND ($3::boolean

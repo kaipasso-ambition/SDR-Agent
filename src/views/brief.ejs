@@ -201,6 +201,10 @@
       const offCount = Number(a.offense_count) || 0;
 
       const detailCount = sigCount + visibleProspects.length;
+
+      const ucfResult = a.ucf_status === 'completed' && a.ucf_result ? a.ucf_result : null;
+      const iiResult = a.ii_status === 'completed' && a.ii_result ? a.ii_result : null;
+      const hasIntel = (ucfResult && ucfResult.primary) || (iiResult && iiResult.insights && iiResult.insights.length > 0);
     %>
       <div class="bg-white border border-slate-200 rounded-lg overflow-hidden">
 
@@ -271,6 +275,26 @@
           <div class="px-4 pb-3 text-xs text-slate-500 flex items-center gap-2">
             <span class="inline-block w-2 h-2 bg-slate-400 rounded-full animate-pulse"></span>
             Building point of view…
+          </div>
+        <% } %>
+
+        <%# === INTEL: use case fit + industry insight === %>
+        <% if (hasIntel) { %>
+          <div class="px-4 py-2 border-t border-slate-100 flex flex-wrap gap-x-6 gap-y-1">
+            <% if (ucfResult && ucfResult.primary) { %>
+              <div class="flex items-center gap-1.5 text-xs">
+                <span class="text-[10px] uppercase tracking-wide text-slate-500 font-semibold">Use case</span>
+                <span class="pill bg-slate-900 text-white"><%= ucfResult.primary.label %></span>
+                <% if (ucfResult.primary.audience) { %><span class="pill bg-sky-100 text-sky-800"><%= ucfResult.primary.audience %></span><% } %>
+                <% if (ucfResult.primary.confidence) { %><span class="text-slate-400">conf <%= ucfResult.primary.confidence %>/5</span><% } %>
+              </div>
+            <% } %>
+            <% if (iiResult && iiResult.insights && iiResult.insights.length > 0) { %>
+              <div class="flex items-center gap-1.5 text-xs min-w-0">
+                <span class="text-[10px] uppercase tracking-wide text-slate-500 font-semibold">Industry</span>
+                <span class="text-slate-700 truncate"><%= iiResult.insights[0].headline %></span>
+              </div>
+            <% } %>
           </div>
         <% } %>
 
