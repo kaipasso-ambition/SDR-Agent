@@ -177,19 +177,28 @@
   var hasChampion = contacts.some(function(c) { return c.deal_role === 'champion'; });
   var hasEconBuyer = contacts.some(function(c) { return c.deal_role === 'economic_buyer'; });
   var hasActivePlay = plays.some(function(p) { return p.status === 'active' || p.status === 'drafting'; });
-  var hasPov = pov && (pov.whats_happening || pov.pov);
+  var hasPovGap = !(pov && (pov.whats_happening || pov.pov));
   var hasUseCase = ucfResult && ucfResult.primary;
-  var gaps = [];
-  if (!hasPov) gaps.push('POV');
-  if (!hasUseCase) gaps.push('Use case');
-  if (!hasChampion) gaps.push('Champion');
-  if (!hasEconBuyer) gaps.push('Econ buyer');
-  if (!hasActivePlay) gaps.push('Active play');
-  if (visibleProspects.length === 0) gaps.push('Voices');
+  var gapItems = [];
+  if (!hasChampion) gapItems.push({ text: 'No champion identified', link: '/accounts/' + account.id + '?tab=contacts', cta: 'add a contact' });
+  if (!hasEconBuyer) gapItems.push({ text: 'No path to economic buyer', link: '/accounts/' + account.id + '?tab=contacts', cta: 'add a contact' });
+  if (!hasActivePlay && pov && pov.recommended_play) gapItems.push({ text: 'No active play', detail: pov.recommended_play, link: '/accounts/' + account.id + '?new_play=1&instinct=' + encodeURIComponent(pov.recommended_play) + '#plays-section', cta: 'Run this play' });
+  else if (!hasActivePlay) gapItems.push({ text: 'No active play', link: '#plays-section', cta: 'start a play' });
+  if (hasPovGap) gapItems.push({ text: 'No point of view yet', detail: 'Scan the account to generate', link: null, cta: null });
+  if (!hasUseCase && !ucfRunning) gapItems.push({ text: 'Use case not identified', link: '/accounts/' + account.id + '?tab=intel', cta: 'run intel' });
+  if (visibleProspects.length === 0 && !psRunning) gapItems.push({ text: 'No active voices', detail: 'Scan to find people talking about relevant topics', link: null, cta: null });
 %>
-<% if (gaps.length > 0) { %>
-  <div class="bg-amber-50 border border-amber-200 rounded-lg px-4 py-2.5 mb-6 text-sm text-amber-800">
-    <span class="font-medium">Gaps:</span> <%= gaps.join(' · ') %>
+<% if (gapItems.length > 0) { %>
+  <div class="bg-amber-50 border border-amber-200 rounded-lg px-5 py-3 mb-6 space-y-1.5">
+    <% gapItems.forEach(function(g) { %>
+      <div class="text-sm text-amber-900 flex items-start gap-2">
+        <span class="text-amber-500 font-bold shrink-0">!</span>
+        <span>
+          <strong><%= g.text %></strong><% if (g.detail) { %> — <em><%= g.detail %></em><% } %><% if (g.link && g.cta) { %>
+          <a href="<%= g.link %>" class="<%= g.cta === 'Run this play' ? 'inline-flex items-center ml-1 text-xs bg-teal-600 hover:bg-teal-700 text-white px-2 py-0.5 rounded font-medium' : 'underline hover:text-amber-700 ml-1' %>"><%= g.cta %></a><% } %>
+        </span>
+      </div>
+    <% }); %>
   </div>
 <% } %>
 
@@ -315,17 +324,27 @@
      VOICES — always visible, not behind a tab
      ================================================================ -->
 <div id="voices-section" class="bg-white border border-slate-200 border-l-4 border-l-teal-500 rounded-lg mb-6 overflow-hidden">
-  <div class="px-5 py-3 border-b border-slate-200 flex items-center justify-between">
-    <div class="text-sm font-semibold text-slate-900">
-      Voices
-      <% if (visibleProspects.length > 0) { %>
-        <span class="text-slate-400 font-normal ml-1"><%= visibleProspects.length %></span>
-      <% } %>
+  <div class="px-5 py-3 border-b border-slate-200">
+    <div class="flex items-center justify-between mb-1">
+      <div class="text-sm font-semibold text-slate-900">
+        Voices
+        <% if (visibleProspects.length > 0) { %>
+          <span class="text-slate-400 font-normal ml-1"><%= visibleProspects.length %></span>
+        <% } %>
+      </div>
+      <div class="flex items-center gap-2">
+        <% if (psResult && psResult.opportunity_strength) { %>
+          <span class="pill <%= priorityColor[psResult.opportunity_strength] || priorityColor.cool %>"><%= psResult.opportunity_strength %></span>
+        <% } %>
+        <% if (psRunning) { %>
+          <span class="text-xs text-slate-400 flex items-center gap-1">
+            <span class="inline-block w-1.5 h-1.5 bg-slate-400 rounded-full animate-pulse"></span> Scanning…
+          </span>
+        <% } %>
+      </div>
     </div>
-    <% if (psRunning) { %>
-      <span class="text-xs text-slate-400 flex items-center gap-1">
-        <span class="inline-block w-1.5 h-1.5 bg-slate-400 rounded-full animate-pulse"></span> Scanning…
-      </span>
+    <% if (psResult && psResult.opportunity_thesis) { %>
+      <div class="text-sm text-teal-800"><%= psResult.opportunity_thesis %></div>
     <% } %>
   </div>
   <%- include('partials/account_voices') %>

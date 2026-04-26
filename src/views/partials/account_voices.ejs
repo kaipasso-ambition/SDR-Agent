@@ -8,21 +8,12 @@
   <div class="p-4 text-sm text-slate-500">No active voices yet. Scan the account to find people talking about relevant topics.</div>
 <% } else { %>
   <div>
-    <div class="px-4 py-2 bg-slate-50/50 flex items-center justify-between">
-      <div class="flex items-center gap-2">
-        <span class="text-xs text-slate-700"><%= visibleProspects.length %> voice<%= visibleProspects.length === 1 ? '' : 's' %></span>
-        <% if (psResult && psResult.opportunity_strength) { %>
-          <span class="pill <%= priorityColor[psResult.opportunity_strength] || priorityColor.cool %> text-[10px]"><%= psResult.opportunity_strength %></span>
-        <% } %>
-      </div>
+    <div class="px-4 py-1.5 bg-slate-50/50 flex items-center justify-end">
       <form method="POST" action="/accounts/<%= account.id %>/intel/prospects/clear" class="inline"
             onsubmit="return confirm('Hide all prospects? Data is preserved.');">
         <button type="submit" class="text-[10px] text-slate-400 hover:text-red-700 underline">Hide all</button>
       </form>
     </div>
-    <% if (psResult && psResult.opportunity_thesis) { %>
-      <div class="px-4 py-2 text-xs text-slate-600 italic border-t border-slate-100"><%= psResult.opportunity_thesis %></div>
-    <% } %>
     <div class="divide-y divide-slate-100">
       <% visibleProspects.forEach(function(p) {
         var origIdx = psResult.prospects.indexOf(p);
@@ -42,21 +33,21 @@
               <div class="text-sm text-slate-800 mt-1"><%= p.signal %></div>
               <% if (p.why_it_matters) { %><div class="text-xs text-slate-500 mt-1 italic"><%= p.why_it_matters %></div><% } %>
             </div>
-            <div class="flex flex-col items-end gap-1.5 shrink-0">
-              <% if (p.source_url) { %>
-                <a href="<%= p.source_url %>" target="_blank" rel="noopener" class="text-xs text-slate-500 hover:text-slate-900 underline">Source ↗</a>
-              <% } %>
-              <% if (!hasStones && !pathRunning) { %>
-                <form method="POST" action="/accounts/<%= account.id %>/prospects/<%= origIdx %>/find-path" class="inline">
-                  <button type="submit" class="text-xs text-emerald-700 hover:text-emerald-900 underline">Find related contacts</button>
-                </form>
-              <% } %>
-              <form method="POST" action="/accounts/<%= account.id %>/intel/prospects/<%= origIdx %>/dismiss" class="inline"
-                    onsubmit="var r=prompt('Why not relevant? (optional)','');if(r===null)return false;this.querySelector('[name=reason]').value=r;return true;">
-                <input type="hidden" name="reason" value="" />
-                <button type="submit" class="text-[11px] text-slate-400 hover:text-red-700 underline">Not relevant</button>
+          </div>
+          <div class="mt-2 flex items-center gap-3 text-xs">
+            <% if (p.source_url) { %>
+              <a href="<%= p.source_url %>" target="_blank" rel="noopener" class="text-slate-500 hover:text-slate-900 underline">Source ↗</a>
+            <% } %>
+            <% if (!hasStones && !pathRunning) { %>
+              <form method="POST" action="/accounts/<%= account.id %>/prospects/<%= origIdx %>/find-path" class="inline">
+                <button type="submit" class="text-teal-700 hover:text-teal-900 underline">Find warm path</button>
               </form>
-            </div>
+            <% } %>
+            <form method="POST" action="/accounts/<%= account.id %>/intel/prospects/<%= origIdx %>/dismiss" class="inline"
+                  onsubmit="var r=prompt('Why not relevant? (optional)','');if(r===null)return false;this.querySelector('[name=reason]').value=r;return true;">
+              <input type="hidden" name="reason" value="" />
+              <button type="submit" class="text-slate-400 hover:text-red-700 underline">Not relevant</button>
+            </form>
           </div>
           <% if (pathRunning) { %>
             <div class="mt-2 text-xs text-slate-500 flex items-center gap-2">

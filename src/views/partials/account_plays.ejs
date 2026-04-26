@@ -1,73 +1,8 @@
 <div>
-  <!-- Composer -->
-  <details id="play-composer" class="border-b border-slate-200 p-4 bg-slate-50" <% if (composerOpen || plays.length === 0) { %>open<% } %>>
-    <summary class="text-sm font-semibold text-slate-900 cursor-pointer">
-      + Start a play
-      <% if (triggerSignal) { %><span class="text-xs text-slate-500 font-normal">· triggered by "<%= triggerSignal.title %>"</span><% } %>
-    </summary>
-    <form method="POST" action="/accounts/<%= account.id %>/plays" class="mt-3 space-y-3" onsubmit="return startBuildingPlay(this)">
-      <% if (triggerSignal) { %>
-        <input type="hidden" name="triggered_by_signal_id" value="<%= triggerSignal.id %>" />
-        <div class="bg-white border border-slate-200 rounded p-3 text-xs">
-          <div class="text-slate-500 uppercase tracking-wide text-[10px] font-semibold mb-1">Triggering signal</div>
-          <div class="font-medium text-slate-900"><%= triggerSignal.title %></div>
-          <% if (triggerSignal.so_what) { %><div class="text-slate-600 mt-1"><%= triggerSignal.so_what %></div><% } %>
-        </div>
-      <% } %>
-      <label class="block text-sm">
-        <span class="font-medium text-slate-800">What's your read?</span>
-        <textarea name="instinct" rows="3" required placeholder="e.g. 'SDR team already uses us. Want to get to the new CRO through our SDR champion before Q3 budget review.'" class="w-full border border-slate-300 rounded px-3 py-2 mt-1 text-sm"><%= prefillInstinct || '' %></textarea>
-      </label>
-      <% if (hypotheses.length > 0) { %>
-        <label class="block text-sm">
-          <span class="font-medium text-slate-800">Hypothesis</span>
-          <select name="hypothesis_id" class="w-full border border-slate-300 rounded px-3 py-2 mt-1 text-sm">
-            <option value="">— none —</option>
-            <% hypotheses.forEach(function(h) { %><option value="<%= h.id %>"><%= useCaseLabel[h.use_case] || h.use_case %> → <%= h.target_persona_id %></option><% }); %>
-          </select>
-        </label>
-      <% } %>
-      <% if (contacts.length > 0) { %>
-        <div class="text-sm">
-          <div class="font-medium text-slate-800 mb-1">Contact path</div>
-          <div class="max-h-48 overflow-y-auto border border-slate-200 rounded p-2 space-y-1 bg-white">
-            <% contacts.forEach(function(c) { %>
-              <label class="flex items-start gap-2 text-xs py-1">
-                <input type="checkbox" name="contact_path" value="<%= c.id %>" class="mt-0.5" />
-                <span><span class="font-medium"><%= c.name %></span> <span class="text-slate-500"><%= c.title ? '· ' + c.title : '' %></span>
-                  <span class="pill <%= (dealRoleMeta[c.deal_role] || dealRoleMeta.unknown).pill %> ml-1"><%= (dealRoleMeta[c.deal_role] || dealRoleMeta.unknown).label %></span></span>
-              </label>
-            <% }); %>
-          </div>
-        </div>
-      <% } %>
-      <button type="submit" id="play-build-btn" class="bg-navy-700 hover:bg-navy-800 disabled:bg-slate-400 disabled:cursor-wait text-white px-4 py-2 rounded font-medium text-sm inline-flex items-center gap-2">
-        <svg id="play-build-spinner" class="hidden animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path></svg>
-        <span id="play-build-label">Build the play →</span>
-      </button>
-      <p id="play-build-status" class="text-xs text-slate-500">Takes ~10s.</p>
-    </form>
-  </details>
-  <script>
-    function startBuildingPlay(form) {
-      var btn = document.getElementById('play-build-btn');
-      var spin = document.getElementById('play-build-spinner');
-      var label = document.getElementById('play-build-label');
-      var status = document.getElementById('play-build-status');
-      if (!btn || btn.disabled) return false;
-      btn.disabled = true; spin.classList.remove('hidden'); label.textContent = 'Building…';
-      var frames = ['Reading your instinct…','Pulling account context…','Sequencing moves…','Drafting artifacts…','Almost there…'];
-      var i = 0; status.textContent = frames[0]; status.className = 'text-xs text-emerald-700 font-medium';
-      var timer = setInterval(function() { i = (i + 1) % frames.length; status.textContent = frames[i]; }, 2500);
-      setTimeout(function() { clearInterval(timer); }, 180000);
-      return true;
-    }
-  </script>
-
   <!-- Existing plays -->
-  <% if (plays.length === 0) { %>
-    <div class="p-4 text-sm text-slate-500">No plays yet. Describe your instinct above, or click <strong>Run this play</strong> from the POV to get a sequenced plan.</div>
-  <% } else { %>
+  <% if (plays.length === 0 && !composerOpen) { %>
+    <div class="p-4 text-sm text-slate-500">No plays yet. Describe your instinct below, or click <strong>Run this play</strong> from the POV to get a sequenced plan.</div>
+  <% } else if (plays.length > 0) { %>
     <ul class="divide-y divide-slate-100">
       <% plays.forEach(function(p) {
         var exp = p.ai_expansion || {};
@@ -200,4 +135,69 @@
       <% }); %>
     </ul>
   <% } %>
+
+  <!-- Composer -->
+  <details id="play-composer" class="border-t border-slate-200 p-4 bg-slate-50" <% if (composerOpen || plays.length === 0) { %>open<% } %>>
+    <summary class="text-sm font-semibold text-slate-900 cursor-pointer">
+      + <%= plays.length > 0 ? 'Start another play' : 'Start a play' %>
+      <% if (triggerSignal) { %><span class="text-xs text-slate-500 font-normal">· triggered by "<%= triggerSignal.title %>"</span><% } %>
+    </summary>
+    <form method="POST" action="/accounts/<%= account.id %>/plays" class="mt-3 space-y-3" onsubmit="return startBuildingPlay(this)">
+      <% if (triggerSignal) { %>
+        <input type="hidden" name="triggered_by_signal_id" value="<%= triggerSignal.id %>" />
+        <div class="bg-white border border-slate-200 rounded p-3 text-xs">
+          <div class="text-slate-500 uppercase tracking-wide text-[10px] font-semibold mb-1">Triggering signal</div>
+          <div class="font-medium text-slate-900"><%= triggerSignal.title %></div>
+          <% if (triggerSignal.so_what) { %><div class="text-slate-600 mt-1"><%= triggerSignal.so_what %></div><% } %>
+        </div>
+      <% } %>
+      <label class="block text-sm">
+        <span class="font-medium text-slate-800">What's your read?</span>
+        <textarea name="instinct" rows="3" required placeholder="e.g. 'SDR team already uses us. Want to get to the new CRO through our SDR champion before Q3 budget review.'" class="w-full border border-slate-300 rounded px-3 py-2 mt-1 text-sm"><%= prefillInstinct || '' %></textarea>
+      </label>
+      <% if (hypotheses.length > 0) { %>
+        <label class="block text-sm">
+          <span class="font-medium text-slate-800">Hypothesis</span>
+          <select name="hypothesis_id" class="w-full border border-slate-300 rounded px-3 py-2 mt-1 text-sm">
+            <option value="">— none —</option>
+            <% hypotheses.forEach(function(h) { %><option value="<%= h.id %>"><%= useCaseLabel[h.use_case] || h.use_case %> → <%= h.target_persona_id %></option><% }); %>
+          </select>
+        </label>
+      <% } %>
+      <% if (contacts.length > 0) { %>
+        <div class="text-sm">
+          <div class="font-medium text-slate-800 mb-1">Contact path</div>
+          <div class="max-h-48 overflow-y-auto border border-slate-200 rounded p-2 space-y-1 bg-white">
+            <% contacts.forEach(function(c) { %>
+              <label class="flex items-start gap-2 text-xs py-1">
+                <input type="checkbox" name="contact_path" value="<%= c.id %>" class="mt-0.5" />
+                <span><span class="font-medium"><%= c.name %></span> <span class="text-slate-500"><%= c.title ? '· ' + c.title : '' %></span>
+                  <span class="pill <%= (dealRoleMeta[c.deal_role] || dealRoleMeta.unknown).pill %> ml-1"><%= (dealRoleMeta[c.deal_role] || dealRoleMeta.unknown).label %></span></span>
+              </label>
+            <% }); %>
+          </div>
+        </div>
+      <% } %>
+      <button type="submit" id="play-build-btn" class="bg-navy-700 hover:bg-navy-800 disabled:bg-slate-400 disabled:cursor-wait text-white px-4 py-2 rounded font-medium text-sm inline-flex items-center gap-2">
+        <svg id="play-build-spinner" class="hidden animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path></svg>
+        <span id="play-build-label">Build the play →</span>
+      </button>
+      <p id="play-build-status" class="text-xs text-slate-500">Takes ~10s.</p>
+    </form>
+  </details>
+  <script>
+    function startBuildingPlay(form) {
+      var btn = document.getElementById('play-build-btn');
+      var spin = document.getElementById('play-build-spinner');
+      var label = document.getElementById('play-build-label');
+      var status = document.getElementById('play-build-status');
+      if (!btn || btn.disabled) return false;
+      btn.disabled = true; spin.classList.remove('hidden'); label.textContent = 'Building…';
+      var frames = ['Reading your instinct…','Pulling account context…','Sequencing moves…','Drafting artifacts…','Almost there…'];
+      var i = 0; status.textContent = frames[0]; status.className = 'text-xs text-emerald-700 font-medium';
+      var timer = setInterval(function() { i = (i + 1) % frames.length; status.textContent = frames[i]; }, 2500);
+      setTimeout(function() { clearInterval(timer); }, 180000);
+      return true;
+    }
+  </script>
 </div>
