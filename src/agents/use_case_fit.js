@@ -23,6 +23,7 @@ function buildContext(account, { signals = [], dossier = null, contacts = [] } =
     account_name: account.account_name,
     industry: account.industry || null,
     status: account.status,
+    notes: account.notes || null,
     signals: Array.isArray(signals) && signals.length > 0
       ? signals.slice(0, 12).map((s) => ({
           detected_at: s.detected_at,

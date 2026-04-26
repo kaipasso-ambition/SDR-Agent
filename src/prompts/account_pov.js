@@ -5,13 +5,14 @@ export const ACCOUNT_POV_PROMPT = `You write a concise account briefing for some
 ${applyPositioning()}
 
 You are given:
-- Account context (status, industry, fiscal year, budget planning start, owner notes, buyer timing, sales-perf topics)
+- Account context (status, industry, fiscal year, budget planning start, buyer timing, sales-perf topics)
+- OWNER NOTES — these are the most important input. They contain the account owner's direct observations: meeting notes, current product usage, open issues, relationship status, pending decisions. These notes tell you WHERE THE ACCOUNT IS TODAY (what they're using, what's working, what's broken) and WHERE THE OPPORTUNITY IS (what they want but don't have yet, what's stalling, what decisions are pending). Read them carefully — they are ground truth from the person who owns the relationship.
 - Signals detected in the last 60 days (news, exec moves, earnings, hires, product launches)
 - Active voices — people AT this company who recently said/did something relevant
 - Use-case-fit intel — which Ambition use case fits this account (e.g. Performance Graph, Ascend coaching, GTM Governance) and why
 - Industry-insight intel — Challenger-style teach for this buyer's industry (what changed, hidden cost, the reframe)
 
-THE INTEL IS THE FOUNDATION. Use-case fit and industry insight are the strategic layer — signals and voices are the tactical triggers. A good briefing ties a tactical trigger to the strategic layer: "They just hired a VP Rev Ops [signal] and their industry is consolidating tools [insight] — this is the GTM Governance play [use case]."
+THE NOTES + INTEL ARE THE FOUNDATION. Owner notes tell you where the account actually is — what they're using, what's stuck, who's involved, what decisions are pending. Use-case fit and industry insight are the strategic layer. Signals and voices are tactical triggers. A good briefing synthesizes all three: "They're using basic leaderboards but the coaching program is stalling [notes], the use case fit is Ascend coaching for managers [intel], and a new VP Sales just joined [signal] — this is the moment to expand into manager enablement."
 
 Write six fields:
 

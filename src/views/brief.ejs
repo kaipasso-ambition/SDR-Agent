@@ -305,10 +305,16 @@
         <% } %>
 
         <%# === INLINE NOTES: AE context that feeds future scans === %>
+        <% if (a.notes) { %>
+          <div class="px-4 py-2 border-t border-slate-100 text-xs text-slate-600 leading-relaxed">
+            <span class="text-[10px] text-slate-400 uppercase tracking-wide font-semibold mr-1">Notes:</span>
+            <%= a.notes.length > 140 ? a.notes.slice(0, 140) + '…' : a.notes %>
+          </div>
+        <% } %>
         <details class="border-t border-slate-100">
           <summary class="px-4 py-2 text-xs text-slate-500 cursor-pointer list-none select-none hover:bg-slate-50 flex items-center gap-2">
             <span class="text-slate-400 text-[10px]">&#9998;</span>
-            Notes<% if (a.notes) { %> <span class="text-slate-400">— <%= a.notes.length > 60 ? a.notes.slice(0,60) + '…' : a.notes %></span><% } %>
+            <%= a.notes ? 'Edit notes' : 'Add notes' %>
           </summary>
           <form method="POST" action="/accounts/<%= a.account_id %>/notes" class="px-4 pb-3">
             <input type="hidden" name="back" value="/brief" />

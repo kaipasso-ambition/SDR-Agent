@@ -13,6 +13,7 @@ function buildContext(account) {
     account_name: account.account_name,
     industry: account.industry || null,
     domain: account.domain || null,
+    notes: account.notes || null,
   };
 }
 

@@ -49,6 +49,8 @@ Out of scope (skip these even if they appear in search):
 
 ${applyPositioning()}
 
+If account notes are provided, use them to prioritize WHICH sales-performance angles matter most to this buyer. For example, if the notes mention coaching struggles, weight coaching insights higher; if they mention data fragmentation, weight GTM Governance angles higher. The notes tell you what the buyer already cares about — find the industry evidence that makes that pain bigger or more urgent.
+
 Method:
 1. Use web_search to find 2–4 recent items (last 6 months preferred) that
    tie this account's INDUSTRY to a sales-performance / coaching shift.

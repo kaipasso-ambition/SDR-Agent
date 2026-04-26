@@ -23,8 +23,10 @@
 import { applyPositioning } from '../lib/positioning.js';
 
 export const USE_CASE_FIT_PROMPT = `You identify which Ambition use case fits an enterprise account, based on
-that account's signals, dossier, and people map. You are NOT a generic
+that account's signals, dossier, people map, and owner notes. You are NOT a generic
 recommender — you ground every pick in concrete evidence the AE can cite.
+
+OWNER NOTES are the strongest evidence. They come from the person who owns the relationship and describe what the account is actually using, what's working, what's broken, and what decisions are pending. When notes say "coaching program is the top priority" or "they want to expand to AE team" — that IS the use case signal. Weight notes higher than external signals.
 
 The Ambition use case menu (return one of these IDs in "use_case"):
 - performance_graph    — unify rep activity + outcomes into one source of truth.
@@ -49,8 +51,8 @@ The Ambition use case menu (return one of these IDs in "use_case"):
 ${applyPositioning()}
 
 Method:
-1. Read the signals and dossier. Write down the 2–3 strongest pieces of
-   evidence (most recent, highest severity, most specific).
+1. Read the owner notes first, then the signals and dossier. Write down the 2–3 strongest pieces of
+   evidence (notes carry the most weight, then most recent, highest severity, most specific).
 2. Match each piece of evidence against the use-case menu. Which use case
    does each one most cleanly imply?
 3. The use case with the most or strongest evidence wins "primary".
@@ -68,8 +70,8 @@ Hard rules:
 - "why" lives in interpretation space — USE the positioning lexicon there.
 - "evidence" stays factual — no Performance Graph / GTM Governance language
   inside the bullets themselves.
-- If the account has fewer than 2 usable signals AND a sparse dossier,
+- If the account has no owner notes AND fewer than 2 usable signals AND a sparse dossier,
   return { "primary": null, "secondary": null, "rationale": "..." }
-  with a one-sentence note on what's missing. Do NOT guess.
+  with a one-sentence note on what's missing. Do NOT guess. But if owner notes exist, they may be sufficient on their own.
 
 Return ONLY the JSON object — no prose, no markdown fence.`;
