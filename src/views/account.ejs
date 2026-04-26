@@ -1,4 +1,7 @@
 <%
+  /* Compute all shared values as local vars, then copy to locals so
+     EJS include() partials can see them. */
+
   var FY_MONTHS = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   var statusColor = {
     customer: 'bg-emerald-100 text-emerald-800',
@@ -90,16 +93,16 @@
   var sigCount = signals.length;
 
   // Contacts tree
-  var byId = new Map(contacts.map(function(c) { return [c.id, Object.assign({}, c, { children: [] })]; }));
-  var roots = [];
-  for (var c of byId.values()) {
-    var pid = c.reports_to_contact_id;
-    if (pid && byId.has(pid)) byId.get(pid).children.push(c);
-    else roots.push(c);
+  var _byId = new Map(contacts.map(function(c) { return [c.id, Object.assign({}, c, { children: [] })]; }));
+  var _roots = [];
+  for (var _c of _byId.values()) {
+    var _pid = _c.reports_to_contact_id;
+    if (_pid && _byId.has(_pid)) _byId.get(_pid).children.push(_c);
+    else _roots.push(_c);
   }
   var contactRows = [];
-  function walk(node, depth) { contactRows.push({ node: node, depth: depth }); node.children.forEach(function(ch) { walk(ch, depth + 1); }); }
-  roots.forEach(function(r) { walk(r, 0); });
+  function _walk(node, depth) { contactRows.push({ node: node, depth: depth }); node.children.forEach(function(ch) { _walk(ch, depth + 1); }); }
+  _roots.forEach(function(r) { _walk(r, 0); });
 
   // Intel
   var ucf = intel?.use_case_fit;
@@ -111,6 +114,17 @@
   var hgen = intel?.hypotheses_gen;
   var hgenRunning = hgen?.status === 'running';
   var anyIntelRunning = ucfRunning || indRunning || hgenRunning || psRunning || povRunning;
+
+  // Copy everything partials need onto locals so include() propagates them
+  Object.assign(locals, {
+    FY_MONTHS, statusColor, priorityColor, riskPill, riskLabel, signalTypeLabel,
+    dealRoleMeta, stanceMeta, playStatusMeta, actorMeta, useCaseLabel,
+    daysAgo, agoLabel,
+    pov, povRunning, psResult, psRunning, psFailed, visibleProspects,
+    sigCount, contactRows,
+    ucf, ucfRunning, ucfResult, ind, indRunning, indResult,
+    hgen, hgenRunning,
+  });
 %>
 
 <!-- ============ HEADER ============ -->
