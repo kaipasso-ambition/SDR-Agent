@@ -1,10 +1,10 @@
 // Research → draft pipeline for a single prospect.
 //
-// Same chain that the scheduled cron will run once Salesforce/PhantomBuster are
-// wired: (a) call the research agent with Claude + web_search to find the best
-// timing signal and score fit, (b) upsert the enriched prospect, (c) if it
-// passes the fit threshold, call the writer agent to draft the 3-touch
-// sequence, (d) drop into the owner's approval queue.
+// Same chain that the scheduled research cron runs: (a) call the research
+// agent with Claude + web_search to find the best timing signal and score
+// fit, (b) upsert the enriched prospect, (c) if it passes the fit threshold,
+// call the writer agent to draft the 3-touch sequence, (d) drop into the
+// owner's approval queue.
 //
 // Exposed as a function so the web UI can trigger it on-demand from the
 // "Add prospect" form while we're waiting on Salesforce OAuth.

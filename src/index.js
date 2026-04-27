@@ -101,171 +101,189 @@ import { query, pool } from './db/index.js';
 
 const tz = process.env.SEND_TIMEZONE || 'America/Chicago';
 
-// Autonomous prospect discovery — 7am Mondays only. Claude searches the web
-// for fresh ICP-fit companies, then the pipeline drafts sequences for the
-// ones that qualify. Weekly cadence caps the autonomous LLM spend — the
-// operator can still trigger a run on demand from /drafts or /prospects/import.
-cron.schedule(
-  '0 7 * * 1',
-  async () => {
-    console.log('[scheduler] Starting weekly discovery cycle');
-    try {
-      await runDiscoveryCycle({ count: 5 });
-    } catch (err) {
-      console.error('[scheduler] discovery failed:', err);
-    }
-  },
-  { timezone: tz }
-);
+// All scheduled pulls are gated behind AUTOMATION_ENABLED. LinkedIn blocked
+// our account because of the cadence + consistency of the automated pulls
+// (Sales Nav digest poll, web_search hits on /in/ profiles). The
+// PhantomBuster send path has been removed entirely. Default is off —
+// operators trigger work from the UI: /presence (Refresh), /champions
+// (Check now), /brief (Scan signals), /accounts/:id (Rescan / Scan all),
+// /discover, /revisit/:id/scan, /expand/:id/scan.
+const AUTOMATION_ENABLED = process.env.AUTOMATION_ENABLED === 'true';
 
-// Research + score new accounts — runs 4x daily
-cron.schedule(
-  '0 7,11,15,19 * * 1-5',
-  async () => {
-    console.log('[scheduler] Starting research cycle');
-    try {
-      await runResearchCycle();
-    } catch (err) {
-      console.error('[scheduler] research failed:', err);
-    }
-  },
-  { timezone: tz }
-);
-
-// Generate drafts for scored prospects — runs 3x daily
-cron.schedule(
-  '30 8,12,16 * * 1-5',
-  async () => {
-    console.log('[scheduler] Starting writer cycle');
-    try {
-      await runWriterCycle();
-    } catch (err) {
-      console.error('[scheduler] writer failed:', err);
-    }
-  },
-  { timezone: tz }
-);
-
-// Monitor inbox + classify replies — every 30 min during business hours
-cron.schedule(
-  '*/30 8-18 * * 1-5',
-  async () => {
-    console.log('[scheduler] Starting reply monitoring cycle');
-    try {
-      await runReplyCycle();
-    } catch (err) {
-      console.error('[scheduler] reply monitor failed:', err);
-    }
-  },
-  { timezone: tz }
-);
-
-// Send approved messages — runs every 2 hours within send window
-cron.schedule(
-  '0 9,11,13,15,17 * * 1-5',
-  async () => {
-    console.log('[scheduler] Sending approved messages');
-    try {
-      await sendApprovedMessages();
-    } catch (err) {
-      console.error('[scheduler] sender failed:', err);
-    }
-  },
-  { timezone: tz }
-);
-
-// Presence copilot: poll Sales Nav digest inbox + rank + draft.
-// Runs every 4h during the workday — catches the morning Sales Nav digest
-// within hours of it landing, and the afternoon one too.
-cron.schedule(
-  '15 7,11,15,19 * * 1-5',
-  async () => {
-    if (!process.env.GMAIL_IMAP_USER || !process.env.GMAIL_IMAP_PASSWORD) {
-      console.log('[scheduler] presence skipped — GMAIL_IMAP_USER/PASSWORD not set');
-      return;
-    }
-    console.log('[scheduler] Starting presence poll + rank');
-    try {
-      const pollResult = await pollPresenceInbox();
-      console.log('[scheduler] presence poll:', pollResult);
-      const rankResult = await runRankerCycle();
-      console.log('[scheduler] presence rank:', rankResult);
-    } catch (err) {
-      console.error('[scheduler] presence cycle failed:', err);
-    }
-  },
-  { timezone: tz }
-);
-
-// Champion tracker: walk the champions table once a week, web_search each
-// one, and record any job changes. Runs Monday at 8am after the discovery
-// cycle. Caps per-run volume at 25 champions so a large list doesn't blow
-// through LLM budget on one day — successive runs pick up the rest since
-// we sort by last_checked_at NULLS FIRST.
-cron.schedule(
-  '0 8 * * 1',
-  async () => {
-    console.log('[scheduler] Starting weekly champion check');
-    try {
-      const { rows } = await query(
-        `INSERT INTO champion_check_jobs (status) VALUES ('running') RETURNING id`
-      );
-      const jobId = rows[0].id;
-      await runChampionCheckCycle({ limit: 25, job_id: jobId });
-    } catch (err) {
-      console.error('[scheduler] champion check failed:', err);
-    }
-  },
-  { timezone: tz }
-);
-
-// Daily intel sweep: signal scan all accounts, then regen POV for any
-// account where new signals landed. Runs 6am daily so "Today" shows
-// what moved overnight. ~$0.10/account for signals + ~$0.01/account
-// for POV regen (Haiku). Only accounts with new findings get a POV
-// refresh. Set SIGNAL_SCAN_ENABLED=true to activate.
-if (process.env.SIGNAL_SCAN_ENABLED === 'true') {
-  const { regenerateAccountPov } = await import('./lib/pov_regen.js');
+if (AUTOMATION_ENABLED) {
+  // Autonomous prospect discovery — 7am Mondays only. Claude searches the web
+  // for fresh ICP-fit companies, then the pipeline drafts sequences for the
+  // ones that qualify. Weekly cadence caps the autonomous LLM spend — the
+  // operator can still trigger a run on demand from /drafts or /prospects/import.
   cron.schedule(
-    '0 6 * * *',
+    '0 7 * * 1',
     async () => {
+      console.log('[scheduler] Starting weekly discovery cycle');
       try {
-        const { rows: watched } = await query(
-          `SELECT id FROM accounts_registry WHERE watched = true`
-        );
-        if (watched.length === 0) {
-          console.log('[scheduler] daily scan — no watched accounts, skipping');
-          return;
-        }
-        const watchedIds = watched.map((r) => r.id);
-        console.log(`[scheduler] daily scan — ${watchedIds.length} watched account(s)`);
-
-        const { rows: jobRows } = await query(
-          `INSERT INTO account_signal_jobs (status) VALUES ('running') RETURNING id`
-        );
-        const result = await runSignalScanCycle({
-          job_id: jobRows[0].id,
-          account_ids: watchedIds,
-        });
-        const changed = result.accountsWithNewSignals || [];
-        if (changed.length > 0) {
-          console.log(`[scheduler] scan done — refreshing POV for ${changed.length} account(s)`);
-          for (const id of changed) {
-            await regenerateAccountPov(id);
-          }
-        } else {
-          console.log('[scheduler] scan done — no new signals');
-        }
+        await runDiscoveryCycle({ count: 5 });
       } catch (err) {
-        console.error('[scheduler] daily scan failed:', err);
+        console.error('[scheduler] discovery failed:', err);
       }
     },
     { timezone: tz }
   );
-  console.log('[scheduler] daily signal scan cron registered (6am, watched accounts only)');
-} else {
-  console.log('[scheduler] signal scan cron DISABLED (set SIGNAL_SCAN_ENABLED=true to enable)');
+
+  // Research + score new accounts — runs 4x daily
+  cron.schedule(
+    '0 7,11,15,19 * * 1-5',
+    async () => {
+      console.log('[scheduler] Starting research cycle');
+      try {
+        await runResearchCycle();
+      } catch (err) {
+        console.error('[scheduler] research failed:', err);
+      }
+    },
+    { timezone: tz }
+  );
+
+  // Generate drafts for scored prospects — runs 3x daily
+  cron.schedule(
+    '30 8,12,16 * * 1-5',
+    async () => {
+      console.log('[scheduler] Starting writer cycle');
+      try {
+        await runWriterCycle();
+      } catch (err) {
+        console.error('[scheduler] writer failed:', err);
+      }
+    },
+    { timezone: tz }
+  );
+
+  // Monitor inbox + classify replies — every 30 min during business hours
+  cron.schedule(
+    '*/30 8-18 * * 1-5',
+    async () => {
+      console.log('[scheduler] Starting reply monitoring cycle');
+      try {
+        await runReplyCycle();
+      } catch (err) {
+        console.error('[scheduler] reply monitor failed:', err);
+      }
+    },
+    { timezone: tz }
+  );
+
+  // Send approved messages — runs every 2 hours within send window
+  cron.schedule(
+    '0 9,11,13,15,17 * * 1-5',
+    async () => {
+      console.log('[scheduler] Sending approved messages');
+      try {
+        await sendApprovedMessages();
+      } catch (err) {
+        console.error('[scheduler] sender failed:', err);
+      }
+    },
+    { timezone: tz }
+  );
+
+  // Presence copilot: poll Sales Nav digest inbox + rank + draft.
+  // Runs every 4h during the workday — catches the morning Sales Nav digest
+  // within hours of it landing, and the afternoon one too.
+  cron.schedule(
+    '15 7,11,15,19 * * 1-5',
+    async () => {
+      if (!process.env.GMAIL_IMAP_USER || !process.env.GMAIL_IMAP_PASSWORD) {
+        console.log('[scheduler] presence skipped — GMAIL_IMAP_USER/PASSWORD not set');
+        return;
+      }
+      console.log('[scheduler] Starting presence poll + rank');
+      try {
+        const pollResult = await pollPresenceInbox();
+        console.log('[scheduler] presence poll:', pollResult);
+        const rankResult = await runRankerCycle();
+        console.log('[scheduler] presence rank:', rankResult);
+      } catch (err) {
+        console.error('[scheduler] presence cycle failed:', err);
+      }
+    },
+    { timezone: tz }
+  );
+
+  // Champion tracker: walk the champions table once a week, web_search each
+  // one, and record any job changes. Runs Monday at 8am after the discovery
+  // cycle. Caps per-run volume at 25 champions so a large list doesn't blow
+  // through LLM budget on one day — successive runs pick up the rest since
+  // we sort by last_checked_at NULLS FIRST.
+  cron.schedule(
+    '0 8 * * 1',
+    async () => {
+      console.log('[scheduler] Starting weekly champion check');
+      try {
+        const { rows } = await query(
+          `INSERT INTO champion_check_jobs (status) VALUES ('running') RETURNING id`
+        );
+        const jobId = rows[0].id;
+        await runChampionCheckCycle({ limit: 25, job_id: jobId });
+      } catch (err) {
+        console.error('[scheduler] champion check failed:', err);
+      }
+    },
+    { timezone: tz }
+  );
+
+  // Daily intel sweep: signal scan all accounts, then regen POV for any
+  // account where new signals landed. Runs 6am daily so "Today" shows
+  // what moved overnight. ~$0.10/account for signals + ~$0.01/account
+  // for POV regen (Haiku). Only accounts with new findings get a POV
+  // refresh. Still requires SIGNAL_SCAN_ENABLED=true on top of automation.
+  if (process.env.SIGNAL_SCAN_ENABLED === 'true') {
+    const { regenerateAccountPov } = await import('./lib/pov_regen.js');
+    cron.schedule(
+      '0 6 * * *',
+      async () => {
+        try {
+          const { rows: watched } = await query(
+            `SELECT id FROM accounts_registry WHERE watched = true`
+          );
+          if (watched.length === 0) {
+            console.log('[scheduler] daily scan — no watched accounts, skipping');
+            return;
+          }
+          const watchedIds = watched.map((r) => r.id);
+          console.log(`[scheduler] daily scan — ${watchedIds.length} watched account(s)`);
+
+          const { rows: jobRows } = await query(
+            `INSERT INTO account_signal_jobs (status) VALUES ('running') RETURNING id`
+          );
+          const result = await runSignalScanCycle({
+            job_id: jobRows[0].id,
+            account_ids: watchedIds,
+          });
+          const changed = result.accountsWithNewSignals || [];
+          if (changed.length > 0) {
+            console.log(`[scheduler] scan done — refreshing POV for ${changed.length} account(s)`);
+            for (const id of changed) {
+              await regenerateAccountPov(id);
+            }
+          } else {
+            console.log('[scheduler] scan done — no new signals');
+          }
+        } catch (err) {
+          console.error('[scheduler] daily scan failed:', err);
+        }
+      },
+      { timezone: tz }
+    );
+    console.log('[scheduler] daily signal scan cron registered (6am, watched accounts only)');
+  } else {
+    console.log('[scheduler] signal scan cron DISABLED (set SIGNAL_SCAN_ENABLED=true to enable)');
+  }
 }
 
 startServer();
-console.log(`Ambition SDR Agent running. Scheduler active (${tz}).`);
+if (AUTOMATION_ENABLED) {
+  console.log(`Ambition SDR Agent running. Scheduler active (${tz}).`);
+} else {
+  console.log(
+    `Ambition SDR Agent running. AUTOMATION PAUSED — all cron pulls disabled. ` +
+    `Use the UI to trigger scans manually. Set AUTOMATION_ENABLED=true to re-enable cron.`
+  );
+}

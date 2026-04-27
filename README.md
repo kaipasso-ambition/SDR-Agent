@@ -1,9 +1,16 @@
 # Ambition SDR Agent
 
-An autonomous SDR agent that researches prospects, generates 3-touch outreach
-sequences (email + LinkedIn), classifies replies, and routes drafts to a
-human approval queue. Built around Anthropic's Claude API, Postgres, Gmail,
-Salesforce, and CommonRoom.
+An SDR agent that researches prospects, generates 3-touch outreach sequences
+(email + manually-sent LinkedIn drafts), classifies replies, and routes drafts
+to a human approval queue. Built around Anthropic's Claude API, Postgres,
+Gmail, Salesforce, and CommonRoom.
+
+> **Automation paused.** After LinkedIn blocked the account, all scheduled
+> cron pulls are disabled by default. Set `AUTOMATION_ENABLED=true` to
+> re-enable cron once the LinkedIn situation is resolved. Manual scans from
+> the UI continue to work regardless. The PhantomBuster integration has
+> been removed — LinkedIn touches are draft-only and must be sent by a
+> human from their own LinkedIn session.
 
 ## Architecture
 
@@ -21,7 +28,6 @@ src/
 ├── integrations/
 │   ├── salesforce.js     # SFDC account/contact pull (jsforce)
 │   ├── gmail.js          # Gmail send + reply monitoring (googleapis)
-│   ├── linkedin.js       # PhantomBuster automation layer
 │   └── commonroom.js     # Intent signal polling
 ├── queue/
 │   ├── approval_queue.js # Outbound draft queue state
@@ -59,15 +65,27 @@ spec. Edit those files if you need to tune voice, ICP, or reply rules.
 
 ## Scheduler cadence
 
+All cron jobs below are gated behind `AUTOMATION_ENABLED=true`. With the
+flag off (default), nothing runs on a schedule — the operator drives every
+scan from the UI.
+
 | Cycle         | Cron                  | Purpose                                                  |
 | ------------- | --------------------- | -------------------------------------------------------- |
 | Research      | `0 7,11,15,19 * * 1-5`| Enrich + score new accounts from SFDC/CSV + CommonRoom   |
 | Writer        | `30 8,12,16 * * 1-5`  | Generate 3-touch sequences for Tier 1+2 prospects        |
 | Reply monitor | `*/30 8-18 * * 1-5`   | Poll Gmail, classify replies, queue drafts               |
-| Send          | `0 9,11,13,15,17 * * 1-5` | Send human-approved messages within daily limit      |
+| Send          | `0 9,11,13,15,17 * * 1-5` | Send approved email touches within daily limit       |
+| Presence      | `15 7,11,15,19 * * 1-5` | Poll Sales Nav digest inbox + rank posts (LinkedIn)    |
+| Champion check| `0 8 * * 1`           | Weekly job-change scan for tracked champions             |
+| Discovery     | `0 7 * * 1`           | Weekly autonomous prospect discovery                     |
 
 All schedules run Monday–Friday. Adjust `SEND_WINDOW_START/END` and
 `SEND_TIMEZONE` in `.env` for your timezone.
+
+Manual equivalents (always available, regardless of `AUTOMATION_ENABLED`):
+`/presence` "Refresh now", `/champions` "Check now", `/brief` "Scan signals",
+`/accounts/:id` "Rescan" / "Scan all", `/discover`, `/revisit/:id/scan`,
+`/expand/:id/scan`.
 
 ## Web UI
 

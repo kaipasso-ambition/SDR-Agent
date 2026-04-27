@@ -1,10 +1,12 @@
 // Sends approved outbound drafts, respecting the daily cap and send window.
-// Email touches go through Gmail; LinkedIn touches are queued to PhantomBuster.
+// Email touches go through Gmail. LinkedIn touches are NEVER auto-sent —
+// the PhantomBuster integration was removed after LinkedIn blocked the
+// account; the operator copies the draft and sends it from their own
+// LinkedIn session manually.
 
 import 'dotenv/config';
 import { query } from './db/index.js';
 import { sendMessage } from './integrations/gmail.js';
-import { queueLinkedinMessage } from './integrations/linkedin.js';
 import { recordSend, upsertSequence, updateSequenceStatus } from './queue/sequence_tracker.js';
 
 const DAILY_LIMIT = Number(process.env.DAILY_EMAIL_LIMIT || 50);
@@ -66,18 +68,19 @@ export async function sendApprovedMessages() {
       const nextTouch = sequence[0]; // MVP: send touch 1 on approval; later cycles advance touches.
       if (!nextTouch) continue;
 
-      if (nextTouch.channel === 'email') {
-        await sendMessage({
-          to: row.contact_email,
-          subject: nextTouch.subject,
-          body: nextTouch.body,
-        });
-      } else if (nextTouch.channel === 'linkedin') {
-        await queueLinkedinMessage({
-          profileUrl: row.draft?.linkedin_url || '',
-          message: nextTouch.body,
-        });
+      if (nextTouch.channel !== 'email') {
+        console.log(
+          `[sender] Skipping ${nextTouch.channel} touch ${nextTouch.touch} for ${row.contact_email} — ` +
+          `non-email channels are manual-only. Operator should send from /drafts.`
+        );
+        continue;
       }
+
+      await sendMessage({
+        to: row.contact_email,
+        subject: nextTouch.subject,
+        body: nextTouch.body,
+      });
 
       await recordSend({
         prospectId: row.prospect_id,
