@@ -8,6 +8,7 @@ anyone newly flipped to FOA since the last run, posts a report to Slack, and
 updates the committed state files so the next run doesn't repeat anyone.
 """
 
+import argparse
 import os
 import sys
 import json
@@ -276,15 +277,21 @@ def chunk_text(text, size=SLACK_CHUNK_SIZE):
     return [text[i:i + size] for i in range(0, len(text), size)] or [""]
 
 
-def post_to_slack(text):
+def post_to_slack(text, dry_run=False):
     bot_token = os.environ.get("SLACK_BOT_TOKEN")
     channel_id = os.environ.get("SLACK_CHANNEL_ID")
     webhook_url = os.environ.get("SLACK_WEBHOOK_URL")
 
+    if dry_run:
+        print("\n--- DRY RUN: would post to Slack ---\n")
+        print(text)
+        print("\n--- end Slack message ---\n")
+        return
+
     if not (bot_token and channel_id) and not webhook_url:
         sys.exit(
             "No Slack credentials configured: set SLACK_BOT_TOKEN + "
-            "SLACK_CHANNEL_ID, or SLACK_WEBHOOK_URL."
+            "SLACK_CHANNEL_ID, or SLACK_WEBHOOK_URL (or pass --dry-run)."
         )
 
     for chunk in chunk_text(text):
@@ -304,7 +311,18 @@ def post_to_slack(text):
             resp.raise_for_status()
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print the Slack message instead of posting it; state files and the report file are still written.",
+    )
+    return parser.parse_args()
+
+
 def main():
+    args = parse_args()
     run_date = datetime.now(timezone.utc)
     window_start = run_date - timedelta(days=WINDOW_DAYS)
 
@@ -326,7 +344,7 @@ def main():
     report_url = build_report_url(report_path)
 
     slack_text = build_slack_text(run_date, candidates, newly_foa, report_url)
-    post_to_slack(slack_text)
+    post_to_slack(slack_text, dry_run=args.dry_run)
 
     today = run_date.strftime("%Y-%m-%d")
     reported.extend({
