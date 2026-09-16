@@ -4,7 +4,12 @@ on:
   schedule:
     # Sundays at 13:00 UTC
     - cron: "0 13 * * 0"
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run: print the report instead of posting to Slack, and skip committing state (safe to click anytime, e.g. to demo)"
+        type: boolean
+        default: true
 
 permissions:
   contents: write
@@ -33,9 +38,14 @@ jobs:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-        run: python scripts/foa_report.py
+        run: python scripts/foa_report.py ${{ (github.event_name == 'workflow_dispatch' && inputs.dry_run) && '--dry-run' || '' }}
+
+      - name: Show report in run summary (dry run only)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+        run: cat reports/foa_report_*.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Commit updated state
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
