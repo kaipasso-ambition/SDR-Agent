@@ -34,3 +34,19 @@ export SF_USERNAME=... SF_PASSWORD=... SF_SECURITY_TOKEN=...
 export SLACK_BOT_TOKEN=... SLACK_CHANNEL_ID=...
 python scripts/foa_report.py
 ```
+
+Pass `--dry-run` to print the Slack message instead of posting it (state
+files and the report are still written) — useful for demoing with only
+Salesforce credentials configured.
+
+### Known limitations
+
+- **No positive-intent signal.** The qualification logic only checks call
+  volume (>5 calls/12mo), FOA status, and prior-report state. A "positive
+  intent" criterion was scoped but isn't wired in: the Gong objects synced
+  to Salesforce (`Gong__Gong_Call__c`, `Gong__Tracker__c`) have no
+  sentiment field, only topic-tracker keyword counts (Timing, Budget,
+  Competitors, `[SMART] Product feedback`), which aren't a positive/negative
+  signal on their own. Adding real intent means either pulling it from
+  Gong's own product (not synced to Salesforce) or agreeing on a proxy from
+  the existing trackers — worth a decision before this goes live.

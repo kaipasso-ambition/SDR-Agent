@@ -144,16 +144,26 @@ def fetch_foa_contacts(sf):
     )["records"]
 
 
+def is_placeholder_contact(name):
+    """Some Gong-synced call participants resolve to a placeholder Contact
+    (e.g. "[not provided]") instead of a real person and should never be
+    invited."""
+    name = (name or "").strip()
+    return not name or (name.startswith("[") and name.endswith("]"))
+
+
 def find_new_candidates(by_contact, reported_ids):
     candidates = []
     for contact_id, entry in by_contact.items():
         if entry["is_foa"] or contact_id in reported_ids:
             continue
+        if is_placeholder_contact(entry["name"]):
+            continue
         call_count = len(entry["call_ids"])
         if call_count > CALL_THRESHOLD:
             candidates.append({
                 "contact_id": contact_id,
-                "name": entry["name"] or "Unknown",
+                "name": entry["name"],
                 "account": entry["account"],
                 "title": entry["title"],
                 "email": entry["email"],
